@@ -1,9 +1,10 @@
-{
+﻿{
   "name": "new-modular-product",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "prepare-application": "node src/interfaces/cli/run-prepare-application.js"
   }
 }
