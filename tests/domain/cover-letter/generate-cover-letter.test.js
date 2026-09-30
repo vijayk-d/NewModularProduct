@@ -7,6 +7,8 @@ const template = `Dear {{firstname}},
 
 I am applying for the {{role}} opportunity.
 
+Key requirements: {{jdKeywords}}.
+
 {{evidence}}
 
 {{refinedCoverLetter}}
@@ -163,3 +165,4 @@ test('requires an explicit non-empty template', () => {
     { message: 'A non-empty cover-letter template is required.' }
   );
 });
+
