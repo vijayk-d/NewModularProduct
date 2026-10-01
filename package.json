@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "new-modular-product",
   "version": "0.1.0",
   "private": true,
@@ -6,5 +6,8 @@
   "scripts": {
     "test": "node --test",
     "prepare-application": "node src/interfaces/cli/run-prepare-application.js"
+  },
+  "dependencies": {
+    "pdf-parse": "^2.4.5"
   }
 }
