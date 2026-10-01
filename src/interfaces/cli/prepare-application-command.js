@@ -16,7 +16,6 @@ export function parseJsonRequest(input = '') {
 
 export function runPrepareApplicationCommand(input = '') {
   const request = parseJsonRequest(input);
-
   return prepareApplication(request);
 }
 
