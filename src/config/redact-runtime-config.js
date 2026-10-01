@@ -1,0 +1,42 @@
+﻿function redactSecret(value) {
+  return String(value || '').trim() ? '[redacted]' : '';
+}
+
+export function redactRuntimeConfig(config = {}) {
+  return {
+    server: {
+      host: config.server?.host || '',
+      port: config.server?.port || 0
+    },
+    storage: {
+      dataDirectory: config.storage?.dataDirectory || '',
+      templateDirectory: config.storage?.templateDirectory || '',
+      cvInventoryPath: config.storage?.cvInventoryPath || '',
+      databasePath: config.storage?.databasePath || ''
+    },
+    features: {
+      enablePerplexityResearch: Boolean(
+        config.features?.enablePerplexityResearch
+      ),
+      enableCoverLetterRefinement: Boolean(
+        config.features?.enableCoverLetterRefinement
+      ),
+      enableGmail: Boolean(config.features?.enableGmail)
+    },
+    integrations: {
+      perplexity: {
+        enabled: Boolean(config.integrations?.perplexity?.enabled),
+        apiKey: redactSecret(config.integrations?.perplexity?.apiKey)
+      },
+      gmail: {
+        enabled: Boolean(config.integrations?.gmail?.enabled),
+        clientId: redactSecret(config.integrations?.gmail?.clientId),
+        clientSecret: redactSecret(
+          config.integrations?.gmail?.clientSecret
+        ),
+        redirectUri: config.integrations?.gmail?.redirectUri || '',
+        tokenStorePath: config.integrations?.gmail?.tokenStorePath || ''
+      }
+    }
+  };
+}
