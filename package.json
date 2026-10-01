@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "prepare-application": "node src/interfaces/cli/run-prepare-application.js"
+    "prepare-application": "node src/interfaces/cli/run-prepare-application.js",
+    "inspect-cv": "node src/interfaces/cli/run-inspect-cv.js"
   },
   "dependencies": {
     "pdf-parse": "^2.4.5"
