@@ -105,7 +105,10 @@ test('loads the requested template ID and inventory once', async () => {
   let inventoryLoads = 0;
 
   const result = await prepareApplicationFromRepositories({
-    request: createRequest(),
+    request: {
+      ...createRequest(),
+      selectedCvPaths: []
+    },
     templateId: 'focused-template',
     templateRepository: {
       async load(templateId) {
@@ -128,6 +131,7 @@ test('loads the requested template ID and inventory once', async () => {
             {
               role_code: 'RTE',
               role_name: 'Release Train Engineer',
+              local_path: 'D:\\CVs\\RTE.pdf',
               tags: ['safe'],
               use_cases: [],
               priority: 'high'
@@ -144,7 +148,6 @@ test('loads the requested template ID and inventory once', async () => {
   assert.equal(result.sources.template.id, 'focused-template');
   assert.equal(result.recommendation.bestCv.role_code, 'RTE');
 });
-
 test('validates required repositories and returned data', async () => {
   await assert.rejects(
     () => prepareApplicationFromRepositories({
