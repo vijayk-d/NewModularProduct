@@ -1,6 +1,21 @@
 ﻿import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadRuntimeConfig } from '../../src/config/load-runtime-config.js';
+
+test('loads CV folder from runtime loader options', () => {
+  const config = loadRuntimeConfig({
+    env: {
+      CV_FOLDER: 'D:/app-data/cvs'
+    },
+    cwd: 'D:/workspace/new-modular-product'
+  });
+
+  assert.equal(
+    config.storage.cvFolder,
+    'D:/app-data/cvs'
+  );
+});
+
 import { redactRuntimeConfig } from '../../src/config/redact-runtime-config.js';
 
 test('uses safe defaults when no optional configuration is supplied', () => {

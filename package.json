@@ -1,14 +1,14 @@
 {
-  "name": "new-modular-product",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "test": "node --test",
-    "prepare-application": "node src/interfaces/cli/run-prepare-application.js",
-    "inspect-cv": "node src/interfaces/cli/run-inspect-cv.js"
-  },
-  "dependencies": {
-    "pdf-parse": "^2.4.5"
-  }
+    "name":  "new-modular-product",
+    "version":  "0.1.0",
+    "private":  true,
+    "type":  "module",
+    "scripts":  {
+                    "test":  "node --test",
+                    "prepare-application":  "node src/interfaces/cli/run-prepare-application.js",
+                    "inspect-cv":  "node src/interfaces/cli/run-inspect-cv.js"
+                },
+    "dependencies":  {
+                         "pdf-parse":  "^2.4.5"
+                     }
 }

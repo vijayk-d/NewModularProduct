@@ -4,5 +4,8 @@ export function loadRuntimeConfig({
   env = process.env,
   cwd = process.cwd()
 } = {}) {
-  return validateRuntimeConfig({ env, cwd });
+  return validateRuntimeConfig({
+    env,
+    cwd
+  });
 }

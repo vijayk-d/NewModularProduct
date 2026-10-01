@@ -1,4 +1,4 @@
-﻿function configError(message) {
+function configError(message) {
   return new Error(`Invalid runtime configuration: ${message}`);
 }
 
@@ -85,6 +85,7 @@ export function validateRuntimeConfig({
       cvInventoryPath: String(
         env.CV_INVENTORY_PATH || ''
       ).trim(),
+      cvFolder: String(env.CV_FOLDER || '').trim(),
       databasePath: String(env.DATABASE_PATH || '').trim()
     },
     features: {

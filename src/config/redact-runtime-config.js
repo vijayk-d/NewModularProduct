@@ -12,6 +12,7 @@ export function redactRuntimeConfig(config = {}) {
       dataDirectory: config.storage?.dataDirectory || '',
       templateDirectory: config.storage?.templateDirectory || '',
       cvInventoryPath: config.storage?.cvInventoryPath || '',
+      cvFolder: config.storage?.cvFolder || '',
       databasePath: config.storage?.databasePath || ''
     },
     features: {
