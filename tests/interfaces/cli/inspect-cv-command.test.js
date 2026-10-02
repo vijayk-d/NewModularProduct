@@ -12,7 +12,47 @@ test('parses one required relative CV path', () => {
       'RTE/candidate-rte.pdf'
     ]),
     {
-      relativePath: 'RTE/candidate-rte.pdf'
+      relativePath: 'RTE/candidate-rte.pdf',
+      preview: false
+    }
+  );
+});
+
+test('parses preview in either supported argument order', () => {
+  assert.deepEqual(
+    parseInspectCvArguments([
+      '--preview',
+      '--path',
+      'RTE/candidate-rte.pdf'
+    ]),
+    {
+      relativePath: 'RTE/candidate-rte.pdf',
+      preview: true
+    }
+  );
+
+  assert.deepEqual(
+    parseInspectCvArguments([
+      '--path',
+      'RTE/candidate-rte.pdf',
+      '--preview'
+    ]),
+    {
+      relativePath: 'RTE/candidate-rte.pdf',
+      preview: true
+    }
+  );
+});
+
+test('defaults preview to false', () => {
+  assert.deepEqual(
+    parseInspectCvArguments([
+      '--path',
+      'RTE/candidate-rte.pdf'
+    ]),
+    {
+      relativePath: 'RTE/candidate-rte.pdf',
+      preview: false
     }
   );
 });
@@ -48,6 +88,21 @@ test('rejects duplicate path flags', () => {
     {
       message:
         'CV inspection command error: --path must be specified once.'
+    }
+  );
+});
+
+test('rejects duplicate preview flags', () => {
+  assert.throws(
+    () => parseInspectCvArguments([
+      '--path',
+      'candidate.pdf',
+      '--preview',
+      '--preview'
+    ]),
+    {
+      message:
+        'CV inspection command error: --preview must be specified once.'
     }
   );
 });
@@ -108,6 +163,60 @@ test('returns safe metadata without document text or resolved path', async () =>
 
   assert.equal(Object.hasOwn(result, 'resolvedPath'), false);
   assert.equal(Object.hasOwn(result, 'text'), false);
+  assert.equal(Object.hasOwn(result, 'preview'), false);
+  assert.equal(Object.hasOwn(result, 'previewTruncated'), false);
+});
+
+test('includes a bounded preview only when requested', async () => {
+  const text = 'A'.repeat(600);
+
+  const result = await inspectCvCommand({
+    argumentsList: [
+      '--path',
+      'RTE/candidate-rte.pdf',
+      '--preview'
+    ],
+    extractor: {
+      async extract() {
+        return {
+          relativePath: 'RTE/candidate-rte.pdf',
+          text,
+          contentType: 'application/pdf',
+          sizeBytes: 1234,
+          extractedAt: '2026-10-01T22:30:00.000Z',
+          warnings: []
+        };
+      }
+    }
+  });
+
+  assert.equal(result.preview, 'A'.repeat(500));
+  assert.equal(result.previewTruncated, true);
+  assert.equal(result.textLength, 600);
+});
+
+test('does not include preview properties by default', async () => {
+  const result = await inspectCvCommand({
+    argumentsList: [
+      '--path',
+      'RTE/candidate-rte.pdf'
+    ],
+    extractor: {
+      async extract() {
+        return {
+          relativePath: 'RTE/candidate-rte.pdf',
+          text: 'Private CV content',
+          contentType: 'application/pdf',
+          sizeBytes: 1234,
+          extractedAt: '2026-10-01T22:30:00.000Z',
+          warnings: []
+        };
+      }
+    }
+  });
+
+  assert.equal(Object.hasOwn(result, 'preview'), false);
+  assert.equal(Object.hasOwn(result, 'previewTruncated'), false);
 });
 
 test('requires an extractor implementation', async () => {

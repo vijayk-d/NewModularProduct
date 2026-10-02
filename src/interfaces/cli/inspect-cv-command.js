@@ -1,11 +1,18 @@
-﻿function commandError(message) {
+﻿const MAX_PREVIEW_LENGTH = 500;
+
+function commandError(message) {
   return new Error(`CV inspection command error: ${message}`);
 }
 
 export function parseInspectCvArguments(argumentsList = []) {
   const values = Array.from(argumentsList);
+
   const pathFlagIndexes = values
     .map((value, index) => value === '--path' ? index : -1)
+    .filter((index) => index !== -1);
+
+  const previewFlagIndexes = values
+    .map((value, index) => value === '--preview' ? index : -1)
     .filter((index) => index !== -1);
 
   if (pathFlagIndexes.length === 0) {
@@ -16,17 +23,28 @@ export function parseInspectCvArguments(argumentsList = []) {
     throw commandError('--path must be specified once.');
   }
 
+  if (previewFlagIndexes.length > 1) {
+    throw commandError('--preview must be specified once.');
+  }
+
   const pathFlagIndex = pathFlagIndexes[0];
-  const relativePath = String(values[pathFlagIndex + 1] || '').trim();
+
+  const relativePath = String(
+    values[pathFlagIndex + 1] || ''
+  ).trim();
 
   if (!relativePath) {
     throw commandError('--path must have a value.');
   }
 
+  const consumedIndexes = new Set([
+    pathFlagIndex,
+    pathFlagIndex + 1,
+    ...previewFlagIndexes
+  ]);
+
   const unexpectedArguments = values.filter(
-    (value, index) =>
-      index !== pathFlagIndex &&
-      index !== pathFlagIndex + 1
+    (_, index) => !consumedIndexes.has(index)
   );
 
   if (unexpectedArguments.length > 0) {
@@ -36,7 +54,17 @@ export function parseInspectCvArguments(argumentsList = []) {
   }
 
   return {
-    relativePath
+    relativePath,
+    preview: previewFlagIndexes.length === 1
+  };
+}
+
+function createPreview(text) {
+  const value = String(text || '');
+
+  return {
+    preview: value.slice(0, MAX_PREVIEW_LENGTH),
+    previewTruncated: value.length > MAX_PREVIEW_LENGTH
   };
 }
 
@@ -48,13 +76,16 @@ export async function inspectCvCommand({
     throw commandError('extractor.extract is required.');
   }
 
-  const { relativePath } = parseInspectCvArguments(argumentsList);
+  const {
+    relativePath,
+    preview
+  } = parseInspectCvArguments(argumentsList);
 
   const result = await extractor.extract({
     relativePath
   });
 
-  return {
+  const response = {
     relativePath: result.relativePath,
     contentType: result.contentType,
     sizeBytes: result.sizeBytes,
@@ -64,4 +95,10 @@ export async function inspectCvCommand({
       : 0,
     textLength: String(result.text || '').length
   };
+
+  if (preview) {
+    Object.assign(response, createPreview(result.text));
+  }
+
+  return response;
 }
