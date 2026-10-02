@@ -1,4 +1,4 @@
-﻿import { fillTemplate } from './fill-template.js';
+import { fillTemplate } from './fill-template.js';
 import { validateCoverLetter } from './validate-cover-letter.js';
 import { normalize } from '../shared/text-normalization.js';
 
@@ -351,6 +351,13 @@ export function generateCoverLetter({
 
   const firstname = recruiterFirstName || '{{firstname}}';
 
+  const recipient = String(
+    candidateProfile.displayName ||
+    candidateProfile.name ||
+    candidateProfile.firstName ||
+    'Candidate'
+  ).trim() || 'Candidate';
+
   const generatedCoverLetter = stripCitationMarkers(
     finalCoverLetter || refinedCoverLetter || ''
   );
@@ -361,7 +368,7 @@ export function generateCoverLetter({
 
   const templateBody = fillTemplate(template, {
     firstname,
-    recipient: firstname,
+    recipient,
     role: parsedJobDescription.role,
     cvHighlights: highlights,
     jdKeywords: keywordText,

@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseJobDescription } from '../../../src/domain/job-description/parse-job-description.js';
 import { generateCoverLetter } from '../../../src/domain/cover-letter/generate-cover-letter.js';
@@ -166,3 +166,25 @@ test('requires an explicit non-empty template', () => {
   );
 });
 
+
+test('uses the recruiter for the greeting and candidate for the sign-off', () => {
+  const letter = generateCoverLetter({
+    template: `Dear {{firstname}},
+
+Warm regards,
+{{recipient}}`,
+    jobDescription: parseJobDescription('Scrum Master role'),
+    cv: {
+      role_name: 'Scrum Master',
+      tags: ['scrum'],
+      use_cases: []
+    },
+    recruiterName: 'James',
+    candidateProfile: {
+      name: 'Vijay Dafal'
+    }
+  });
+
+  assert.match(letter.plainText, /^Dear James,/);
+  assert.match(letter.plainText, /Warm regards,\nVijay Dafal$/);
+});
