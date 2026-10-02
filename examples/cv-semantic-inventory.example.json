@@ -1,0 +1,52 @@
+﻿{
+  "cv_inventory": {
+    "cvs": [
+      {
+        "role_code": "RTE",
+        "role_name": "Release Train Engineer",
+        "local_path": "RTE/example-rte.pdf",
+        "tags": [
+          "safe",
+          "pi planning",
+          "agile delivery",
+          "stakeholder management"
+        ],
+        "use_cases": [
+          "Cross-team planning and dependency management",
+          "Agile delivery coordination"
+        ],
+        "priority": "very-high"
+      },
+      {
+        "role_code": "TPM",
+        "role_name": "Technical Project Manager",
+        "local_path": "Technical-PM/example-tpm.pdf",
+        "tags": [
+          "technical delivery",
+          "cloud",
+          "risk management"
+        ],
+        "use_cases": [
+          "Complex technology delivery",
+          "Technical stakeholder coordination"
+        ],
+        "priority": "high"
+      },
+      {
+        "role_code": "SM",
+        "role_name": "Scrum Master",
+        "local_path": "SM/example-sm.pdf",
+        "tags": [
+          "scrum",
+          "team coaching",
+          "continuous improvement"
+        ],
+        "use_cases": [
+          "Team-level agile coaching",
+          "Delivery impediment management"
+        ],
+        "priority": "medium"
+      }
+    ]
+  }
+}

@@ -8,3 +8,6 @@ data/
 *.db
 *.sqlite
 *.sqlite3
+data/cv-semantic-inventory.local.json
+data/cv-inventory.generated.json
+templates/standard-cover-letter.md
