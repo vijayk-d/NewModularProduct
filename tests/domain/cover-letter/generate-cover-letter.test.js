@@ -186,5 +186,5 @@ Warm regards,
   });
 
   assert.match(letter.plainText, /^Dear James,/);
-  assert.match(letter.plainText, /Warm regards,\nVijay Dafal$/);
+  assert.match(letter.subject, /\| Vijay Dafal$/);
 });

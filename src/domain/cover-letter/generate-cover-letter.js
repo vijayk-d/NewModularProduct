@@ -392,8 +392,8 @@ export function generateCoverLetter({
 
   const subject = `Application for ${parsedJobDescription.role}` +
     `${jobAdvertLink ? ' | LinkedIn' : ''}` +
-    `${referenceSuffix} | ${candidateProfile.displayName || 'Candidate'}`;
-
+    `${referenceSuffix} | ${recipient}`;
+    
   const selectedHighlights = smartHighlightTerms(
     parsedJobDescription,
     plainText,
