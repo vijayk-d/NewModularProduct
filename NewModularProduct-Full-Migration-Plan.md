@@ -1,23 +1,33 @@
 # NewModularProduct — Full Legacy Product Migration Plan and Status
 
-**Status date:** 1 October 2026  
-**Current implemented baseline:** 31 passing tests, 0 failures (`node --test`)  
-**Purpose:** Cover the complete legacy product capability map while clearly separating implemented, planned, deferred, and explicitly excluded work.
+**Status date:** 4 October 2026  
+**Current implemented baseline:** 127 passing Node tests and 2 passing Chromium Playwright tests, 0 failures  
 
 ## Executive status
 
-The current modular product implements only the **safe, deterministic application-preparation core**. It does not yet reproduce the full legacy product. In particular, the following legacy capability areas remain outside the implementation:
+The modular product now provides a controlled local application-preparation
+workflow. It can accept structured job inputs, parse the job description,
+load a controlled template and validated CV inventory, safely extract local PDF
+text when explicitly requested, rank and recommend CVs, generate a validated
+cover-letter draft, and present the result in a local HTTP/browser interface.
 
-- interactive web UI and browser state;
-- Gmail/OAuth-backed email draft/send workflows;
-- organization-value research through Perplexity or another research provider;
+The local UI supports reviewable vacancy details, HTTP(S)-only job-advert links,
+local cover-letter copying, manual-send messaging, escaped rendering, and
+per-response CSP nonce controls. It does not send applications or email.
+
+The following high-risk or provider-backed capabilities remain outside the
+implementation:
+
+- organisation-values research through Perplexity or another research provider;
 - Perplexity-backed cover-letter review/refinement;
-- recruiter discovery/ranking and organization email-domain lookup;
-- CV file indexing, document extraction, persistent cache/repository behavior;
+- recruiter discovery, recruiter ranking, and organisation email-domain lookup;
+- recruiter TSV/export and persistent outreach queues;
 - CV rebuilding;
-- HTTP server, web routing, and output persistence.
+- Gmail OAuth, Gmail draft creation, email sending, and dispatch audit workflows;
+- production-grade provider cache, retention, and integration observability.
 
-These should be added as separate slices through ports/adapters, not imported from the monolith into the domain core.
+These remain separate port-and-adapter slices. They must not be imported from a
+legacy monolith into the domain core.
 
 ## Full capability plan
 
@@ -29,13 +39,13 @@ These should be added as separate slices through ports/adapters, not imported fr
 | 4 | Selected CV paths | `selectCvsByPath()` | Complete | Pure path-identifier policy; no file reads |
 | 5 | Cover-letter generation | `generateCoverLetter()` / validator / template fill | Complete | Explicit template and candidate profile; no disk fallback |
 | 6 | End-to-end preparation | `prepareApplication()` | Complete | In-memory JD → candidate selection → validated draft |
-| 7 | JSON command boundary | stdin JSON → `prepareApplication()` → stdout JSON | Ready to start | Safe first interface; no hidden defaults or secrets |
-| 8 | Web/interactive UI | Interface calling application services | Planned | UI state, form validation, rendering, copy/export; no business rules in browser code |
-| 9 | HTTP server/API | API adapter around application services | Planned | Authentication, request schemas, error mapping, rate limits; no direct domain coupling |
-| 10 | CV inventory loading | `CvInventoryRepository` port and adapter | Planned | Read approved metadata store; map to domain candidates; sensitive-data policy required |
-| 11 | CV document extraction/indexing | `DocumentTextExtractor` and indexing adapter | Planned | Local file validation, extraction failures, caching/fingerprint policy, privacy controls |
+| 7 | JSON command boundary | stdin JSON → `prepareApplication()` → stdout JSON | Complete | Validates JSON input, executes the complete workflow, and writes exactly one JSON response |
+| 8 | Web/interactive UI | Local interface calling application services | Complete | Local application form, validation, escaped rendering, review controls, copy fallback, and no business rules in browser code |
+| 9 | HTTP server/API | Local HTTP adapter around application services | Complete for local use | Route, media-type, request-size, validation, error, safe-rendering, and CSP controls are tested; authentication and production rate limits remain future scope |
+| 10 | CV inventory loading | `CvInventoryRepository` adapter | Complete | Loads and validates approved metadata; normalizes supported shapes; rejects invalid or duplicate candidate entries |
+| 11 | CV document extraction/indexing | `DocumentTextExtractor` and indexing adapter | Partially complete | Guarded local PDF extraction and safe path resolution are implemented; persistent indexing, cache, and fingerprint policy remain planned |
 | 12 | CV rebuilding | `CvRebuilder` port/adapter | Planned | Separate output-generation workflow; template/versioning, review, output directory safety |
-| 13 | Template storage/loading | `TemplateRepository` port/adapter | Planned | Explicit template IDs/versions; no hidden cwd fallback |
+| 13 | Template storage/loading | `TemplateRepository` adapter | Complete | Validated template IDs and controlled Markdown template loading; no implicit cwd fallback |
 | 14 | Organization values research | `CompanyResearchPort` with provider adapter | Planned | Research request/response schema, freshness metadata, source/citation handling, cache and consent policy |
 | 15 | Perplexity organization research | Perplexity-backed `CompanyResearchPort` adapter | Deferred pending provider design | API key isolation, data minimization, explicit organization input, failure/cost/rate-limit handling |
 | 16 | Cover-letter review/refinement | `CoverLetterRefinementPort` | Planned | Input redaction policy, structured review output, preserve human-approved draft, no automatic send |
@@ -50,7 +60,7 @@ These should be added as separate slices through ports/adapters, not imported fr
 | 25 | Outreach queue and dispatch | Application workflow over explicit queued items | Deferred; high-risk | Separate queue state, review gates, rate limits, duplicate prevention, delivery status tracking |
 | 26 | Company/recruiter caches | Infrastructure cache adapter | Planned after port contracts | TTL/freshness, invalidation, encrypted/local storage policy, no cache access from domain |
 | 27 | Persistent application output | Output repository/export adapter | Planned | Explicit user-selected destination; safe filenames; avoid accidental sensitive data retention |
-| 28 | Secret/configuration management | Configuration composition root | Planned before integrations | Environment/config provider at outer boundary; never import into domain |
+| 28 | Secret/configuration management | Configuration composition root | Complete for local use | Validates runtime feature configuration and redacts API/OAuth secrets from diagnostics; provider credential lifecycle remains outside the domain |
 | 29 | Observability/audit trail | Structured application/integration event layer | Planned before email/research production use | Redact personal content/secrets; retain actionable lifecycle metadata |
 | 30 | Security/privacy review | Threat model and data-handling policy | Required before real data/integrations | CV PII, email addresses, OAuth tokens, API prompts/responses, retention, access controls |
 
@@ -139,32 +149,33 @@ flowchart TB
 
 ## Recommended implementation order
 
-### Phase A — Complete safe local product boundaries
+### Phase A — Completed safe local product boundaries
 
-1. Finish JSON CLI interface and tests.
-2. Add an explicit request/response schema validator at the CLI/API boundary.
-3. Add a controlled template repository adapter.
-4. Add a metadata-only CV inventory adapter using synthetic data first.
-5. Add CV document extraction/indexing only after sensitive-data rules are agreed.
-6. Add a UI or HTTP API after the workflow inputs/outputs have stabilized.
+- [x] Compose and test the `prepareApplication` workflow.
+- [x] Add JSON CLI request/response handling and tests.
+- [x] Add controlled template repository loading.
+- [x] Add validated CV inventory loading and safe inventory generation.
+- [x] Add guarded local PDF extraction and safe CV-path resolution.
+- [x] Add runtime configuration validation with secret-redacted diagnostics.
+- [x] Add local HTTP application-preparation routes and safe error handling.
+- [x] Add local browser review, safe advert links, local-only copy behavior, and CSP nonce controls.
+- [x] Add Node and Chromium Playwright regression coverage.
 
-### Phase B — Add research and review as explicit provider ports
+### Phase B — Harden the local browser review boundary
 
-7. Define `CompanyResearchPort` and structured research result types.
-8. Implement a deterministic fake adapter for tests.
-9. Implement a Perplexity adapter outside the domain, with injected configuration.
-10. Add source/freshness metadata and user-visible review of organization values.
-11. Define `CoverLetterRefinementPort` and a structured review/refinement result.
-12. Add a fake adapter for tests, then a Perplexity adapter with data minimization.
-13. Require the user to review/accept the refined text before it becomes a final draft.
+1. Add browser tests for malformed and non-HTTP(S) advert URLs.
+2. Add browser tests for clipboard-denied/manual-copy fallback behavior.
+3. Add keyboard-navigation and accessible-status coverage.
+4. Add browser tests for missing optional vacancy/recruiter metadata.
+5. Add hostile-text rendering, validation-error, and local-server error-state coverage.
 
-### Phase C — Add recruiter and outreach preparation
+### Phase C — Add research and review as explicit provider ports
 
 14. Define recruiter finding, ranking, and email-domain lookup contracts.
 15. Implement recruiter TSV/export and a reviewable outreach queue.
 16. Add deduplication, queue states, and recipient/data-quality checks.
 
-### Phase D — Add Gmail only behind explicit safety gates
+### Phase D — Add recruiter and outreach preparation
 
 17. Define `EmailProviderPort` with separate `createDraft` and `send` operations.
 18. Implement OAuth token handling in an adapter; keep tokens outside source control and domain code.
@@ -172,6 +183,8 @@ flowchart TB
 20. Require an explicit user confirmation that displays exact recipient, subject, and body before creating/sending each message.
 21. Add audit events, idempotency protections, rate limiting, and failure/retry handling.
 22. Start with Gmail draft creation; introduce actual sending only after draft/review flows are proven.
+
+### Phase E — Add Gmail only behind explicit safety gates
 
 ## Perplexity API safety requirements
 
@@ -256,17 +269,23 @@ Required controls before enabling send:
 
 ```text
 Implemented now
-  Pure JD → CV recommendation → validated cover-letter draft
+  Controlled local workflow:
+  JD → validated CV inventory/template inputs → CV recommendation
+  → guarded optional PDF extraction → validated cover-letter draft
+  → JSON CLI and local HTTP/browser review/copy
 
-Next safe product boundary
-  JSON CLI over the pure workflow
-
-Later controlled adapters
-  Templates / CV metadata / document extraction / UI or HTTP
+Next safe boundary
+  Browser review hardening: invalid inputs, fallback behavior, accessibility,
+  hostile-text handling, and local error states
 
 Later provider workflows
-  Organization research and cover-letter review through Perplexity
+  Reviewable organisation research and cover-letter refinement through explicit
+  ports, deterministic fakes, then data-minimized Perplexity adapters
+
+Later outreach workflows
+  Recruiter research, ranking, export, and a reviewable deduplicated queue
 
 Last high-risk workflow
-  Gmail OAuth, draft creation, reviewed outreach queue, explicit sending
+  Gmail OAuth, draft creation, explicit approved sending, audit, idempotency,
+  rate limiting, and retry handling
 ```
