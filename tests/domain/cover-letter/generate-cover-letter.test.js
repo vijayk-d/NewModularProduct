@@ -188,3 +188,19 @@ Warm regards,
   assert.match(letter.plainText, /^Dear James,/);
   assert.match(letter.subject, /\| Vijay Dafal$/);
 });
+
+test('uses ASCII punctuation in the ATS redirection paragraph', () => {
+  const letter = generateCoverLetter({
+    template,
+    jobDescription: parseJobDescription(
+      'Scrum Master role requiring Agile delivery'
+    ),
+    cv: {
+      role_name: 'Scrum Master',
+      tags: ['scrum'],
+      use_cases: []
+    }
+  });
+
+  assert.match(letter.plainText, /client's needs/);
+});
