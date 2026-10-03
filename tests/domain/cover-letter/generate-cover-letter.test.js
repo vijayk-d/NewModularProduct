@@ -202,5 +202,7 @@ test('uses ASCII punctuation in the ATS redirection paragraph', () => {
     }
   });
 
-  assert.match(letter.plainText, /client's needs/);
+  assert.match(letter.plainText, /align with the client's needs/);
+  assert.doesNotMatch(letter.plainText, /align withthe/i);
+  assert.doesNotMatch(letter.plainText, /client(?:ΓÇÖ|â€™|’)/);
 });

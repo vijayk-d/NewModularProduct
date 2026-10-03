@@ -3,9 +3,9 @@ import { validateCoverLetter } from './validate-cover-letter.js';
 import { normalize } from '../shared/text-normalization.js';
 
 const ATS_REDIRECTION_PARAGRAPH =
-  'I appreciate the convenience of ATS-based applications, but I believe strong talent is often best understood through a direct conversation. If you are not the direct contact for this position and feel my profile may align with the client’s needs, I would be grateful for any redirection to the appropriate hiring manager or colleague.';
+  'I appreciate the convenience of ATS-based applications, but I believe strong talent is often best understood through a direct conversation. If you are not the direct contact for this position and feel my profile may align with the client\'s needs, I would be grateful for any redirection to the appropriate hiring manager or colleague.';
 
-const CITATION_MARKER_PATTERN = /\[\d+\]/g;
+  const CITATION_MARKER_PATTERN = /\[\d+\]/g;
 
 const genericKeywords = new Set([
   'about',
