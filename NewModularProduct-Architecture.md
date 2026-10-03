@@ -1,9 +1,14 @@
 # NewModularProduct Architecture Document
 
-**Status:** Implemented foundation (pure, in-memory core)  
-**Scope date:** 30 September 2026  
-**Test baseline:** 29 passing tests, 0 failures (`node --test`)  
-**Repository:** `NewModularProduct`
+The product now supports a controlled local application-preparation workflow.
+It composes pure job-description parsing, CV selection and ATS assessment,
+cover-letter generation, controlled template loading, CV inventory access,
+guarded PDF extraction, a JSON CLI, and a local HTTP/browser review interface.
+
+The implemented product deliberately does not perform organisation research,
+cover-letter refinement through an external provider, recruiter discovery,
+outreach queue management, Gmail OAuth, draft creation, email sending, or
+automatic external communication.
 
 ---
 
@@ -73,7 +78,7 @@ flowchart TB
 
     subgraph Application[Application layer]
       Recommend[recommendCvs]
-      FuturePrepare[prepareApplication - planned]
+      Prepare[prepareApplication]
     end
 
     subgraph Domain[Pure domain layer]
@@ -143,8 +148,10 @@ sequenceDiagram
     App-->>Caller: auditable in-memory result
 ```
 
-`prepareApplication` in the diagram is planned, not yet implemented. `recommendCvs` is implemented today for parse-and-rank use cases.
-
+`prepareApplication` is implemented as the composed local workflow. It parses
+a job description, selects the intended CV subset, ranks and recommends CVs,
+generates a validated cover-letter draft, and returns the intermediate evidence
+needed for local review. `recommendCvs` remains a smaller parse-and-rank use case.
 ---
 
 ## 5. Repository structure
@@ -661,8 +668,12 @@ Node.js built-in test runner: node --test
 At document time:
 
 ```text
-29 tests
-29 passing
+114 Node tests
+114 passing
+0 failing
+
+2 Chromium Playwright tests
+2 passing
 0 failing
 ```
 

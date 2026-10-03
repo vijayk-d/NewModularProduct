@@ -51,7 +51,27 @@ JSON stdin
   → JSON stdout
 ```
 
-## Completed checkpoints
+## Completed
+
+- [x] Pure JD parsing, ATS assessment, CV ranking, selection, and cover-letter generation.
+- [x] Composed `prepareApplication` workflow.
+- [x] Controlled template repository.
+- [x] Validated CV inventory and catalog generation.
+- [x] Guarded PDF text extraction and safe CV path resolution.
+- [x] Runtime configuration validation with secret-redacted diagnostics.
+- [x] JSON CLI.
+- [x] Local HTTP application-preparation UI.
+- [x] Local review controls, safe advert links, local cover-letter copying, and CSP nonce protection.
+- [x] Automated Node and Chromium Playwright coverage.
+
+## Current phase
+
+Local application-preparation MVP complete. The immediate work is browser-test
+hardening; the subsequent work is research/refinement provider-port design.
+
+The product prepares and reviews application materials locally. It does not
+yet perform organisation research, recruiter discovery, outreach queue
+management, Gmail draft creation, or email sending.
 
 | Commit | Checkpoint |
 |---|---|
