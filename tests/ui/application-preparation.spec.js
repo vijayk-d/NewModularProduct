@@ -1,4 +1,4 @@
-﻿import { test, expect } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 
 test('shows the application preparation form and manual-send notice', async ({ page }) => {
   await page.goto('/');
@@ -27,7 +27,7 @@ test('shows the application preparation form and manual-send notice', async ({ p
   ).toBeVisible();
 });
 
-test('submits vacancy details and shows a local application review', async ({ page }) => {
+test('reviews vacancy details and provides local cover-letter copying', async ({ page }) => {
   await page.goto('/');
 
   await page.getByLabel('Job title').fill('Project Manager');
@@ -60,15 +60,49 @@ test('submits vacancy details and shows a local application review', async ({ pa
 
   await expect(
     page.getByRole('heading', {
-      name: 'Recommendation'
+      name: 'Vacancy details'
     })
   ).toBeVisible();
 
   await expect(
-    page.getByText('Cover letter draft', {
-      exact: true
+    page.locator('p', {
+      hasText: 'Recruiter or hiring manager: Hiring Manager'
     })
   ).toBeVisible();
+
+  await expect(
+    page.locator('p', {
+      hasText: 'Vacancy reference: PM-42'
+    })
+  ).toBeVisible();
+
+  const advert = page.getByRole('link', {
+    name: 'https://example.com/jobs/project-manager'
+  });
+
+  await expect(advert).toHaveAttribute(
+    'href',
+    'https://example.com/jobs/project-manager'
+  );
+  await expect(advert).toHaveAttribute('target', '_blank');
+  await expect(advert).toHaveAttribute(
+    'rel',
+    'noreferrer noopener'
+  );
+
+  const draft = page.getByLabel('Generated cover letter');
+  await expect(draft).toHaveAttribute('readonly', '');
+  await expect(draft).not.toHaveValue('');
+
+  await page.getByRole('button', {
+    name: 'Copy cover letter'
+  }).click();
+
+  const copyStatus = page.locator('#copy-status');
+
+  await expect(copyStatus).toHaveText(
+    /Cover letter copied to clipboard\.|Cover letter selected\. Copy it manually\./
+  );
 
   await expect(
     page.getByText(

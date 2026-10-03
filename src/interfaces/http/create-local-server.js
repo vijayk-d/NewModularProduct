@@ -1,17 +1,20 @@
-﻿import { createServer } from 'node:http';
+import { createServer } from 'node:http';
 
 const MAX_FORM_BODY_BYTES = 64 * 1024;
 
 function sendHtml(response, statusCode, html) {
+  const scriptNonce = crypto.randomUUID().replaceAll('-', '');
+  const document = html.replaceAll('__SCRIPT_NONCE__', scriptNonce);
+
   response.writeHead(statusCode, {
     'content-type': 'text/html; charset=utf-8',
-    'content-security-policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'",
+    'content-security-policy': `default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'nonce-${scriptNonce}'; base-uri 'none'; form-action 'self'`,
     'x-content-type-options': 'nosniff',
     'x-frame-options': 'DENY',
     'referrer-policy': 'no-referrer'
   });
 
-  response.end(html);
+  response.end(document);
 }
 
 function sendText(response, statusCode, text, headers = {}) {
@@ -248,6 +251,37 @@ ${renderField('cvHighlights', 'CV highlights', values.cvHighlights, { placeholde
 </html>`;
 }
 
+function renderAdvertLink(value = '') {
+  const text = String(value).trim();
+
+  if (!text) {
+    return '';
+  }
+
+  try {
+    const url = new URL(text);
+
+    if (url.protocol === 'http:' || url.protocol === 'https:') {
+      return `<a href="${escapeHtml(url.href)}" target="_blank" rel="noreferrer noopener">${escapeHtml(url.href)}</a>`;
+    }
+  } catch {
+    // Render invalid URLs as plain text below.
+  }
+
+  return escapeHtml(text);
+}
+
+function renderOptionalDetail(label, value) {
+  const text = String(value || '').trim();
+
+  if (!text) {
+    return '';
+  }
+
+  return `    <p><strong>${escapeHtml(label)}:</strong> ${escapeHtml(text)}</p>
+`;
+}
+
 function renderApplicationReview({
   formData,
   prepared
@@ -266,6 +300,21 @@ function renderApplicationReview({
 
   const score = Number.isFinite(atsScore)
     ? `<p><strong>ATS score:</strong> ${escapeHtml(atsScore)}</p>`
+    : '';
+
+  const recruiter = renderOptionalDetail(
+    'Recruiter or hiring manager',
+    formData.recruiterName
+  );
+
+  const reference = renderOptionalDetail(
+    'Vacancy reference',
+    formData.jobReference
+  );
+
+  const advert = formData.jobAdvertLink
+    ? `    <p><strong>Job advert:</strong> ${renderAdvertLink(formData.jobAdvertLink)}</p>
+`
     : '';
 
   return `<!doctype html>
@@ -305,17 +354,44 @@ function renderApplicationReview({
       line-height: 1.5;
     }
 
-    pre {
-      overflow-wrap: anywhere;
-      white-space: pre-wrap;
+    .draft {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 18rem;
+      resize: vertical;
       padding: 1rem;
       border: 1px solid #d7deea;
       border-radius: 0.4rem;
       background: #f8fafc;
+      font: inherit;
+      line-height: 1.5;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      margin: 1rem 0;
+    }
+
+    button {
+      padding: 0.7rem 1rem;
+      border: 0;
+      border-radius: 0.4rem;
+      background: #2563eb;
+      color: #ffffff;
+      cursor: pointer;
+      font: inherit;
     }
 
     a {
       color: #1d4ed8;
+    }
+
+    #copy-status {
+      min-height: 1.5rem;
+      color: #475569;
     }
   </style>
 </head>
@@ -324,20 +400,65 @@ function renderApplicationReview({
     <h1>Application review</h1>
     <p>Review the prepared local draft before you send anything manually.</p>
 
-    <h2>Recommendation</h2>
+    <h2>Vacancy details</h2>
     <p><strong>Role:</strong> ${escapeHtml(role)}</p>
     <p><strong>Location:</strong> ${escapeHtml(location)}</p>
+${recruiter}${reference}${advert}
+    <h2>Recommendation</h2>
     <p><strong>Recommended CV:</strong> ${escapeHtml(bestCv.role_name || bestCv.role_code || 'Not available')}</p>
 ${alternative}
 ${score}
     <p><strong>Subject:</strong> ${escapeHtml(subject)}</p>
 
     <h2>Cover letter draft</h2>
-    <pre>${escapeHtml(plainText)}</pre>
+    <label for="cover-letter-draft">Generated cover letter</label>
+    <textarea id="cover-letter-draft" class="draft" readonly>${escapeHtml(plainText)}</textarea>
+
+    <div class="actions">
+      <button id="copy-cover-letter" type="button">Copy cover letter</button>
+      <span id="copy-status" role="status" aria-live="polite"></span>
+    </div>
 
     <p><a href="/">Prepare another application</a></p>
     <p class="notice">This local tool does not send email. Review and send manually.</p>
   </main>
+
+  <script nonce="__SCRIPT_NONCE__">
+    const copyButton = document.getElementById('copy-cover-letter');
+    const draft = document.getElementById('cover-letter-draft');
+    const copyStatus = document.getElementById('copy-status');
+
+    function selectDraftForManualCopy() {
+      draft.focus();
+      draft.select();
+      copyStatus.textContent = 'Cover letter selected. Copy it manually.';
+    }
+
+    copyButton.addEventListener('click', async () => {
+      try {
+        if (!navigator.clipboard || !navigator.clipboard.writeText) {
+          selectDraftForManualCopy();
+          return;
+        }
+
+        const copied = await Promise.race([
+          navigator.clipboard.writeText(draft.value).then(() => true),
+          new Promise((resolve) => {
+            window.setTimeout(() => resolve(false), 500);
+          })
+        ]);
+
+        if (!copied) {
+          selectDraftForManualCopy();
+          return;
+        }
+
+        copyStatus.textContent = 'Cover letter copied to clipboard.';
+      } catch {
+        selectDraftForManualCopy();
+      }
+    });
+  </script>
 </body>
 </html>`;
 }

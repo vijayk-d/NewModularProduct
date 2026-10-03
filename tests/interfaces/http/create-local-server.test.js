@@ -307,3 +307,112 @@ test('rejects oversized application form submissions', async (t) => {
   assert.equal(response.status, 413);
   assert.equal(response.text, 'Payload Too Large');
 });
+
+test('renders review details, a safe advert link, and local copy controls', async (t) => {
+  const { server, baseUrl } = await startServer();
+  t.after(() => server.close());
+
+  const response = await request(baseUrl, '/applications', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: formBody({
+      jobTitle: 'Project Manager',
+      recruiterName: 'Hiring Manager',
+      jobAdvertLink: 'https://example.test/jobs/project-manager',
+      jobReference: 'PM-42',
+      jobDescriptionText: 'Delivery leadership'
+    })
+  });
+
+  assert.equal(response.status, 200);
+  assert.match(response.text, /<h2>Vacancy details<\/h2>/);
+  assert.match(
+    response.text,
+    /Recruiter or hiring manager:<\/strong> Hiring Manager/
+  );
+  assert.match(response.text, /Vacancy reference:<\/strong> PM-42/);
+  assert.match(
+    response.text,
+    /<a href="https:\/\/example\.test\/jobs\/project-manager" target="_blank" rel="noreferrer noopener">https:\/\/example\.test\/jobs\/project-manager<\/a>/
+  );
+  assert.match(
+    response.text,
+    /<textarea id="cover-letter-draft" class="draft" readonly>/
+  );
+  assert.match(
+    response.text,
+    /<button id="copy-cover-letter" type="button">Copy cover letter<\/button>/
+  );
+  assert.match(
+    response.text,
+    /<span id="copy-status" role="status" aria-live="polite"><\/span>/
+  );
+  assert.match(
+    response.text,
+    /navigator\.clipboard\.writeText\(draft\.value\)/
+  );
+});
+
+test('renders unsafe advert URLs as escaped plain text rather than links', async (t) => {
+  const { server, baseUrl } = await startServer();
+  t.after(() => server.close());
+
+  const response = await request(baseUrl, '/applications', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: formBody({
+      jobTitle: 'Project Manager',
+      jobAdvertLink: 'javascript:alert(1)',
+      jobDescriptionText: 'Delivery leadership'
+    })
+  });
+
+  assert.equal(response.status, 200);
+  assert.match(
+    response.text,
+    /Job advert:<\/strong> javascript:alert\(1\)<\/p>/
+  );
+  assert.doesNotMatch(
+    response.text,
+    /href="javascript:alert\(1\)"/
+  );
+});
+
+test('allows only the nonce-marked local copy script in the review CSP', async (t) => {
+  const { server, baseUrl } = await startServer();
+  t.after(() => server.close());
+
+  const response = await request(baseUrl, '/applications', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: formBody({
+      jobTitle: 'Project Manager',
+      jobDescriptionText: 'Delivery leadership'
+    })
+  });
+
+  assert.equal(response.status, 200);
+
+  const contentSecurityPolicy =
+    response.headers.get('content-security-policy') || '';
+
+  const nonceMatch = contentSecurityPolicy.match(
+    /script-src 'nonce-([a-f0-9]+)'/
+  );
+
+  assert.ok(nonceMatch);
+  assert.match(
+    response.text,
+    new RegExp(`<script nonce="${nonceMatch[1]}">`)
+  );
+  assert.doesNotMatch(
+    contentSecurityPolicy,
+    /script-src[^;]*'unsafe-inline'/
+  );
+});
