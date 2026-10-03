@@ -4,14 +4,21 @@
     "private":  true,
     "type":  "module",
     "scripts":  {
-                    "test":  "node --test",
                     "prepare-application":  "node --env-file=.env src/interfaces/cli/run-prepare-application.js",
                     "inspect-cv":  "node --env-file=.env src/interfaces/cli/run-inspect-cv.js",
                     "list-cvs":  "node --env-file=.env src/interfaces/cli/run-list-cvs.js",
                     "generate-cv-inventory":  "node --env-file=.env src/interfaces/cli/run-generate-cv-inventory.js",
-                    "start":  "node --env-file=.env src/interfaces/http/run-local-server.js"
+                    "start":  "node --env-file=.env src/interfaces/http/run-local-server.js",
+                    "test:ui":  "playwright test",
+                    "test:ui:headed":  "playwright test --headed",
+                    "test:ui:report":  "playwright show-report",
+                    "test:all":  "npm test \u0026\u0026 npm run test:ui",
+                    "test":  "node --test tests/**/*.test.js"
                 },
     "dependencies":  {
                          "pdf-parse":  "^2.4.5"
-                     }
+                     },
+    "devDependencies":  {
+                            "@playwright/test":  "^1.63.0"
+                        }
 }

@@ -11,3 +11,8 @@ data/
 data/cv-semantic-inventory.local.json
 data/cv-inventory.generated.json
 templates/standard-cover-letter.md
+
+# Playwright test artifacts
+playwright-report/
+test-results/
+blob-report/
