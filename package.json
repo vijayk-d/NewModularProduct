@@ -1,4 +1,4 @@
-{
+﻿{
     "name":  "new-modular-product",
     "version":  "0.1.0",
     "private":  true,
@@ -8,7 +8,8 @@
                     "prepare-application":  "node --env-file=.env src/interfaces/cli/run-prepare-application.js",
                     "inspect-cv":  "node --env-file=.env src/interfaces/cli/run-inspect-cv.js",
                     "list-cvs":  "node --env-file=.env src/interfaces/cli/run-list-cvs.js",
-                    "generate-cv-inventory":  "node --env-file=.env src/interfaces/cli/run-generate-cv-inventory.js"
+                    "generate-cv-inventory":  "node --env-file=.env src/interfaces/cli/run-generate-cv-inventory.js",
+                    "start":  "node --env-file=.env src/interfaces/http/run-local-server.js"
                 },
     "dependencies":  {
                          "pdf-parse":  "^2.4.5"
