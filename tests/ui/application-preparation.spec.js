@@ -1,4 +1,35 @@
-import { test, expect } from '@playwright/test';
+﻿import { test, expect } from '@playwright/test';
+
+async function prepareApplication(page, overrides = {}) {
+  const values = {
+    jobTitle: 'Project Manager',
+    recruiterName: 'Hiring Manager',
+    jobAdvertLink: 'https://example.com/jobs/project-manager',
+    vacancyReference: 'PM-42',
+    preferredRoleCodes: 'PM, ADL',
+    jobDescriptionText:
+      'Project Manager role requiring delivery leadership and stakeholder management.',
+    cvHighlights:
+      'Led complex delivery programmes\nImproved stakeholder reporting',
+    ...overrides
+  };
+
+  await page.goto('/');
+
+  await page.getByLabel('Job title').fill(values.jobTitle);
+  await page.getByLabel('Recruiter or hiring manager').fill(values.recruiterName);
+  await page.getByLabel('Job advert URL').fill(values.jobAdvertLink);
+  await page.getByLabel('Vacancy reference').fill(values.vacancyReference);
+  await page.getByLabel('Preferred CV role codes').fill(values.preferredRoleCodes);
+  await page.getByLabel('Job description').fill(values.jobDescriptionText);
+  await page.getByLabel('CV highlights').fill(values.cvHighlights);
+
+  await page.getByRole('button', {
+    name: 'Generate application'
+  }).click();
+
+  await expect(page).toHaveTitle('Application review');
+}
 
 test('shows the application preparation form and manual-send notice', async ({ page }) => {
   await page.goto('/');
@@ -28,29 +59,7 @@ test('shows the application preparation form and manual-send notice', async ({ p
 });
 
 test('reviews vacancy details and provides local cover-letter copying', async ({ page }) => {
-  await page.goto('/');
-
-  await page.getByLabel('Job title').fill('Project Manager');
-  await page.getByLabel('Recruiter or hiring manager').fill(
-    'Hiring Manager'
-  );
-  await page.getByLabel('Job advert URL').fill(
-    'https://example.com/jobs/project-manager'
-  );
-  await page.getByLabel('Vacancy reference').fill('PM-42');
-  await page.getByLabel('Preferred CV role codes').fill('PM, ADL');
-  await page.getByLabel('Job description').fill(
-    'Project Manager role requiring delivery leadership and stakeholder management.'
-  );
-  await page.getByLabel('CV highlights').fill(
-    'Led complex delivery programmes\nImproved stakeholder reporting'
-  );
-
-  await page.getByRole('button', {
-    name: 'Generate application'
-  }).click();
-
-  await expect(page).toHaveTitle('Application review');
+  await prepareApplication(page);
 
   await expect(
     page.getByRole('heading', {
@@ -116,3 +125,67 @@ test('reviews vacancy details and provides local cover-letter copying', async ({
     })
   ).toBeVisible();
 });
+
+test('does not render an unsafe job advert value as a link', async ({ page }) => {
+  const unsafeUrl = 'javascript:alert(1)';
+
+  await prepareApplication(page, {
+    jobAdvertLink: unsafeUrl
+  });
+
+  await expect(
+    page.getByRole('link', {
+      name: unsafeUrl
+    })
+  ).toHaveCount(0);
+
+  await expect(page.locator(`a[href="${unsafeUrl}"]`)).toHaveCount(0);
+
+  await expect(
+    page.locator('a[href^="javascript:"]')
+  ).toHaveCount(0);
+});
+
+test('renders markup-like recruiter input as text', async ({ page }) => {
+  const hostileRecruiter = '<img src=x onerror=alert(1)>';
+
+  await prepareApplication(page, {
+    recruiterName: hostileRecruiter
+  });
+
+  await expect(
+    page.getByText(`Recruiter or hiring manager: ${hostileRecruiter}`, {
+      exact: true
+    })
+  ).toBeVisible();
+
+  await expect(page.locator('img')).toHaveCount(0);
+});
+
+test('falls back to manual copying when clipboard access fails', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: () => Promise.reject(new Error('Clipboard unavailable'))
+      }
+    });
+  });
+
+  await prepareApplication(page);
+
+  const draft = page.getByLabel('Generated cover letter');
+  const copyButton = page.getByRole('button', {
+    name: 'Copy cover letter'
+  });
+
+  await copyButton.focus();
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator('#copy-status')).toHaveText(
+    'Cover letter selected. Copy it manually.'
+  );
+
+  await expect(draft).toBeFocused();
+});
+
