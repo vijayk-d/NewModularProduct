@@ -44,20 +44,24 @@ function splitValues(value = '', separator) {
 }
 
 function normalizeFormData(values) {
-  return {
-    jobTitle: String(values.get('jobTitle') || '').trim(),
-    recruiterName: String(values.get('recruiterName') || '').trim(),
-    jobAdvertLink: String(values.get('jobAdvertLink') || '').trim(),
-    jobReference: String(values.get('jobReference') || '').trim(),
-    preferredRoleCodes: splitValues(
-      values.get('preferredRoleCodes'),
-      ','
-    ),
-    jobDescriptionText: String(
-      values.get('jobDescriptionText') || ''
-    ).trim(),
-    cvHighlights: splitValues(values.get('cvHighlights'), /\r?\n/)
-  };
+return {
+  jobTitle: String(values.get('jobTitle') || '').trim(),
+  organisationName: String(values.get('organisationName') || '').trim(),
+  organisationUrl: String(values.get('organisationUrl') || '').trim(),
+  stakeholderSource: String(
+    values.get('stakeholderSource') || values.get('recruiterName') || ''
+  ).trim(),
+  jobAdvertLink: String(values.get('jobAdvertLink') || '').trim(),
+  jobReference: String(values.get('jobReference') || '').trim(),
+  preferredRoleCodes: splitValues(
+    values.get('preferredRoleCodes'),
+    ','
+  ),
+  jobDescriptionText: String(
+    values.get('jobDescriptionText') || ''
+  ).trim(),
+  cvHighlights: splitValues(values.get('cvHighlights'), /\r?\n/)
+};
 }
 
 function formValues(formData = {}) {
@@ -236,7 +240,11 @@ function renderApplicationForm({
     <p class="intro">Prepare and review a local application draft before manually sending it.</p>
 ${errorSummary}    <form method="post" action="/applications">
 ${renderField('jobTitle', 'Job title', values.jobTitle, { required: true })}
-${renderField('recruiterName', 'Recruiter or hiring manager', values.recruiterName)}
+${renderField('organisationName', 'Organisation name', values.organisationName)}
+${renderField('organisationUrl', 'Organisation website or LinkedIn page', values.organisationUrl, { type: 'url' })}
+${renderField('stakeholderSource', 'Stakeholder source or recruiter page', values.stakeholderSource, {
+  placeholder: 'Recruiter name or relevant source URL'
+})}
 ${renderField('jobAdvertLink', 'Job advert URL', values.jobAdvertLink, { type: 'url' })}
 ${renderField('jobReference', 'Vacancy reference', values.jobReference)}
 ${renderField('preferredRoleCodes', 'Preferred CV role codes', values.preferredRoleCodes, { placeholder: 'SM, ADL' })}
@@ -292,7 +300,7 @@ function renderApplicationReview({
   const plainText = prepared.coverLetter?.plainText || '';
   const subject = prepared.coverLetter?.subject || '';
   const role = prepared.jobDescription?.role || formData.jobTitle;
-  const location = prepared.jobDescription?.location || 'Not specified';
+  const location = String(prepared.jobDescription?.location || '').trim() || 'Not specified';
 
   const alternative = alternativeCv
     ? `<p><strong>Alternative CV:</strong> ${escapeHtml(alternativeCv.role_name || alternativeCv.role_code || 'Available')}</p>`
@@ -302,11 +310,20 @@ function renderApplicationReview({
     ? `<p><strong>ATS score:</strong> ${escapeHtml(atsScore)}</p>`
     : '';
 
-  const recruiter = renderOptionalDetail(
-    'Recruiter or hiring manager',
-    formData.recruiterName
+  const organisation = renderOptionalDetail(
+    'Organisation',
+    formData.organisationName
   );
 
+  const organisationUrl = formData.organisationUrl
+    ? `    <p><strong>Organisation website or LinkedIn page:</strong> ${renderAdvertLink(formData.organisationUrl)}</p>
+  `
+    : '';
+
+  const stakeholderSource = formData.stakeholderSource
+    ? `    <p><strong>Stakeholder source:</strong> ${renderAdvertLink(formData.stakeholderSource)}</p>
+  `
+    : '';
   const reference = renderOptionalDetail(
     'Vacancy reference',
     formData.jobReference
@@ -403,7 +420,7 @@ function renderApplicationReview({
     <h2>Vacancy details</h2>
     <p><strong>Role:</strong> ${escapeHtml(role)}</p>
     <p><strong>Location:</strong> ${escapeHtml(location)}</p>
-${recruiter}${reference}${advert}
+    ${organisation}${organisationUrl}${stakeholderSource}${reference}${advert}
     <h2>Recommendation</h2>
     <p><strong>Recommended CV:</strong> ${escapeHtml(bestCv.role_name || bestCv.role_code || 'Not available')}</p>
 ${alternative}
@@ -544,16 +561,16 @@ export function createLocalServer({
 
       try {
         const prepared = await prepareApplication({
-          jobDescriptionText: formData.jobDescriptionText,
-          jobDescriptionOverrides: {
-            role: formData.jobTitle
-          },
-          recruiterName: formData.recruiterName,
-          jobAdvertLink: formData.jobAdvertLink,
-          jobReference: formData.jobReference,
-          preferredRoleCodes: formData.preferredRoleCodes,
-          cvHighlights: formData.cvHighlights
-        });
+        jobDescriptionText: formData.jobDescriptionText,
+        jobDescriptionOverrides: {
+          role: formData.jobTitle
+        },
+        recruiterName: formData.stakeholderSource,
+        jobAdvertLink: formData.jobAdvertLink,
+        jobReference: formData.jobReference,
+        preferredRoleCodes: formData.preferredRoleCodes,
+        cvHighlights: formData.cvHighlights
+      });
 
         sendHtml(
           response,
@@ -563,13 +580,23 @@ export function createLocalServer({
             prepared
           })
         );
-      } catch {
+      } catch (error) {
+        const message = error instanceof Error
+          ? error.message
+          : 'Unknown application preparation error';
+
+        process.stderr.write(
+          `[LOCAL_DIAGNOSTICS] application_prepare_failed ` +
+          `errorType=${error?.name || 'UnknownError'} ` +
+          `message=${JSON.stringify(message)}\n`
+        );
+
         sendHtml(
           response,
           500,
           renderApplicationForm({
             errors: [
-              'The local application could not be prepared. Check local configuration and try again.'
+              'The local application could not be prepared. Check the local server terminal for a diagnostic message, then try again.'
             ]
           })
         );

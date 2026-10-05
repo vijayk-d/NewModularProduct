@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env node
+#!/usr/bin/env node
 
 import { loadRuntimeConfig } from '../../config/load-runtime-config.js';
 import {
@@ -18,6 +18,17 @@ const config = loadRuntimeConfig({
   env: process.env
 });
 
+const localDiagnosticsEnabled =
+  config.features.localDebugLogging === true;
+
+if (localDiagnosticsEnabled) {
+  process.stdout.write(
+    `[LOCAL_DIAGNOSTICS] startup ` +
+    `debugEnabled=true ` +
+    `cvInventoryPathProvided=${Boolean(config.storage.cvInventoryPath)} ` +
+    `templateDirectoryProvided=${Boolean(config.storage.templateDirectory)}\n`
+  );
+}
 const templateRepository = createFileTemplateRepository({
   templateDirectory: config.storage.templateDirectory
 });
@@ -28,11 +39,32 @@ const cvInventoryRepository = createJsonCvInventoryRepository({
 
 const server = createLocalServer({
   prepareApplication(request) {
+    if (localDiagnosticsEnabled) {
+      process.stdout.write(
+        `[LOCAL_DIAGNOSTICS] application_prepare_requested ` +
+        `jobTitleProvided=${Boolean(request.jobDescriptionOverrides?.role)} ` +
+        `jobDescriptionCharacters=${String(request.jobDescriptionText || '').length} ` +
+        `jobAdvertProvided=${Boolean(request.jobAdvertLink)} ` +
+        `preferredRoleCodeCount=${Array.isArray(request.preferredRoleCodes) ? request.preferredRoleCodes.length : 0} ` +
+        `cvHighlightCount=${Array.isArray(request.cvHighlights) ? request.cvHighlights.length : 0}\n`
+      );
+    }
+
     return prepareApplicationFromRepositories({
       request,
       templateId: DEFAULT_TEMPLATE_ID,
       templateRepository,
       cvInventoryRepository
+    }).then((prepared) => {
+      if (localDiagnosticsEnabled) {
+        process.stdout.write(
+          `[LOCAL_DIAGNOSTICS] application_prepare_completed ` +
+          `recommendedRoleCode=${prepared.recommendation?.bestCv?.role_code || 'none'} ` +
+          `atsScore=${Number.isFinite(prepared.recommendation?.ats?.score) ? prepared.recommendation.ats.score : 'none'}\n`
+        );
+      }
+
+      return prepared;
     });
   }
 });

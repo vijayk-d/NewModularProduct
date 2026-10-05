@@ -16,3 +16,6 @@ templates/standard-cover-letter.md
 playwright-report/
 test-results/
 blob-report/
+
+scripts/*.ps1
+.patch-backups/

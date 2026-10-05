@@ -91,7 +91,11 @@ export function validateRuntimeConfig({
     features: {
       enablePerplexityResearch,
       enableCoverLetterRefinement,
-      enableGmail
+      enableGmail,
+      localDebugLogging: readBoolean(
+        env.LOCAL_DEBUG_LOGGING,
+        'LOCAL_DEBUG_LOGGING'
+      )
     },
     integrations: {
       perplexity: {
