@@ -30,10 +30,14 @@ function createPreparedApplication() {
 }
 
 async function startServer({
-  prepareApplication = async () => createPreparedApplication()
+  prepareApplication = async () => createPreparedApplication(),
+  researchOrganization = null,
+  coverLetterRefinementPort = null
 } = {}) {
   const server = createLocalServer({
-    prepareApplication
+    prepareApplication,
+    researchOrganization,
+    coverLetterRefinementPort
   });
 
   server.listen(0, '127.0.0.1');
@@ -61,6 +65,34 @@ function formBody(values) {
   return new URLSearchParams(values).toString();
 }
 
+function extractReviewId(html) {
+  const match = html.match(
+    /name="reviewId" value="([^"]+)"/
+  );
+
+  assert.ok(match, 'Expected a reviewId hidden form field.');
+  return match[1];
+}
+
+async function prepareReview(baseUrl, values = {}) {
+  const response = await request(baseUrl, '/applications', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: formBody({
+      jobTitle: 'Project Manager',
+      organisationName: 'Example Ltd',
+      organisationUrl: 'https://example.test',
+      jobDescriptionText: 'Delivery leadership',
+      ...values
+    })
+  });
+
+  assert.equal(response.status, 200);
+  return response;
+}
+
 test('serves the application preparation form at the root route', async (t) => {
   const { server, baseUrl } = await startServer();
   t.after(() => server.close());
@@ -73,7 +105,10 @@ test('serves the application preparation form at the root route', async (t) => {
     /^text\/html; charset=utf-8$/i
   );
   assert.match(response.text, /<h1>Application preparation<\/h1>/);
-  assert.match(response.text, /<form method="post" action="\/applications">/);
+  assert.match(
+  response.text,
+  /<form[^>]*method="post"[^>]*action="\/applications"/
+);
   assert.match(response.text, /name="jobTitle"/);
   assert.match(response.text, /name="jobDescriptionText"/);
   assert.match(
@@ -264,7 +299,7 @@ test('returns a safe preparation error page', async (t) => {
   assert.equal(response.status, 500);
   assert.match(
     response.text,
-    /The local application could not be prepared\. Check local configuration and try again\./
+    /The local application could not be prepared\. Check the local server terminal for a diagnostic message, then try again\./
   );
   assert.doesNotMatch(response.text, /private\\inventory\.json/);
 });
@@ -330,7 +365,7 @@ test('renders review details, a safe advert link, and local copy controls', asyn
   assert.match(response.text, /<h2>Vacancy details<\/h2>/);
   assert.match(
     response.text,
-    /Recruiter or hiring manager:<\/strong> Hiring Manager/
+    /Stakeholder source:<\/strong> Hiring Manager/
   );
   assert.match(response.text, /Vacancy reference:<\/strong> PM-42/);
   assert.match(
@@ -414,5 +449,554 @@ test('allows only the nonce-marked local copy script in the review CSP', async (
   assert.doesNotMatch(
     contentSecurityPolicy,
     /script-src[^;]*'unsafe-inline'/
+  );
+});
+test('includes a local review ID in the organisation research form', async (t) => {
+  const { server, baseUrl } = await startServer();
+  t.after(() => server.close());
+
+  const response = await prepareReview(baseUrl);
+
+  assert.match(
+    response.text,
+    /<form method="post" action="\/organisation-research">/
+  );
+  assert.match(
+    response.text,
+    /<input type="hidden" name="reviewId" value="[^"]+">/
+  );
+});
+
+test('re-renders an application review with inline organisation research', async (t) => {
+  const researchCalls = [];
+
+  const { server, baseUrl } = await startServer({
+    async researchOrganization(request) {
+      researchCalls.push(request);
+
+      return {
+        status: 'found',
+        provider: 'fake-research',
+        researchedAt: '2026-10-05T12:00:00.000Z',
+        summary: 'Example Ltd values delivery excellence.',
+        companyValues: ['Delivery excellence', 'Collaboration'],
+        sources: [
+          {
+            title: 'Example Ltd',
+            url: 'https://example.test'
+          },
+          {
+            title: 'Independent profile',
+            url: 'https://directory.test/example-ltd'
+          }
+        ]
+      };
+    }
+  });
+  t.after(() => server.close());
+
+  const review = await prepareReview(baseUrl, {
+    jobTitle: 'Programme Manager',
+    organisationName: 'Example Ltd',
+    organisationUrl: 'https://example.test'
+  });
+
+  const reviewId = extractReviewId(review.text);
+
+  const response = await request(baseUrl, '/organisation-research', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: formBody({ reviewId })
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(researchCalls, [{
+    companyName: 'Example Ltd',
+    companyUrl: 'https://example.test',
+    jobDescriptionSummary: 'Programme Manager',
+    forceRefresh: false
+  }]);
+  assert.match(response.text, /<title>Application review<\/title>/);
+  assert.match(response.text, /<h1>Application review<\/h1>/);
+  assert.match(response.text, /<summary>Research result<\/summary>/);
+  assert.match(response.text, /Provider:<\/strong> fake-research/);
+  assert.match(response.text, /Example Ltd values delivery excellence\./);
+  assert.match(response.text, /Delivery excellence/);
+  assert.match(response.text, /Collaboration/);
+  assert.match(
+    response.text,
+    /href="https:\/\/example\.test\/" target="_blank" rel="noreferrer noopener">Example Ltd/
+  );
+  assert.match(response.text, /Additional sources \(1\)/);
+  assert.match(response.text, /Dear Hiring Manager,/);
+
+  assert.ok(
+    response.text.indexOf('Research result') <
+      response.text.indexOf('Cover letter draft')
+  );
+});
+
+test('escapes provider-supplied organisation research before rendering', async (t) => {
+  const { server, baseUrl } = await startServer({
+    async researchOrganization() {
+      return {
+        status: 'found',
+        provider: '<script>provider()</script>',
+        researchedAt: '2026-10-05T12:00:00.000Z',
+        summary: '<img src=x onerror=alert(1)>',
+        companyValues: ['<script>value()</script>'],
+        sources: [{
+          title: '<script>source()</script>',
+          url: 'javascript:alert(1)'
+        }]
+      };
+    }
+  });
+  t.after(() => server.close());
+
+  const review = await prepareReview(baseUrl);
+  const reviewId = extractReviewId(review.text);
+
+  const response = await request(baseUrl, '/organisation-research', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: formBody({ reviewId })
+  });
+
+  assert.equal(response.status, 200);
+  assert.doesNotMatch(response.text, /<script>provider\(\)<\/script>/);
+  assert.doesNotMatch(response.text, /<img src=x onerror=alert\(1\)>/);
+  assert.doesNotMatch(response.text, /href="javascript:alert\(1\)"/);
+  assert.match(
+    response.text,
+    /&lt;script&gt;provider\(\)&lt;\/script&gt;/
+  );
+  assert.match(
+    response.text,
+    /&lt;img src=x onerror=alert\(1\)&gt;/
+  );
+  assert.match(
+    response.text,
+    /&lt;script&gt;value\(\)&lt;\/script&gt;/
+  );
+  assert.match(
+    response.text,
+    /&lt;script&gt;source\(\)&lt;\/script&gt;/
+  );
+});
+
+test('returns 410 when organisation research has no active review', async (t) => {
+  const { server, baseUrl } = await startServer({
+    async researchOrganization() {
+      throw new Error('Research should not be called.');
+    }
+  });
+  t.after(() => server.close());
+
+  const response = await request(baseUrl, '/organisation-research', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: formBody({
+      reviewId: 'missing-review'
+    })
+  });
+
+  assert.equal(response.status, 410);
+  assert.match(
+    response.text,
+    /This application review is no longer available\. Please prepare the application again\./
+  );
+});
+
+test('renders an inline error when organisation research is disabled', async (t) => {
+  const { server, baseUrl } = await startServer();
+  t.after(() => server.close());
+
+  const review = await prepareReview(baseUrl);
+  const reviewId = extractReviewId(review.text);
+
+  const response = await request(baseUrl, '/organisation-research', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: formBody({ reviewId })
+  });
+
+  assert.equal(response.status, 503);
+  assert.match(response.text, /<title>Application review<\/title>/);
+  assert.match(response.text, /<h1>Application review<\/h1>/);
+  assert.match(
+    response.text,
+    /Organisation research is disabled\. Set ENABLE_PERPLEXITY_RESEARCH=true and restart the local server\./
+  );
+  assert.match(response.text, /Dear Hiring Manager,/);
+});
+
+test('retains the review and shows an inline error when research throws', async (t) => {
+  const { server, baseUrl } = await startServer({
+    async researchOrganization() {
+      throw new Error('Provider connection failed');
+    }
+  });
+  t.after(() => server.close());
+
+  const review = await prepareReview(baseUrl);
+  const reviewId = extractReviewId(review.text);
+
+  const response = await request(baseUrl, '/organisation-research', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: formBody({ reviewId })
+  });
+
+  assert.equal(response.status, 200);
+  assert.match(response.text, /<title>Application review<\/title>/);
+  assert.match(response.text, /<summary>Research result<\/summary>/);
+  assert.match(response.text, /Provider connection failed/);
+  assert.match(response.text, /Dear Hiring Manager,/);
+});
+
+
+test('renders refinement value selection after successful organisation research', async (t) => {
+  const { server, baseUrl } = await startServer({
+    researchOrganization: async () => ({
+      status: 'found',
+      provider: 'fake-research',
+      researchedAt: '2026-10-05T12:00:00.000Z',
+      summary: 'Example Ltd values delivery excellence.',
+      companyValues: ['Delivery excellence', 'Collaboration'],
+      sources: [{
+        title: 'Example Ltd',
+        url: 'https://example.test'
+      }]
+    })
+  });
+  t.after(() => server.close());
+
+  const review = await prepareReview(baseUrl);
+  const reviewId = extractReviewId(review.text);
+
+  const response = await request(baseUrl, '/organisation-research', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: formBody({ reviewId })
+  });
+
+  assert.equal(response.status, 200);
+  assert.match(
+    response.text,
+    /<form method="post" action="\/cover-letter-refinement">/
+  );
+  assert.match(response.text, /name="selectedResearchPointIds"/);
+  assert.match(response.text, /value="company-value-1"/);
+  assert.match(response.text, /Delivery excellence/);
+  assert.match(response.text, /Collaboration/);
+  assert.match(response.text, /Polish cover letter/);
+});
+
+test('returns a refinement proposal without changing the current draft', async (t) => {
+  const refinementCalls = [];
+
+  const { server, baseUrl } = await startServer({
+    researchOrganization: async () => ({
+      status: 'found',
+      provider: 'fake-research',
+      researchedAt: '2026-10-05T12:00:00.000Z',
+      summary: 'Example Ltd values delivery excellence.',
+      companyValues: ['Delivery excellence'],
+      sources: [{
+        title: 'Example Ltd',
+        url: 'https://example.test'
+      }]
+    }),
+    coverLetterRefinementPort: {
+      async refine(request) {
+        refinementCalls.push(request);
+
+        return {
+          proposedDraft: 'Proposed refined draft',
+          warnings: [],
+          appliedResearchPointIds: ['company-value-1'],
+          provider: 'fake-refinement'
+        };
+      }
+    }
+  });
+  t.after(() => server.close());
+
+  const review = await prepareReview(baseUrl);
+  const reviewId = extractReviewId(review.text);
+
+  const researched = await request(baseUrl, '/organisation-research', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: formBody({ reviewId })
+  });
+
+  assert.equal(researched.status, 200);
+
+  const refined = await request(baseUrl, '/cover-letter-refinement', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: formBody({
+      reviewId,
+      selectedResearchPointIds: 'company-value-1'
+    })
+  });
+
+  assert.equal(refined.status, 200);
+  assert.deepEqual(refinementCalls, [{
+    draftPlainText:
+      'Dear Hiring Manager,\n\nI am applying for the Project Manager role.',
+    jobDescriptionSummary: 'Project Manager',
+    selectedCvHighlights: [],
+    companyValues: ['Delivery excellence'],
+    selectedResearchPoints: [{
+      id: 'company-value-1',
+      type: 'value',
+      text: 'Delivery excellence',
+      sourceUrl: ''
+    }],
+    organisationUrl: 'https://example.test',
+    instructions: '',
+    maxWords: 450
+  }]);
+  assert.match(refined.text, /Proposed refined draft/);
+  assert.match(
+    refined.text,
+    /This proposal has not changed the current draft\./
+  );
+  assert.match(refined.text, /Dear Hiring Manager,/);
+  assert.ok(
+    refined.text.indexOf('Proposed refined draft') <
+      refined.text.indexOf('Cover letter draft')
+  );
+});
+
+test('rejects refinement when no research value is selected', async (t) => {
+  const { server, baseUrl } = await startServer({
+    researchOrganization: async () => ({
+      status: 'found',
+      companyValues: ['Delivery excellence'],
+      summary: 'Summary',
+      sources: []
+    }),
+    coverLetterRefinementPort: {
+      async refine() {
+        throw new Error('Should not be called.');
+      }
+    }
+  });
+  t.after(() => server.close());
+
+  const review = await prepareReview(baseUrl);
+  const reviewId = extractReviewId(review.text);
+
+  await request(baseUrl, '/organisation-research', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: formBody({ reviewId })
+  });
+
+  const response = await request(baseUrl, '/cover-letter-refinement', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: formBody({ reviewId })
+  });
+
+  assert.equal(response.status, 400);
+  assert.match(
+    response.text,
+    /Select at least one verified organisation value/
+  );
+});
+
+test('retains the review when refinement is disabled', async (t) => {
+  const { server, baseUrl } = await startServer();
+  t.after(() => server.close());
+
+  const review = await prepareReview(baseUrl);
+  const reviewId = extractReviewId(review.text);
+
+  const response = await request(baseUrl, '/cover-letter-refinement', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: formBody({
+      reviewId,
+      selectedResearchPointIds: 'company-value-1'
+    })
+  });
+
+  assert.equal(response.status, 503);
+  assert.match(
+    response.text,
+    /Cover-letter refinement is disabled/
+  );
+  assert.match(response.text, /Dear Hiring Manager,/);
+});
+
+
+test('applies a refinement proposal only through the explicit local apply route', async (t) => {
+  let refinementCalls = 0;
+
+  const { server, baseUrl } = await startServer({
+    researchOrganization: async () => ({
+      status: 'found',
+      companyValues: ['Delivery excellence'],
+      summary: 'Summary',
+      sources: []
+    }),
+    coverLetterRefinementPort: {
+      async refine() {
+        refinementCalls += 1;
+
+        return {
+          proposedDraft:
+            'Dear Hiring Manager,\n\nThis is the approved refined draft.',
+          warnings: []
+        };
+      }
+    }
+  });
+  t.after(() => server.close());
+
+  const review = await prepareReview(baseUrl);
+  const reviewId = extractReviewId(review.text);
+
+  await request(baseUrl, '/organisation-research', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: formBody({ reviewId })
+  });
+
+  const proposed = await request(baseUrl, '/cover-letter-refinement', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: formBody({
+      reviewId,
+      selectedResearchPointIds: 'company-value-1'
+    })
+  });
+
+  assert.equal(proposed.status, 200);
+  assert.equal(refinementCalls, 1);
+  assert.match(
+    proposed.text,
+    /Use proposal as current draft/
+  );
+  assert.match(
+    proposed.text,
+    /Dear Hiring Manager,\n\nI am applying for the Project Manager role\./
+  );
+
+  const applied = await request(
+    baseUrl,
+    '/cover-letter-refinement/apply',
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded'
+      },
+      body: formBody({ reviewId })
+    }
+  );
+
+  assert.equal(applied.status, 200);
+  assert.equal(refinementCalls, 1);
+  assert.match(
+    applied.text,
+    /Current draft updated from your approved refinement proposal\./
+  );
+  assert.match(
+    applied.text,
+    /Dear Hiring Manager,\n\nThis is the approved refined draft\./
+  );
+  assert.doesNotMatch(
+    applied.text,
+    /<textarea id="proposed-cover-letter"/
+  );
+  assert.doesNotMatch(
+    applied.text,
+    /Use proposal as current draft/
+  );
+});
+
+test('does not apply a refinement when no proposal exists', async (t) => {
+  const { server, baseUrl } = await startServer();
+  t.after(() => server.close());
+
+  const review = await prepareReview(baseUrl);
+  const reviewId = extractReviewId(review.text);
+
+  const response = await request(
+    baseUrl,
+    '/cover-letter-refinement/apply',
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded'
+      },
+      body: formBody({ reviewId })
+    }
+  );
+
+  assert.equal(response.status, 400);
+  assert.match(
+    response.text,
+    /There is no refinement proposal available to apply\./
+  );
+  assert.match(
+    response.text,
+    /Dear Hiring Manager,\n\nI am applying for the Project Manager role\./
+  );
+});
+
+test('returns 410 when applying a refinement for an expired review', async (t) => {
+  const { server, baseUrl } = await startServer();
+  t.after(() => server.close());
+
+  const response = await request(
+    baseUrl,
+    '/cover-letter-refinement/apply',
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded'
+      },
+      body: formBody({
+        reviewId: 'missing-review'
+      })
+    }
+  );
+
+  assert.equal(response.status, 410);
+  assert.match(
+    response.text,
+    /This application review is no longer available\. Please prepare the application again\./
   );
 });

@@ -18,4 +18,7 @@ test-results/
 blob-report/
 
 scripts/*.ps1
-.patch-backups/
+.patch-backups/# Local secrets and generated artifacts
+.env
+*.bak
+data/application-output.local.json

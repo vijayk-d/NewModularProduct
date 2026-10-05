@@ -1,6 +1,181 @@
+function normalizeText(value = '') {
+  return String(value ?? '').trim();
+}
+
+function normalizeStringArray(value) {
+  return Array.isArray(value)
+    ? value.map((item) => normalizeText(item)).filter(Boolean)
+    : [];
+}
+
+function wordCount(value = '') {
+  return normalizeText(value)
+    .split(/\s+/)
+    .filter(Boolean)
+    .length;
+}
+
+function allowedDomainsFromUrl(value = '') {
+  try {
+    const hostname = new URL(normalizeText(value)).hostname
+      .replace(/^www\./i, '')
+      .toLowerCase();
+
+    return hostname ? [hostname] : [];
+  } catch {
+    return [];
+  }
+}
+
+function researchPointSchema() {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['id', 'text', 'sourceUrl', 'reason'],
+    properties: {
+      id: {
+        type: 'string'
+      },
+      text: {
+        type: 'string'
+      },
+      sourceUrl: {
+        type: 'string'
+      },
+      reason: {
+        type: 'string'
+      }
+    }
+  };
+}
+
+function responseSchema() {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'proposedDraft',
+      'appliedResearchPointIds',
+      'omittedResearchPointIds',
+      'suggestedResearchPoints',
+      'warnings'
+    ],
+    properties: {
+      proposedDraft: {
+        type: 'string'
+      },
+      appliedResearchPointIds: {
+        type: 'array',
+        items: {
+          type: 'string'
+        }
+      },
+      omittedResearchPointIds: {
+        type: 'array',
+        items: {
+          type: 'string'
+        }
+      },
+      suggestedResearchPoints: {
+        type: 'array',
+        items: researchPointSchema()
+      },
+      warnings: {
+        type: 'array',
+        items: {
+          type: 'string'
+        }
+      }
+    }
+  };
+}
+
+function buildPrompt(request) {
+  return JSON.stringify({
+    task: 'Propose a refined UK cover letter',
+    jobTitle: request.jobDescriptionSummary,
+    originalCoverLetter: request.draftPlainText,
+    candidateEvidence: request.selectedCvHighlights,
+    selectedCompanyValues: request.companyValues,
+    selectedResearchPoints: request.selectedResearchPoints,
+    instructions: request.instructions,
+    constraints: {
+      maxWords: request.maxWords,
+      preserveGreetingAndSignoff: true,
+      noInventedCandidateClaims: true,
+      citationsInLetter: false,
+      urlsInLetter: false,
+      markdownInLetter: false
+    }
+  });
+}
+
+function extractStructuredOutput(payload) {
+  const output =
+    payload?.output_parsed ||
+    payload?.output?.[0]?.content?.[0]?.json ||
+    payload?.output?.[0]?.content?.[0]?.text ||
+    payload?.choices?.[0]?.message?.content;
+
+  if (output && typeof output === 'object') {
+    return output;
+  }
+
+  if (typeof output !== 'string' || !output.trim()) {
+    throw new Error(
+      'Perplexity cover-letter refinement returned no usable draft.'
+    );
+  }
+
+  try {
+    return JSON.parse(output);
+  } catch {
+    throw new Error(
+      'Perplexity cover-letter refinement returned an invalid response.'
+    );
+  }
+}
+
+function validateProposal(result, request) {
+  const proposedDraft = normalizeText(result?.proposedDraft);
+
+  if (!proposedDraft) {
+    throw new Error(
+      'Perplexity cover-letter refinement returned no usable draft.'
+    );
+  }
+
+  if (wordCount(proposedDraft) > request.maxWords) {
+    throw new Error(
+      'Perplexity cover-letter refinement exceeded the configured word limit.'
+    );
+  }
+
+  return {
+    review: {
+      strengths: [],
+      risks: [],
+      unsupportedClaims: [],
+      suggestedChanges: normalizeStringArray(result?.warnings)
+    },
+    proposedDraft,
+    appliedResearchPointIds: normalizeStringArray(
+      result?.appliedResearchPointIds
+    ),
+    omittedResearchPointIds: normalizeStringArray(
+      result?.omittedResearchPointIds
+    ),
+    suggestedResearchPoints: Array.isArray(result?.suggestedResearchPoints)
+      ? result.suggestedResearchPoints
+      : [],
+    citations: [],
+    provider: 'perplexity'
+  };
+}
+
 export function createPerplexityCoverLetterRefinementAdapter({
   apiKey,
-  model = 'sonar',
+  model = 'perplexity/glm-5.3-flash',
   fetchImpl = fetch
 } = {}) {
   if (typeof apiKey !== 'string' || !apiKey.trim()) {
@@ -9,55 +184,69 @@ export function createPerplexityCoverLetterRefinementAdapter({
 
   return {
     async refine(request) {
-      const context = [
-        request.jobDescriptionSummary
-          ? `Role context: ${request.jobDescriptionSummary}.`
-          : '',
-        request.selectedCvHighlights.length
-          ? `CV evidence:\n- ${request.selectedCvHighlights.join('\n- ')}`
-          : '',
-        request.companyValues.length
-          ? `Organisation values:\n- ${request.companyValues.join('\n- ')}`
-          : '',
-        request.instructions
-          ? `Review instructions: ${request.instructions}`
-          : ''
-      ].filter(Boolean).join('\n\n');
+      const allowedDomains = allowedDomainsFromUrl(request.organisationUrl);
 
-      const prompt = [
-        'Review the following plain-text cover-letter draft.',
-        'Identify strengths, risks, unsupported claims, and suggested changes.',
-        'Propose an improved draft using only claims supported by the supplied evidence.',
-        'Do not invent employment history, qualifications, achievements, or personal details.',
-        'Return a concise review and a proposed plain-text draft.',
-        context,
-        `Draft:\n${request.draftPlainText}`
-      ].filter(Boolean).join('\n\n');
+      const webSearchTool = {
+        type: 'web_search',
+        search_type: 'fast'
+      };
+
+      if (allowedDomains.length) {
+        webSearchTool.filters = {
+          allowed_domains: allowedDomains
+        };
+      }
 
       let response;
 
       try {
-        response = await fetchImpl('https://api.perplexity.ai/chat/completions', {
+        response = await fetchImpl('https://api.perplexity.ai/v1/agent', {
           method: 'POST',
           headers: {
-            'authorization': `Bearer ${apiKey}`,
+            authorization: `Bearer ${apiKey}`,
             'content-type': 'application/json'
           },
           body: JSON.stringify({
             model,
-            messages: [
+            input: [
               {
                 role: 'system',
-                content:
-                  'You review job-application cover letters. ' +
-                  'Use only supplied evidence, identify unsupported claims, ' +
-                  'and never fabricate candidate details.'
+                content: [
+                  {
+                    type: 'input_text',
+                    text: [
+                      'You are a careful editor for UK job-application cover letters.',
+                      'Return a proposal only; never mutate the original draft.',
+                      'Use candidate evidence and manually selected research points supplied in the request.',
+                      'Web search is permitted only to check official organisation pages within the configured domain filter.',
+                      'Do not invent candidate achievements, metrics, employers, qualifications, certifications, tools, clearances, or company facts.',
+                      'Do not claim the candidate has direct experience with the organisation.',
+                      'Do not put citations, URLs, Markdown, headings, or commentary inside proposedDraft.',
+                      'If a search result yields a potentially useful fact not included in selectedResearchPoints, return it only in suggestedResearchPoints.',
+                      'Return only schema-valid JSON.'
+                    ].join(' ')
+                  }
+                ]
               },
               {
                 role: 'user',
-                content: prompt
+                content: [
+                  {
+                    type: 'input_text',
+                    text: buildPrompt(request)
+                  }
+                ]
               }
-            ]
+            ],
+            tools: [webSearchTool],
+            response_format: {
+              type: 'json_schema',
+              json_schema: {
+                name: 'cover_letter_refinement',
+                strict: true,
+                schema: responseSchema()
+              }
+            }
           })
         });
       } catch {
@@ -73,25 +262,19 @@ export function createPerplexityCoverLetterRefinementAdapter({
       try {
         payload = await response.json();
       } catch {
-        throw new Error('Perplexity cover-letter refinement returned an invalid response.');
+        throw new Error(
+          'Perplexity cover-letter refinement returned an invalid response.'
+        );
       }
 
-      const message = payload?.choices?.[0]?.message?.content;
-
-      if (typeof message !== 'string' || !message.trim()) {
-        throw new Error('Perplexity cover-letter refinement returned no usable draft.');
-      }
+      const proposal = validateProposal(
+        extractStructuredOutput(payload),
+        request
+      );
 
       return {
-        review: {
-          strengths: [],
-          risks: [],
-          unsupportedClaims: [],
-          suggestedChanges: []
-        },
-        proposedDraft: message.trim(),
-        citations: [],
-        provider: 'perplexity'
+        ...proposal,
+        model
       };
     }
   };

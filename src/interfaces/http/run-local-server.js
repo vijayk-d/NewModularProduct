@@ -10,6 +10,15 @@ import {
 import {
   prepareApplicationFromRepositories
 } from '../../application/prepare-application-from-repositories.js';
+import {
+  researchOrganization
+} from '../../application/research-organization.js';
+import {
+  createPerplexityCompanyResearchAdapter
+} from '../../infrastructure/research/perplexity-company-research-adapter.js';
+import {
+  createPerplexityCoverLetterRefinementAdapter
+} from '../../infrastructure/refinement/perplexity-cover-letter-refinement-adapter.js';
 import { createLocalServer } from './create-local-server.js';
 
 const DEFAULT_TEMPLATE_ID = 'standard-cover-letter';
@@ -37,7 +46,28 @@ const cvInventoryRepository = createJsonCvInventoryRepository({
   inventoryPath: config.storage.cvInventoryPath
 });
 
+const companyResearchPort = config.features.enablePerplexityResearch
+  ? createPerplexityCompanyResearchAdapter({
+      apiKey: config.integrations.perplexity.apiKey
+    })
+  : null;
+
+const coverLetterRefinementPort =
+  config.features.enableCoverLetterRefinement
+    ? createPerplexityCoverLetterRefinementAdapter({
+        apiKey: config.integrations.perplexity.apiKey,
+        model: config.integrations.perplexity.refinementModel
+      })
+    : null;
+
 const server = createLocalServer({
+  researchOrganization: companyResearchPort
+    ? (request) => researchOrganization(
+        request,
+        { companyResearchPort }
+      )
+    : null,
+  coverLetterRefinementPort,
   prepareApplication(request) {
     if (localDiagnosticsEnabled) {
       process.stdout.write(

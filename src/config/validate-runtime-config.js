@@ -36,6 +36,32 @@ function readPort(value, name, defaultValue) {
   return port;
 }
 
+function readBoundedInteger(value, name, {
+  defaultValue,
+  minimum,
+  maximum
+}) {
+  if (value === undefined || value === null || value === '') {
+    return defaultValue;
+  }
+
+  const parsed = Number(value);
+
+  if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw configError(
+      `${name} must be an integer from ${minimum} to ${maximum}.`
+    );
+  }
+
+  return parsed;
+}
+
+function readNonEmptyString(value, defaultValue = '') {
+  const normalized = String(value ?? '').trim();
+
+  return normalized || defaultValue;
+}
+
 function requiredWhenEnabled(value, name, enabled) {
   if (!enabled) {
     return String(value || '');
@@ -72,6 +98,21 @@ export function validateRuntimeConfig({
   const perplexityEnabled =
     enablePerplexityResearch || enableCoverLetterRefinement;
 
+  const refinementModel = readNonEmptyString(
+    env.PERPLEXITY_REFINEMENT_MODEL,
+    'perplexity/glm-5.3-flash'
+  );
+
+  const coverLetterRefinementMaxWords = readBoundedInteger(
+    env.COVER_LETTER_REFINEMENT_MAX_WORDS,
+    'COVER_LETTER_REFINEMENT_MAX_WORDS',
+    {
+      defaultValue: 450,
+      minimum: 120,
+      maximum: 450
+    }
+  );
+
   return {
     server: {
       host: String(env.HOST || '127.0.0.1').trim() || '127.0.0.1',
@@ -87,6 +128,9 @@ export function validateRuntimeConfig({
       ).trim(),
       cvFolder: String(env.CV_FOLDER || '').trim(),
       databasePath: String(env.DATABASE_PATH || '').trim()
+    },
+    application: {
+      coverLetterRefinementMaxWords
     },
     features: {
       enablePerplexityResearch,
@@ -104,7 +148,8 @@ export function validateRuntimeConfig({
           env.PERPLEXITY_API_KEY,
           'PERPLEXITY_API_KEY',
           perplexityEnabled
-        )
+        ),
+        refinementModel
       },
       gmail: {
         enabled: enableGmail,

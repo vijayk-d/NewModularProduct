@@ -1,4 +1,8 @@
 import { createServer } from 'node:http';
+import { randomUUID } from 'node:crypto';
+import {
+  acceptRefinedCoverLetter
+} from '../../application/accept-refined-cover-letter.js';
 
 const MAX_FORM_BODY_BYTES = 64 * 1024;
 
@@ -26,6 +30,8 @@ function sendText(response, statusCode, text, headers = {}) {
 
   response.end(text);
 }
+
+const reviewStore = new Map();
 
 function escapeHtml(value = '') {
   return String(value)
@@ -224,6 +230,17 @@ function renderApplicationForm({
       cursor: pointer;
     }
 
+    .form-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+    }
+
+    .secondary-button {
+      background: #475569;
+    }
+
     pre {
       overflow-wrap: anywhere;
       white-space: pre-wrap;
@@ -238,7 +255,7 @@ function renderApplicationForm({
   <main>
     <h1>Application preparation</h1>
     <p class="intro">Prepare and review a local application draft before manually sending it.</p>
-${errorSummary}    <form method="post" action="/applications">
+${errorSummary}    <form id="application-form" method="post" action="/applications" autocomplete="on">
 ${renderField('jobTitle', 'Job title', values.jobTitle, { required: true })}
 ${renderField('organisationName', 'Organisation name', values.organisationName)}
 ${renderField('organisationUrl', 'Organisation website or LinkedIn page', values.organisationUrl, { type: 'url' })}
@@ -250,11 +267,85 @@ ${renderField('jobReference', 'Vacancy reference', values.jobReference)}
 ${renderField('preferredRoleCodes', 'Preferred CV role codes', values.preferredRoleCodes, { placeholder: 'SM, ADL' })}
 ${renderField('jobDescriptionText', 'Job description', values.jobDescriptionText, { required: true, textarea: true })}
 ${renderField('cvHighlights', 'CV highlights', values.cvHighlights, { placeholder: 'One truthful, role-relevant item per line', textarea: true })}
-      <button type="submit">Generate application</button>
+      <div class="form-actions">
+        <button type="submit">Generate application</button>
+        <button id="clear-saved-form" type="button" class="secondary-button">Clear saved test data</button>
+      </div>
     </form>
 
     <p class="notice">This local tool does not send email. Review and send manually.</p>
   </main>
+  <script nonce="__SCRIPT_NONCE__">
+    const storageKey = 'application-form-draft-v1';
+    const form = document.getElementById('application-form');
+    const clearButton = document.getElementById('clear-saved-form');
+
+    const fieldNames = [
+      'jobTitle',
+      'organisationName',
+      'organisationUrl',
+      'stakeholderSource',
+      'jobAdvertLink',
+      'jobReference',
+      'preferredRoleCodes',
+      'jobDescriptionText',
+      'cvHighlights'
+    ];
+
+    function readSavedDraft() {
+      try {
+        const value = window.localStorage.getItem(storageKey);
+
+        return value ? JSON.parse(value) : {};
+      } catch {
+        return {};
+      }
+    }
+
+    function saveDraft() {
+      const draft = {};
+
+      for (const name of fieldNames) {
+        const field = form.elements.namedItem(name);
+
+        if (field) {
+          draft[name] = field.value;
+        }
+      }
+
+      try {
+        window.localStorage.setItem(storageKey, JSON.stringify(draft));
+      } catch {
+        // Local storage may be unavailable or full. Form submission still works.
+      }
+    }
+
+    function restoreDraft() {
+      const draft = readSavedDraft();
+
+      for (const name of fieldNames) {
+        const field = form.elements.namedItem(name);
+
+        if (field && !field.value && typeof draft[name] === 'string') {
+          field.value = draft[name];
+        }
+      }
+    }
+
+    restoreDraft();
+
+    form.addEventListener('input', saveDraft);
+
+    clearButton.addEventListener('click', () => {
+      try {
+        window.localStorage.removeItem(storageKey);
+      } catch {
+        // Clearing local storage is best effort.
+      }
+
+      form.reset();
+    });
+  </script>
 </body>
 </html>`;
 }
@@ -290,14 +381,228 @@ function renderOptionalDetail(label, value) {
 `;
 }
 
+function renderResearchSource(source) {
+  const title = String(
+    source?.title || source?.url || 'Source'
+  ).trim();
+
+  const href = String(source?.url || '').trim();
+
+  if (!href) {
+    return `<li>${escapeHtml(title)}</li>`;
+  }
+
+  try {
+    const url = new URL(href);
+
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return `<li>${escapeHtml(title)}</li>`;
+    }
+
+    return `<li><a href="${escapeHtml(url.href)}" target="_blank" rel="noreferrer noopener">${escapeHtml(title)}</a></li>`;
+  } catch {
+    return `<li>${escapeHtml(title)}</li>`;
+  }
+}
+
+function renderOrganisationResearch(research, organisationUrl = '') {
+  if (!research) {
+    return '';
+  }
+
+  const status = String(research.status || 'unavailable');
+  const provider = String(research.provider || 'Perplexity');
+  const researchedAt = String(research.researchedAt || 'Not recorded');
+
+  const summary = status === 'found'
+    ? String(research.summary || 'No summary was returned.')
+    : String(
+        research.error ||
+        'Organisation research is currently unavailable.'
+      );
+
+  const values = Array.isArray(research.companyValues)
+    ? research.companyValues
+    : [];
+
+  const sources = Array.isArray(research.sources)
+    ? research.sources
+    : [];
+
+  let organisationHost = '';
+
+  try {
+    organisationHost = new URL(organisationUrl).hostname
+      .replace(/^www\./, '')
+      .toLowerCase();
+  } catch {
+    organisationHost = '';
+  }
+
+  const officialSources = organisationHost
+    ? sources.filter((source) => {
+        try {
+          const sourceHost = new URL(String(source?.url || '')).hostname
+            .replace(/^www\./, '')
+            .toLowerCase();
+
+          return sourceHost === organisationHost ||
+            sourceHost.endsWith(`.${organisationHost}`);
+        } catch {
+          return false;
+        }
+      })
+    : [];
+
+  const additionalSources = sources.filter(
+    (source) => !officialSources.includes(source)
+  );
+
+  const valuesMarkup = values.length
+    ? `<ul>${values.map((value) => `<li>${escapeHtml(value)}</li>`).join('')}</ul>`
+    : '<p>No distinct values were returned.</p>';
+
+  const officialSourcesMarkup = officialSources.length
+    ? `<ul>${officialSources.map(renderResearchSource).join('')}</ul>`
+    : '<p>No official organisation sources were identified.</p>';
+
+  const additionalSourcesMarkup = additionalSources.length
+    ? `<details>
+        <summary>Additional sources (${additionalSources.length})</summary>
+        <ul>${additionalSources.map(renderResearchSource).join('')}</ul>
+      </details>`
+    : '';
+
+  return `
+    <section class="research-panel">
+      <details open>
+        <summary>Research result</summary>
+
+        <p><strong>Provider:</strong> ${escapeHtml(provider)}</p>
+        <p><strong>Status:</strong> ${escapeHtml(status)}</p>
+        <p><strong>Research time:</strong> ${escapeHtml(researchedAt)}</p>
+
+        <h3>Summary</h3>
+        <pre class="research-summary">${escapeHtml(summary)}</pre>
+
+        <h3>Values</h3>
+        ${valuesMarkup}
+
+        <h3>Official sources</h3>
+        ${officialSourcesMarkup}
+
+        ${additionalSourcesMarkup}
+      </details>
+    </section>
+  `;
+}
+
+function getSelectableCompanyValues(research) {
+  const values = Array.isArray(research?.companyValues)
+    ? research.companyValues
+    : [];
+
+  return values
+    .map((value, index) => ({
+      id: `company-value-${index + 1}`,
+      type: 'value',
+      text: String(value || '').trim(),
+      sourceUrl: ''
+    }))
+    .filter((value) => value.text);
+}
+
+function renderRefinementPanel({
+  reviewId,
+  research,
+  refinementProposal
+}) {
+  const values = getSelectableCompanyValues(research);
+
+  const selectorMarkup = research?.status === 'found'
+    ? values.length
+      ? `
+        <form method="post" action="/cover-letter-refinement">
+          <input type="hidden" name="reviewId" value="${escapeHtml(reviewId)}">
+          <fieldset>
+            <legend>Select verified organisation values for a proposed refinement</legend>
+            ${values.map((value) => `
+              <label>
+                <input
+                  type="checkbox"
+                  name="selectedResearchPointIds"
+                  value="${escapeHtml(value.id)}">
+                ${escapeHtml(value.text)}
+              </label>
+            `).join('')}
+          </fieldset>
+          <button type="submit">Polish cover letter</button>
+        </form>
+      `
+      : '<p>No selectable organisation values are available yet. Research can still be reviewed manually.</p>'
+    : '<p>Research the organisation successfully before requesting a refinement.</p>';
+
+  const proposalMarkup = refinementProposal?.proposedDraft
+    ? `
+      <section class="refinement-proposal">
+        <h2>Proposed cover-letter refinement</h2>
+        <p>This proposal has not changed the current draft.</p>
+        <label for="proposed-cover-letter">Proposed cover letter</label>
+        <textarea id="proposed-cover-letter" class="draft" readonly>${escapeHtml(refinementProposal.proposedDraft)}</textarea>
+        ${
+          Array.isArray(refinementProposal.warnings) &&
+          refinementProposal.warnings.length
+            ? `<h3>Warnings</h3><ul>${refinementProposal.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul>`
+            : ''
+        }
+        <form method="post" action="/cover-letter-refinement/apply">
+          <input type="hidden" name="reviewId" value="${escapeHtml(reviewId)}">
+          <button type="submit">Use proposal as current draft</button>
+        </form>
+      </section>
+    `
+    : '';
+
+  const warningMarkup =
+    !refinementProposal?.proposedDraft &&
+    Array.isArray(refinementProposal?.warnings) &&
+    refinementProposal.warnings.length
+      ? `<div class="errors" role="alert"><ul>${refinementProposal.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul></div>`
+      : '';
+
+  return `
+    <section class="refinement-panel">
+      <h2>Polish cover letter</h2>
+      <p>Research is reviewed manually first. Any refinement is a proposal and will not alter the current draft automatically.</p>
+      ${selectorMarkup}
+      ${warningMarkup}
+    </section>
+    ${proposalMarkup}
+  `;
+}
+
 function renderApplicationReview({
   formData,
-  prepared
+  prepared,
+  reviewId = '',
+  research = null,
+  currentDraftPlainText = '',
+  refinementProposal = null
 }) {
   const bestCv = prepared.recommendation?.bestCv || {};
   const alternativeCv = prepared.recommendation?.alternativeCv || null;
   const atsScore = prepared.recommendation?.ats?.score;
-  const plainText = prepared.coverLetter?.plainText || '';
+  const plainText =
+    currentDraftPlainText || prepared.coverLetter?.plainText || '';
+  const researchMarkup = renderOrganisationResearch(
+    research,
+    formData.organisationUrl
+  );
+  const refinementMarkup = renderRefinementPanel({
+    reviewId,
+    research,
+    refinementProposal
+  });
   const subject = prepared.coverLetter?.subject || '';
   const role = prepared.jobDescription?.role || formData.jobTitle;
   const location = String(prepared.jobDescription?.location || '').trim() || 'Not specified';
@@ -427,7 +732,28 @@ ${alternative}
 ${score}
     <p><strong>Subject:</strong> ${escapeHtml(subject)}</p>
 
+    <section class="research-panel">
+      <h2>Organisation research</h2>
+      <p>Research is optional. It will not alter the cover letter automatically.</p>
+      <form method="post" action="/organisation-research">
+        <input type="hidden" name="reviewId" value="${escapeHtml(reviewId)}">
+        <input type="hidden" name="organisationName" value="${escapeHtml(formData.organisationName || '')}">
+        <input type="hidden" name="organisationUrl" value="${escapeHtml(formData.organisationUrl || '')}">
+        <input type="hidden" name="jobTitle" value="${escapeHtml(role)}">
+        <button type="submit">Research organisation</button>
+      </form>
+    </section>
+
+    ${researchMarkup}
+
+    ${refinementMarkup}
+
     <h2>Cover letter draft</h2>
+    ${
+      refinementProposal?.appliedMessage
+        ? `<p class="notice">${escapeHtml(refinementProposal.appliedMessage)}</p>`
+        : ''
+    }
     <label for="cover-letter-draft">Generated cover letter</label>
     <textarea id="cover-letter-draft" class="draft" readonly>${escapeHtml(plainText)}</textarea>
 
@@ -521,7 +847,9 @@ async function readFormBody(request) {
 export function createLocalServer({
   prepareApplication = async () => {
     throw new Error('Application preparation is not configured.');
-  }
+  },
+  researchOrganization = null,
+  coverLetterRefinementPort = null
 } = {}) {
   return createServer(async (request, response) => {
     const method = request.method || 'GET';
@@ -572,14 +900,27 @@ export function createLocalServer({
         cvHighlights: formData.cvHighlights
       });
 
-        sendHtml(
-          response,
-          200,
-          renderApplicationReview({
-            formData,
-            prepared
-          })
-        );
+        const reviewId = randomUUID();
+
+      reviewStore.set(reviewId, {
+        formData,
+        prepared,
+        research: null,
+        originalDraftPlainText: prepared.coverLetter?.plainText || '',
+        currentDraftPlainText: prepared.coverLetter?.plainText || '',
+        refinementProposal: null,
+        createdAt: Date.now()
+      });
+
+      sendHtml(
+        response,
+        200,
+        renderApplicationReview({
+          formData,
+          prepared,
+          reviewId
+        })
+      );
       } catch (error) {
         const message = error instanceof Error
           ? error.message
@@ -602,6 +943,373 @@ export function createLocalServer({
         );
       }
 
+      return;
+    }
+
+    if (method === 'POST' && url.pathname === '/organisation-research') {
+      const formBody = await readFormBody(request);
+
+      if (formBody.error) {
+        sendText(
+          response,
+          formBody.error.statusCode,
+          formBody.error.message
+        );
+        return;
+      }
+
+      const reviewId = String(
+        formBody.values.get('reviewId') || ''
+      ).trim();
+
+      const review = reviewStore.get(reviewId);
+
+      if (!review) {
+        sendHtml(
+          response,
+          410,
+          renderApplicationForm({
+            errors: [
+              'This application review is no longer available. Please prepare the application again.'
+            ]
+          })
+        );
+        return;
+      }
+
+      const companyName = String(
+        review.formData.organisationName || ''
+      ).trim();
+
+      const companyUrl = String(
+        review.formData.organisationUrl || ''
+      ).trim();
+
+      const jobTitle = String(
+        review.formData.jobTitle || ''
+      ).trim();
+
+      if (!companyName) {
+        sendHtml(
+          response,
+          400,
+          renderApplicationReview({
+            formData: review.formData,
+            prepared: review.prepared,
+            reviewId,
+            research: {
+              status: 'error',
+              provider: 'Perplexity',
+              researchedAt: new Date().toISOString(),
+              error: 'Organisation name is required for organisation research.'
+            }
+          })
+        );
+        return;
+      }
+
+      if (typeof researchOrganization !== 'function') {
+        sendHtml(
+          response,
+          503,
+          renderApplicationReview({
+            formData: review.formData,
+            prepared: review.prepared,
+            reviewId,
+            research: {
+              status: 'error',
+              provider: 'Perplexity',
+              researchedAt: new Date().toISOString(),
+              error: 'Organisation research is disabled. Set ENABLE_PERPLEXITY_RESEARCH=true and restart the local server.'
+            }
+          })
+        );
+        return;
+      }
+
+      let research;
+
+      try {
+        research = await researchOrganization({
+          companyName,
+          companyUrl,
+          jobDescriptionSummary: jobTitle,
+          forceRefresh: false
+        });
+      } catch (error) {
+        research = {
+          status: 'error',
+          provider: 'Perplexity',
+          researchedAt: new Date().toISOString(),
+          error: error instanceof Error
+            ? error.message
+            : 'Organisation research failed unexpectedly.'
+        };
+      }
+
+      reviewStore.set(reviewId, {
+        ...review,
+        research,
+        researchedAt: Date.now()
+      });
+
+      sendHtml(
+        response,
+        200,
+        renderApplicationReview({
+          formData: review.formData,
+          prepared: review.prepared,
+          reviewId,
+          research,
+          currentDraftPlainText: review.currentDraftPlainText,
+          refinementProposal: review.refinementProposal
+        })
+      );
+      return;
+    }
+
+    if (method === 'POST' && url.pathname === '/cover-letter-refinement') {
+      const formBody = await readFormBody(request);
+
+      if (formBody.error) {
+        sendText(
+          response,
+          formBody.error.statusCode,
+          formBody.error.message
+        );
+        return;
+      }
+
+      const reviewId = String(
+        formBody.values.get('reviewId') || ''
+      ).trim();
+
+      const review = reviewStore.get(reviewId);
+
+      if (!review) {
+        sendHtml(
+          response,
+          410,
+          renderApplicationForm({
+            errors: [
+              'This application review is no longer available. Please prepare the application again.'
+            ]
+          })
+        );
+        return;
+      }
+
+      const renderReview = (statusCode, refinementProposal = null) => {
+        sendHtml(
+          response,
+          statusCode,
+          renderApplicationReview({
+            formData: review.formData,
+            prepared: review.prepared,
+            reviewId,
+            research: review.research,
+            currentDraftPlainText: review.currentDraftPlainText,
+            refinementProposal
+          })
+        );
+      };
+
+      if (typeof coverLetterRefinementPort?.refine !== 'function') {
+        renderReview(503, {
+          proposedDraft: '',
+          warnings: [
+            'Cover-letter refinement is disabled. Enable ENABLE_COVER_LETTER_REFINEMENT and restart the local server.'
+          ]
+        });
+        return;
+      }
+
+      if (!review.research || review.research.status !== 'found') {
+        renderReview(400, {
+          proposedDraft: '',
+          warnings: [
+            'Research the organisation successfully before requesting a refinement.'
+          ]
+        });
+        return;
+      }
+
+      const selectedIds = formBody.values
+        .getAll('selectedResearchPointIds')
+        .map((value) => String(value).trim())
+        .filter(Boolean);
+
+      const selectedResearchPoints = getSelectableCompanyValues(
+        review.research
+      ).filter((point) => selectedIds.includes(point.id));
+
+      if (!selectedResearchPoints.length) {
+        renderReview(400, {
+          proposedDraft: '',
+          warnings: [
+            'Select at least one verified organisation value before requesting a refinement.'
+          ]
+        });
+        return;
+      }
+
+      let refinementProposal;
+
+      try {
+        refinementProposal = await coverLetterRefinementPort.refine({
+          draftPlainText: review.currentDraftPlainText,
+          jobDescriptionSummary: review.formData.jobTitle,
+          selectedCvHighlights: Array.isArray(review.formData.cvHighlights)
+            ? review.formData.cvHighlights
+                .map((highlight) => String(highlight ?? '').trim())
+                .filter((highlight) =>
+                  highlight && highlight.toLowerCase() !== 'null'
+                )
+            : [],
+          companyValues: selectedResearchPoints.map((point) => point.text),
+          selectedResearchPoints,
+          organisationUrl: review.formData.organisationUrl,
+          instructions: '',
+          maxWords: 450
+        });
+      } catch {
+        refinementProposal = {
+          proposedDraft: '',
+          warnings: [
+            'Cover-letter refinement is currently unavailable.'
+          ]
+        };
+      }
+
+      reviewStore.set(reviewId, {
+        ...review,
+        refinementProposal
+      });
+
+      renderReview(200, refinementProposal);
+      return;
+    }
+
+    if (method === 'POST' && url.pathname === '/cover-letter-refinement/apply') {
+      const formBody = await readFormBody(request);
+
+      if (formBody.error) {
+        sendText(
+          response,
+          formBody.error.statusCode,
+          formBody.error.message
+        );
+        return;
+      }
+
+      const reviewId = String(
+        formBody.values.get('reviewId') || ''
+      ).trim();
+
+      const review = reviewStore.get(reviewId);
+
+      if (!review) {
+        sendHtml(
+          response,
+          410,
+          renderApplicationForm({
+            errors: [
+              'This application review is no longer available. Please prepare the application again.'
+            ]
+          })
+        );
+        return;
+      }
+
+      const proposedDraftPlainText = String(
+        review.refinementProposal?.proposedDraft || ''
+      ).trim();
+
+      if (!proposedDraftPlainText) {
+        sendHtml(
+          response,
+          400,
+          renderApplicationReview({
+            formData: review.formData,
+            prepared: review.prepared,
+            reviewId,
+            research: review.research,
+            currentDraftPlainText: review.currentDraftPlainText,
+            refinementProposal: {
+              proposedDraft: '',
+              warnings: [
+                'There is no refinement proposal available to apply.'
+              ]
+            }
+          })
+        );
+        return;
+      }
+
+      let acceptance;
+
+      try {
+        acceptance = acceptRefinedCoverLetter({
+          originalDraftPlainText: review.currentDraftPlainText,
+          proposedDraftPlainText,
+          accepted: true
+        });
+      } catch {
+        sendHtml(
+          response,
+          400,
+          renderApplicationReview({
+            formData: review.formData,
+            prepared: review.prepared,
+            reviewId,
+            research: review.research,
+            currentDraftPlainText: review.currentDraftPlainText,
+            refinementProposal: {
+              proposedDraft: '',
+              warnings: [
+                'The refinement proposal could not be applied.'
+              ]
+            }
+          })
+        );
+        return;
+      }
+
+      const appliedAt = new Date().toISOString();
+
+      const updatedReview = {
+        ...review,
+        currentDraftPlainText: acceptance.finalDraftPlainText,
+        refinementProposal: {
+          appliedMessage:
+            'Current draft updated from your approved refinement proposal.'
+        },
+        refinementHistory: [
+          ...(Array.isArray(review.refinementHistory)
+            ? review.refinementHistory
+            : []),
+          {
+            appliedAt,
+            previousDraft: review.currentDraftPlainText,
+            appliedDraft: acceptance.finalDraftPlainText
+          }
+        ]
+      };
+
+      reviewStore.set(reviewId, updatedReview);
+
+      sendHtml(
+        response,
+        200,
+        renderApplicationReview({
+          formData: updatedReview.formData,
+          prepared: updatedReview.prepared,
+          reviewId,
+          research: updatedReview.research,
+          currentDraftPlainText: updatedReview.currentDraftPlainText,
+          refinementProposal: updatedReview.refinementProposal
+        })
+      );
       return;
     }
 

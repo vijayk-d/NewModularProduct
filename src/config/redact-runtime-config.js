@@ -15,6 +15,11 @@ export function redactRuntimeConfig(config = {}) {
       cvFolder: config.storage?.cvFolder || '',
       databasePath: config.storage?.databasePath || ''
     },
+    application: {
+      coverLetterRefinementMaxWords: Number(
+        config.application?.coverLetterRefinementMaxWords || 0
+      )
+    },
     features: {
       enablePerplexityResearch: Boolean(
         config.features?.enablePerplexityResearch
@@ -27,7 +32,10 @@ export function redactRuntimeConfig(config = {}) {
     integrations: {
       perplexity: {
         enabled: Boolean(config.integrations?.perplexity?.enabled),
-        apiKey: redactSecret(config.integrations?.perplexity?.apiKey)
+        apiKey: redactSecret(config.integrations?.perplexity?.apiKey),
+        refinementModel: String(
+          config.integrations?.perplexity?.refinementModel || ''
+        )
       },
       gmail: {
         enabled: Boolean(config.integrations?.gmail?.enabled),

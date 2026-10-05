@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { refineCoverLetter } from '../../src/application/refine-cover-letter.js';
@@ -22,7 +22,7 @@ test('requires an injected refinement port', async () => {
   );
 });
 
-test('sends a normalized request and returns a proposal without changing the draft', async () => {
+test('normalizes manual research selections and returns a proposal without changing the draft', async () => {
   const calls = [];
   const adapter = createFakeCoverLetterRefinementAdapter({
     calls,
@@ -34,8 +34,17 @@ test('sends a normalized request and returns a proposal without changing the dra
         suggestedChanges: [' Add measurable outcome ']
       },
       proposedDraft: 'Proposed draft',
+      appliedResearchPointIds: [' value-excellence '],
+      omittedResearchPointIds: [],
+      suggestedResearchPoints: [{
+        id: 'suggested-fact',
+        type: 'fact',
+        text: ' Official fact ',
+        sourceUrl: 'https://example.test/about'
+      }],
       citations: [],
-      provider: 'fake-cover-letter-refinement'
+      provider: 'fake-cover-letter-refinement',
+      model: 'fake-model'
     }
   });
 
@@ -44,7 +53,15 @@ test('sends a normalized request and returns a proposal without changing the dra
     jobDescriptionSummary: ' Delivery role ',
     selectedCvHighlights: [' Delivery ', ''],
     companyValues: [' Customer value '],
-    instructions: ' Improve clarity '
+    selectedResearchPoints: [{
+      id: ' value-excellence ',
+      type: ' value ',
+      text: ' Technical excellence ',
+      sourceUrl: 'https://example.test/careers'
+    }],
+    organisationUrl: 'https://example.test',
+    instructions: ' Improve clarity ',
+    maxWords: 999
   };
 
   const result = await refineCoverLetter(request, {
@@ -56,15 +73,30 @@ test('sends a normalized request and returns a proposal without changing the dra
     jobDescriptionSummary: 'Delivery role',
     selectedCvHighlights: ['Delivery'],
     companyValues: ['Customer value'],
-    instructions: 'Improve clarity'
+    selectedResearchPoints: [{
+      id: 'value-excellence',
+      type: 'value',
+      text: 'Technical excellence',
+      sourceUrl: 'https://example.test/careers'
+    }],
+    organisationUrl: 'https://example.test/',
+    instructions: 'Improve clarity',
+    maxWords: 450
   }]);
 
   assert.equal(result.proposedDraft, 'Proposed draft');
   assert.equal(request.draftPlainText, '  Original draft  ');
   assert.deepEqual(result.review.strengths, ['Clear evidence']);
   assert.deepEqual(result.review.risks, ['Unverified claim']);
-  assert.deepEqual(result.citations, []);
+  assert.deepEqual(result.appliedResearchPointIds, ['value-excellence']);
+  assert.deepEqual(result.suggestedResearchPoints, [{
+    id: 'suggested-fact',
+    type: 'fact',
+    text: 'Official fact',
+    sourceUrl: 'https://example.test/about'
+  }]);
   assert.equal(result.provider, 'fake-cover-letter-refinement');
+  assert.equal(result.model, 'fake-model');
 });
 
 test('converts an adapter failure into a controlled refinement error', async () => {
@@ -84,8 +116,12 @@ test('converts an adapter failure into a controlled refinement error', async () 
     suggestedChanges: []
   });
   assert.equal(result.proposedDraft, '');
+  assert.deepEqual(result.appliedResearchPointIds, []);
+  assert.deepEqual(result.omittedResearchPointIds, []);
+  assert.deepEqual(result.suggestedResearchPoints, []);
   assert.deepEqual(result.citations, []);
   assert.equal(result.provider, '');
+  assert.equal(result.model, '');
   assert.equal(
     result.error,
     'Cover-letter refinement is currently unavailable.'
