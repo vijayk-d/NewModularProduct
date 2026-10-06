@@ -1,5 +1,6 @@
 ﻿import { renderApplicationReview, renderRefinementPanel, renderOrganisationResearch, renderField, renderAdvertLink, getSelectableCompanyValues, renderResearchSource, renderOptionalDetail , renderApplicationForm, escapeHtml, sendHtml } from './rendering.js';
-import { readFormBody, sendText } from './form-body.js';
+import { readFormBody } from './form-body.js';
+import { sendText } from './responses.js';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import {
