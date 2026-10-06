@@ -1,4 +1,4 @@
-﻿import { renderField, renderAdvertLink, renderApplicationForm, escapeHtml, sendHtml } from './rendering.js';
+﻿import { renderField, renderAdvertLink, renderOptionalDetail , renderApplicationForm, escapeHtml, sendHtml } from './rendering.js';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import {
@@ -71,17 +71,6 @@ function validationErrors(formData) {
   }
 
   return errors;
-}
-
-function renderOptionalDetail(label, value) {
-  const text = String(value || '').trim();
-
-  if (!text) {
-    return '';
-  }
-
-  return `    <p><strong>${escapeHtml(label)}:</strong> ${escapeHtml(text)}</p>
-`;
 }
 
 function renderResearchSource(source) {
@@ -1986,4 +1975,3 @@ export function createLocalServer({
     sendText(response, 404, 'Not Found');
   });
 }
-

@@ -402,3 +402,15 @@ export function renderAdvertLink(value = '') {
 
   return escapeHtml(text);
 }
+
+export function renderOptionalDetail(label, value) {
+  const text = String(value || '').trim();
+
+  if (!text) {
+    return '';
+  }
+
+  return `    <p><strong>${escapeHtml(label)}:</strong> ${escapeHtml(text)}</p>
+`;
+}
+
