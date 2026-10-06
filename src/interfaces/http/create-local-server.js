@@ -1,4 +1,4 @@
-﻿import { renderField, renderAdvertLink, renderOptionalDetail , renderApplicationForm, escapeHtml, sendHtml } from './rendering.js';
+﻿import { renderField, renderAdvertLink, renderResearchSource, renderOptionalDetail , renderApplicationForm, escapeHtml, sendHtml } from './rendering.js';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import {
@@ -71,30 +71,6 @@ function validationErrors(formData) {
   }
 
   return errors;
-}
-
-function renderResearchSource(source) {
-  const title = String(
-    source?.title || source?.url || 'Source'
-  ).trim();
-
-  const href = String(source?.url || '').trim();
-
-  if (!href) {
-    return `<li>${escapeHtml(title)}</li>`;
-  }
-
-  try {
-    const url = new URL(href);
-
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-      return `<li>${escapeHtml(title)}</li>`;
-    }
-
-    return `<li><a href="${escapeHtml(url.href)}" target="_blank" rel="noreferrer noopener">${escapeHtml(title)}</a></li>`;
-  } catch {
-    return `<li>${escapeHtml(title)}</li>`;
-  }
 }
 
 function renderOrganisationResearch(research, organisationUrl = '') {
