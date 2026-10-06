@@ -452,3 +452,199 @@ export function getSelectableCompanyValues(research) {
     }))
     .filter((value) => value.text);
 }
+
+export function renderOrganisationResearch(research, organisationUrl = '') {
+  if (!research) {
+    return '';
+  }
+
+  const status = String(research.status || 'unavailable');
+  const provider = String(research.provider || 'Perplexity');
+  const researchedAt = String(research.researchedAt || 'Not recorded');
+
+  const summary = status === 'found'
+    ? String(research.summary || 'No summary was returned.')
+    : String(
+        research.error ||
+        'Organisation research is currently unavailable.'
+      );
+
+  const values = Array.isArray(research.companyValues)
+    ? research.companyValues
+    : [];
+
+  const sources = Array.isArray(research.sources)
+    ? research.sources
+    : [];
+
+  let organisationHost = '';
+
+  try {
+    organisationHost = new URL(organisationUrl).hostname
+      .replace(/^www\./, '')
+      .toLowerCase();
+  } catch {
+    organisationHost = '';
+  }
+
+  const officialSources = organisationHost
+    ? sources.filter((source) => {
+        try {
+          const sourceHost = new URL(String(source?.url || '')).hostname
+            .replace(/^www\./, '')
+            .toLowerCase();
+
+          return sourceHost === organisationHost ||
+            sourceHost.endsWith(`.${organisationHost}`);
+        } catch {
+          return false;
+        }
+      })
+    : [];
+
+  const additionalSources = sources.filter(
+    (source) => !officialSources.includes(source)
+  );
+
+  const valuesMarkup = values.length
+    ? `<ul>${values.map((value) => `<li>${escapeHtml(value)}</li>`).join('')}</ul>`
+    : '<p>No distinct values were returned.</p>';
+
+  const officialSourcesMarkup = officialSources.length
+    ? `<ul>${officialSources.map(renderResearchSource).join('')}</ul>`
+    : '<p>No official organisation sources were identified.</p>';
+
+  const additionalSourcesMarkup = additionalSources.length
+    ? `<details>
+        <summary>Additional sources (${additionalSources.length})</summary>
+        <ul>${additionalSources.map(renderResearchSource).join('')}</ul>
+      </details>`
+    : '';
+
+  return `
+    <section class="research-panel">
+      <details open>
+        <summary>Research result</summary>
+
+        <p><strong>Provider:</strong> ${escapeHtml(provider)}</p>
+        <p><strong>Status:</strong> ${escapeHtml(status)}</p>
+        <p><strong>Research time:</strong> ${escapeHtml(researchedAt)}</p>
+
+        <h3>Summary</h3>
+        <pre class="research-summary">${escapeHtml(summary)}</pre>
+
+        <h3>Values</h3>
+        ${valuesMarkup}
+
+        <h3>Official sources</h3>
+        ${officialSourcesMarkup}
+
+        ${additionalSourcesMarkup}
+      </details>
+    </section>
+  `;
+}
+
+export function renderRefinementPanel({
+  reviewId,
+  research,
+  refinementProposal
+}) {
+  const values = getSelectableCompanyValues(research);
+
+  const selectorMarkup = research?.status === 'found'
+    ? `
+      <form method="post" action="/cover-letter-refinement">
+        <input type="hidden" name="reviewId" value="${escapeHtml(reviewId)}">
+        ${
+          values.length
+            ? `
+              <fieldset>
+                <legend>Select verified organisation values for a proposed refinement</legend>
+                ${values.map((value) => `
+                  <label>
+                    <input
+                      type="checkbox"
+                      name="selectedResearchPointIds"
+                      value="${escapeHtml(value.id)}">
+                    ${escapeHtml(value.text)}
+                  </label>
+                `).join('')}
+              </fieldset>
+            `
+            : '<p class="rich-editor-notice">No verified organisation values were returned. You can still request a manual refinement.</p>'
+        }
+        <button type="submit">Polish cover letter</button>
+      </form>
+    `
+    : '<p>Research the organisation successfully before requesting a refinement.</p>';
+
+  const proposalMarkup = refinementProposal?.proposedDraft
+    ? `
+      <section class="refinement-proposal panel--proposal">
+        <h2>Proposed cover-letter refinement</h2>
+        <p>This proposal has not changed the current draft.</p>
+        <label for="proposed-cover-letter">Proposed cover letter</label>
+        <div class="rich-editor-toolbar" role="toolbar" aria-label="Proposed cover letter formatting" data-editor-target="proposed-cover-letter">
+          <button type="button" data-editor-command="bold" title="Bold selected text"><strong>B</strong></button>
+          <button type="button" data-editor-command="italic" title="Italic selected text"><em>I</em></button>
+          <button type="button" data-editor-command="insertUnorderedList" title="Bullet list">&bull; List</button>
+          <button type="button" data-editor-command="insertOrderedList" title="Numbered list">1. List</button>
+          <button type="button" data-editor-command="hiliteColor" data-command-value="#fff2a8" title="Highlight selected text">Highlight</button>
+          <button type="button" data-editor-command="createLink" title="Add a link">Link</button>
+          <button type="button" data-editor-command="unlink" title="Remove link">Unlink</button>
+          <button type="button" data-editor-command="removeFormat" title="Clear selected formatting">Clear format</button>
+          <button type="button" data-editor-command="undo" title="Undo">Undo</button>
+          <button type="button" data-editor-command="redo" title="Redo">Redo</button>
+        </div>
+        <div
+          id="proposed-cover-letter"
+          class="rich-editor rich-editor--proposal"
+          contenteditable="true"
+          role="textbox"
+          aria-multiline="true"
+          aria-label="Editable proposed cover letter"
+          data-editor-name="Proposed cover letter">${escapeHtml(refinementProposal.proposedDraft).replace(/\n/g, '<br>')}</div>
+        <div class="rich-editor-actions">
+          <button
+            type="button"
+            class="rich-copy-button"
+            data-copy-editor="proposed-cover-letter">Copy rich text</button>
+          <span
+            class="rich-editor-status"
+            data-editor-status="proposed-cover-letter"
+            role="status"
+            aria-live="polite"></span>
+        </div>
+        ${
+          Array.isArray(refinementProposal.warnings) &&
+          refinementProposal.warnings.length
+            ? `<h3>Warnings</h3><ul>${refinementProposal.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul>`
+            : ''
+        }
+        <form method="post" action="/cover-letter-refinement/apply">
+          <input type="hidden" name="reviewId" value="${escapeHtml(reviewId)}">
+          <button type="submit">Use proposal as current draft</button>
+        </form>
+      </section>
+    `
+    : '';
+
+  const warningMarkup =
+    !refinementProposal?.proposedDraft &&
+    Array.isArray(refinementProposal?.warnings) &&
+    refinementProposal.warnings.length
+      ? `<div class="errors" role="alert"><ul>${refinementProposal.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul></div>`
+      : '';
+
+  return `
+    <section class="refinement-panel panel--proposal">
+      <h2>Polish cover letter</h2>
+      <p>Research is reviewed manually first. Any refinement is a proposal and will not alter the current draft automatically.</p>
+      ${selectorMarkup}
+      ${warningMarkup}
+    </section>
+    ${proposalMarkup}
+  `;
+}
+
