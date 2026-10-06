@@ -1,11 +1,10 @@
 ﻿import { renderApplicationReview, renderRefinementPanel, renderOrganisationResearch, renderField, renderAdvertLink, getSelectableCompanyValues, renderResearchSource, renderOptionalDetail , renderApplicationForm, escapeHtml, sendHtml } from './rendering.js';
+import { readFormBody } from './form-body.js';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import {
   acceptRefinedCoverLetter
 } from '../../application/accept-refined-cover-letter.js';
-
-const MAX_FORM_BODY_BYTES = 64 * 1024;
 
 function sendText(response, statusCode, text, headers = {}) {
   response.writeHead(statusCode, {
@@ -71,44 +70,6 @@ function validationErrors(formData) {
   }
 
   return errors;
-}
-
-async function readFormBody(request) {
-  const contentType = String(request.headers['content-type'] || '')
-    .split(';', 1)[0]
-    .trim()
-    .toLowerCase();
-
-  if (contentType !== 'application/x-www-form-urlencoded') {
-    return {
-      error: {
-        statusCode: 415,
-        message: 'Unsupported Media Type'
-      }
-    };
-  }
-
-  let body = '';
-  let size = 0;
-
-  for await (const chunk of request) {
-    size += chunk.length;
-
-    if (size > MAX_FORM_BODY_BYTES) {
-      return {
-        error: {
-          statusCode: 413,
-          message: 'Payload Too Large'
-        }
-      };
-    }
-
-    body += chunk;
-  }
-
-  return {
-    values: new URLSearchParams(body)
-  };
 }
 
 export function createLocalServer({
