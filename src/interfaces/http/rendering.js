@@ -382,3 +382,23 @@ export function formValues(formData = {}) {
       : String(formData.cvHighlights || '')
   };
 }
+
+export function renderAdvertLink(value = '') {
+  const text = String(value).trim();
+
+  if (!text) {
+    return '';
+  }
+
+  try {
+    const url = new URL(text);
+
+    if (url.protocol === 'http:' || url.protocol === 'https:') {
+      return `<a href="${escapeHtml(url.href)}" target="_blank" rel="noreferrer noopener">${escapeHtml(url.href)}</a>`;
+    }
+  } catch {
+    // Render invalid URLs as plain text below.
+  }
+
+  return escapeHtml(text);
+}
