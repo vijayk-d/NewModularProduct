@@ -3,11 +3,19 @@ import { readFormBody } from './form-body.js';
 import { sendText, sendHtml } from './responses.js';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
-import {
-  acceptRefinedCoverLetter
-} from '../../application/accept-refined-cover-letter.js';
+import {  acceptRefinedCoverLetter } from '../../application/accept-refined-cover-letter.js';
 
 const reviewStore = new Map();
+
+import { createDiagnosticWriter } from './diagnostics.js';
+
+const debugEnabled = process.env.LOCAL_DEBUG === 'true';
+const localDiagnosticsEnabled = debugEnabled;
+
+const writeDiagnostic = createDiagnosticWriter({
+  enabled: localDiagnosticsEnabled
+  // Keep any other existing options exactly as they were
+});
 
 function splitValues(value = '', separator) {
   return String(value)
@@ -72,34 +80,10 @@ export function createLocalServer({
   localDiagnosticsEnabled = false,
   diagnosticsWriter = process.stdout
 } = {}) {
-  const writeDiagnostic = (event, fields = {}) => {
-    if (!localDiagnosticsEnabled) {
-      return;
-    }
-
-    const safeFields = Object.entries(fields)
-      .filter(([, value]) =>
-        value !== undefined &&
-        value !== null &&
-        value !== ''
-      )
-      .map(([key, value]) => {
-        const normalized = typeof value === 'boolean'
-          ? String(value)
-          : String(value)
-            .replace(/[\r\n\t]+/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim()
-            .slice(0, 160);
-
-        return `${key}=${JSON.stringify(normalized)}`;
-      });
-
-    diagnosticsWriter.write(
-      `[LOCAL_DIAGNOSTICS] event=${event}` +
-      `${safeFields.length ? ` ${safeFields.join(' ')}` : ''}\n`
-    );
-  };
+  const writeDiagnostic = createDiagnosticWriter({
+    enabled: localDiagnosticsEnabled,
+    writer: diagnosticsWriter
+  });
 
   const wordCount = (value = '') => String(value)
     .trim()
