@@ -949,6 +949,10 @@ test('applies a refinement proposal only through the explicit local apply route'
     proposed.text,
     /Dear Hiring Manager,[\s\S]*I am applying for the Project Manager role\./
   );
+  assert.match(
+    proposed.text,
+    /<div class="rich-editor-toolbar"[^>]*data-editor-target="proposed-cover-letter"/
+  );
 
   const applied = await request(
     baseUrl,
@@ -972,9 +976,9 @@ test('applies a refinement proposal only through the explicit local apply route'
     applied.text,
     /Dear Hiring Manager,[\s\S]*This is the approved refined draft\./
   );
-  assert.match(
+  assert.doesNotMatch(
     applied.text,
-    /<div class="rich-editor-toolbar"[^>]*data-editor-target="proposed-cover-letter"/
+    /data-editor-target="proposed-cover-letter"/
   );
   assert.doesNotMatch(
     applied.text,
@@ -1246,6 +1250,7 @@ test('returns 410 when selecting a CV for an expired review', async (t) => {
     /This application review is no longer available\. Please prepare the application again\./
   );
 });
+
 
 
 

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+﻿import { test, expect } from '@playwright/test';
 
 test('shows the application preparation form and manual-send notice', async ({ page }) => {
   await page.goto('/');
@@ -135,18 +135,18 @@ test('reviews vacancy details and provides local cover-letter copying', async ({
     'noreferrer noopener'
   );
 
-  const draft = page.getByLabel('Generated cover letter');
-  await expect(draft).toHaveAttribute('readonly', '');
-  await expect(draft).not.toHaveValue('');
+  const draft = page.getByLabel('Editable current cover letter draft');
+  await expect(draft).toHaveAttribute('contenteditable', 'true');
+  await expect(draft).not.toHaveText('');
 
   await page.getByRole('button', {
-    name: 'Copy cover letter'
+    name: 'Copy rich text'
   }).click();
 
   const copyStatus = page.locator('#copy-status');
 
   await expect(copyStatus).toHaveText(
-    /Cover letter copied to clipboard\.|Cover letter selected\. Copy it manually\./
+    /Rich text copied\.|Text selected\. Copy it manually\./
   );
 
   await expect(
@@ -161,3 +161,33 @@ test('reviews vacancy details and provides local cover-letter copying', async ({
     })
   ).toBeVisible();
 });
+
+test('shows separate rich-text toolbars for current and proposed cover letters', async ({ page }) => {
+  await page.goto('/');
+
+  await page.getByLabel('Job title').fill('Project Manager');
+  await page
+    .getByLabel('Job description')
+    .fill('Lead delivery, stakeholder management, and programme governance.');
+  await page.getByRole('button', { name: 'Generate application' }).click();
+
+  const currentToolbar = page.getByRole('toolbar', {
+    name: 'Cover letter formatting'
+  });
+
+  await expect(currentToolbar).toBeVisible();
+  await expect(
+    page.getByLabel('Editable current cover letter draft')
+  ).toHaveAttribute('contenteditable', 'true');
+
+  // The proposed toolbar must not exist before a proposal is created.
+  await expect(
+    page.getByRole('toolbar', {
+      name: 'Proposed cover letter formatting'
+    })
+  ).toHaveCount(0);
+});
+
+
+
+
