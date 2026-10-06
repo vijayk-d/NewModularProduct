@@ -612,26 +612,30 @@ function renderRefinementPanel({
   const values = getSelectableCompanyValues(research);
 
   const selectorMarkup = research?.status === 'found'
-    ? values.length
-      ? `
-        <form method="post" action="/cover-letter-refinement">
-          <input type="hidden" name="reviewId" value="${escapeHtml(reviewId)}">
-          <fieldset>
-            <legend>Select verified organisation values for a proposed refinement</legend>
-            ${values.map((value) => `
-              <label>
-                <input
-                  type="checkbox"
-                  name="selectedResearchPointIds"
-                  value="${escapeHtml(value.id)}">
-                ${escapeHtml(value.text)}
-              </label>
-            `).join('')}
-          </fieldset>
-          <button type="submit">Polish cover letter</button>
-        </form>
-      `
-      : '<p>No selectable organisation values are available yet. Research can still be reviewed manually.</p>'
+    ? `
+      <form method="post" action="/cover-letter-refinement">
+        <input type="hidden" name="reviewId" value="${escapeHtml(reviewId)}">
+        ${
+          values.length
+            ? `
+              <fieldset>
+                <legend>Select verified organisation values for a proposed refinement</legend>
+                ${values.map((value) => `
+                  <label>
+                    <input
+                      type="checkbox"
+                      name="selectedResearchPointIds"
+                      value="${escapeHtml(value.id)}">
+                    ${escapeHtml(value.text)}
+                  </label>
+                `).join('')}
+              </fieldset>
+            `
+            : '<p class="rich-editor-notice">No verified organisation values were returned. You can still request a manual refinement.</p>'
+        }
+        <button type="submit">Polish cover letter</button>
+      </form>
+    `
     : '<p>Research the organisation successfully before requesting a refinement.</p>';
 
   const proposalMarkup = refinementProposal?.proposedDraft
@@ -640,6 +644,18 @@ function renderRefinementPanel({
         <h2>Proposed cover-letter refinement</h2>
         <p>This proposal has not changed the current draft.</p>
         <label for="proposed-cover-letter">Proposed cover letter</label>
+        <div class="rich-editor-toolbar" role="toolbar" aria-label="Proposed cover letter formatting" data-editor-target="proposed-cover-letter">
+          <button type="button" data-editor-command="bold" title="Bold selected text"><strong>B</strong></button>
+          <button type="button" data-editor-command="italic" title="Italic selected text"><em>I</em></button>
+          <button type="button" data-editor-command="insertUnorderedList" title="Bullet list">&bull; List</button>
+          <button type="button" data-editor-command="insertOrderedList" title="Numbered list">1. List</button>
+          <button type="button" data-editor-command="hiliteColor" data-command-value="#fff2a8" title="Highlight selected text">Highlight</button>
+          <button type="button" data-editor-command="createLink" title="Add a link">Link</button>
+          <button type="button" data-editor-command="unlink" title="Remove link">Unlink</button>
+          <button type="button" data-editor-command="removeFormat" title="Clear selected formatting">Clear format</button>
+          <button type="button" data-editor-command="undo" title="Undo">Undo</button>
+          <button type="button" data-editor-command="redo" title="Redo">Redo</button>
+        </div>
         <div
           id="proposed-cover-letter"
           class="rich-editor rich-editor--proposal"
@@ -1364,7 +1380,7 @@ ${score}
           : ''
       }
       <label for="cover-letter-draft">Editable cover letter draft</label>
-      <div class="rich-editor-toolbar" role="toolbar" aria-label="Cover letter formatting">
+      <div class="rich-editor-toolbar" role="toolbar" aria-label="Cover letter formatting" data-editor-target="cover-letter-draft">
         <button type="button" data-editor-command="bold" title="Bold selected text"><strong>B</strong></button>
         <button type="button" data-editor-command="italic" title="Italic selected text"><em>I</em></button>
         <button type="button" data-editor-command="insertUnorderedList" title="Bullet list">â€¢ List</button>
@@ -1413,7 +1429,7 @@ ${score}
       copyStatus.textContent = 'Text selected. Copy it manually.';
     }
 
-    const editorToolbar = document.querySelector('.rich-editor-toolbar');
+
 
     function editorPlainText(editor) {
       return String(editor?.innerText || '')
@@ -1457,8 +1473,8 @@ ${score}
       status.textContent = 'Text selected. Copy it manually.';
     }
 
-    function runEditorCommand(command, value = null) {
-      draft.focus();
+    function runEditorCommand(editor, status, command, value = null) {
+      editor.focus();
 
       if (command === 'createLink') {
         const href = window.prompt(
@@ -1473,26 +1489,37 @@ ${score}
           const url = new URL(href);
 
           if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-            copyStatus.textContent = 'Only http(s) links are allowed.';
+            status.textContent = 'Only http(s) links are allowed.';
             return;
           }
 
           document.execCommand('createLink', false, url.href);
-          copyStatus.textContent = 'Link added locally.';
+          status.textContent = 'Link added locally.';
         } catch {
-          copyStatus.textContent = 'Enter a valid full http(s) link.';
+          status.textContent = 'Enter a valid full http(s) link.';
         }
 
         return;
       }
 
       document.execCommand(command, false, value);
-      copyStatus.textContent =
+      status.textContent =
         'Formatting updated locally; it is not saved yet.';
     }
 
-    if (editorToolbar) {
-      editorToolbar.addEventListener('mousedown', (event) => {
+    document.querySelectorAll('.rich-editor-toolbar').forEach((toolbar) => {
+      const editor = document.getElementById(toolbar.dataset.editorTarget);
+      const status = editor?.id === 'cover-letter-draft'
+        ? copyStatus
+        : document.querySelector(
+            '[data-editor-status="' + editor?.id + '"]'
+          );
+
+      if (!editor || !status) {
+        return;
+      }
+
+      toolbar.addEventListener('mousedown', (event) => {
         const button = event.target.closest('button[data-editor-command]');
 
         if (!button) {
@@ -1501,11 +1528,13 @@ ${score}
 
         event.preventDefault();
         runEditorCommand(
+          editor,
+          status,
           button.dataset.editorCommand,
           button.dataset.commandValue || null
         );
       });
-    }
+    });
 
     document.querySelectorAll('.rich-copy-button').forEach((button) => {
       button.addEventListener('click', async () => {
@@ -2346,5 +2375,4 @@ export function createLocalServer({
     sendText(response, 404, 'Not Found');
   });
 }
-
 

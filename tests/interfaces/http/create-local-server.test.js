@@ -415,6 +415,15 @@ test('renders review details, a safe advert link, and local copy controls', asyn
     response.text,
     /navigator\.clipboard\.writeText\(draft\.value\)/
   );
+  assert.match(
+  response.text,
+  /<div class="rich-editor-toolbar"[^>]*data-editor-target="cover-letter-draft"/
+  );
+
+assert.doesNotMatch(
+  response.text,
+  /data-editor-target="proposed-cover-letter"/
+);
 });
 
 test('renders unsafe advert URLs as escaped plain text rather than links', async (t) => {
@@ -963,6 +972,10 @@ test('applies a refinement proposal only through the explicit local apply route'
     applied.text,
     /Dear Hiring Manager,[\s\S]*This is the approved refined draft\./
   );
+  assert.match(
+    applied.text,
+    /<div class="rich-editor-toolbar"[^>]*data-editor-target="proposed-cover-letter"/
+  );
   assert.doesNotMatch(
     applied.text,
     /id="proposed-cover-letter"[\s\S]*contenteditable="true"/
@@ -1233,6 +1246,7 @@ test('returns 410 when selecting a CV for an expired review', async (t) => {
     /This application review is no longer available\. Please prepare the application again\./
   );
 });
+
 
 
 
