@@ -1,4 +1,4 @@
-﻿import { renderApplicationForm, renderField, escapeHtml, sendHtml } from './rendering.js';
+﻿import { renderField, renderApplicationForm, escapeHtml, sendHtml } from './rendering.js';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import {
@@ -6,7 +6,6 @@ import {
 } from '../../application/accept-refined-cover-letter.js';
 
 const MAX_FORM_BODY_BYTES = 64 * 1024;
-
 
 function sendText(response, statusCode, text, headers = {}) {
   response.writeHead(statusCode, {

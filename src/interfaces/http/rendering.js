@@ -371,3 +371,14 @@ ${renderField('cvHighlights', 'CV highlights', values.cvHighlights, { placeholde
 </html>`;
 }
 
+export function formValues(formData = {}) {
+  return {
+    ...formData,
+    preferredRoleCodes: Array.isArray(formData.preferredRoleCodes)
+      ? formData.preferredRoleCodes.join(', ')
+      : String(formData.preferredRoleCodes || ''),
+    cvHighlights: Array.isArray(formData.cvHighlights)
+      ? formData.cvHighlights.join('\n')
+      : String(formData.cvHighlights || '')
+  };
+}
