@@ -1,4 +1,4 @@
-﻿import { sendHtml } from './rendering.js';
+﻿import { escapeHtml, sendHtml } from './rendering.js';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import {
@@ -19,15 +19,6 @@ function sendText(response, statusCode, text, headers = {}) {
 }
 
 const reviewStore = new Map();
-
-function escapeHtml(value = '') {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
-}
 
 function splitValues(value = '', separator) {
   return String(value)
