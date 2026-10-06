@@ -648,3 +648,900 @@ export function renderRefinementPanel({
   `;
 }
 
+export function renderApplicationReview({
+  formData,
+  prepared,
+  reviewId = '',
+  research = null,
+  currentDraftPlainText = '',
+  refinementProposal = null,
+  selectedCvRoleCode = '',
+  cvSelectionMessage = ''
+}) {
+  const bestCv = prepared.recommendation?.bestCv || {};
+  const alternativeCv = prepared.recommendation?.alternativeCv || null;
+  const atsScore = prepared.recommendation?.ats?.score;
+  const rankedCvs = Array.isArray(prepared.rankedCvs)
+    ? prepared.rankedCvs
+    : [];
+  const defaultCvRoleCode = String(bestCv.role_code || '').trim();
+  const activeCvRoleCode = String(
+    selectedCvRoleCode || defaultCvRoleCode
+  ).trim();
+  const plainText =
+    currentDraftPlainText || prepared.coverLetter?.plainText || '';
+  const researchMarkup = renderOrganisationResearch(
+    research,
+    formData.organisationUrl
+  );
+  const refinementMarkup = renderRefinementPanel({
+    reviewId,
+    research,
+    refinementProposal
+  });
+  const subject = prepared.coverLetter?.subject || '';
+  const role = prepared.jobDescription?.role || formData.jobTitle;
+  const location = String(prepared.jobDescription?.location || '').trim() || 'Not specified';
+
+  const alternative = alternativeCv
+    ? `<p><strong>Alternative CV:</strong> ${escapeHtml(alternativeCv.role_name || alternativeCv.role_code || 'Available')}</p>`
+    : '';
+
+  const score = Number.isFinite(atsScore)
+    ? `<p><strong>ATS score:</strong> ${escapeHtml(atsScore)}</p>`
+    : '';
+
+  const renderKeywordChips = (keywords, emptyText, variant) => {
+    const values = Array.isArray(keywords)
+      ? keywords
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+      : [];
+
+    return values.length
+      ? `<ul class="cv-keywords cv-keywords--${escapeHtml(variant)}">${values
+        .map((value) => `<li class="cv-keyword">${escapeHtml(value)}</li>`)
+        .join('')}</ul>`
+      : `<p>${escapeHtml(emptyText)}</p>`;
+  };
+
+  const renderSuggestions = (suggestions) => {
+    const values = Array.isArray(suggestions)
+      ? suggestions
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+      : [];
+
+    return values.length
+      ? `<ul class="cv-suggestions">${values
+        .map((value) => `<li>${escapeHtml(value)}</li>`)
+        .join('')}</ul>`
+      : '';
+  };
+
+  const cvSelectionMarkup = rankedCvs.length
+    ? `
+      <form method="post" action="/review-cv-selection">
+        <input type="hidden" name="reviewId" value="${escapeHtml(reviewId)}">
+        <fieldset class="cv-selection-list">
+          <legend>Select the CV to use for the next explicit action</legend>
+          ${rankedCvs.map((candidate, index) => {
+            const cv = candidate?.cv || {};
+            const ats = candidate?.ats || {};
+            const roleCode = String(cv.role_code || '').trim();
+            const roleName = String(
+              cv.role_name || roleCode || 'Unnamed CV'
+            ).trim();
+            const isSelected = roleCode === activeCvRoleCode;
+            const isRecommended = roleCode === defaultCvRoleCode;
+
+            return `
+              <article class="cv-candidate${isSelected ? ' cv-candidate--selected' : ''}">
+                <label class="cv-candidate__choice">
+                  <input
+                    type="radio"
+                    name="selectedCvRoleCode"
+                    value="${escapeHtml(roleCode)}"
+                    ${isSelected ? 'checked' : ''}>
+                  <span>
+                    <strong>${escapeHtml(roleName)}</strong>
+                    ${roleCode ? ` (${escapeHtml(roleCode)})` : ''}
+                    ${isRecommended ? ' â€” recommended by local ATS ranking' : ''}
+                  </span>
+                </label>
+                <p class="cv-candidate__score">
+                  <strong>ATS score:</strong> ${escapeHtml(
+                    Number.isFinite(ats.score) ? ats.score : 'Not available'
+                  )}
+                  <span class="cv-candidate__summary">
+                    Â· Matched ${
+                      Array.isArray(ats.matchedKeywords)
+                        ? ats.matchedKeywords.length
+                        : 0
+                    }
+                    Â· Missing ${
+                      Array.isArray(ats.missingKeywords)
+                        ? ats.missingKeywords.length
+                        : 0
+                    }
+                  </span>
+                </p>
+                <details class="cv-candidate__details-toggle">
+                  <summary>Show ATS evidence and CV profile</summary>
+                  <div class="cv-candidate__details">
+                    <div>
+                      <h3>Matched keywords</h3>
+                      ${renderKeywordChips(
+                        ats.matchedKeywords,
+                        'No matched keywords recorded.',
+                        'matched'
+                      )}
+                    </div>
+                    <div>
+                      <h3>Missing keywords</h3>
+                      ${renderKeywordChips(
+                        ats.missingKeywords,
+                        'No missing keywords recorded.',
+                        'missing'
+                      )}
+                    </div>
+                  </div>
+                  ${
+                    Array.isArray(ats.suggestions) && ats.suggestions.length
+                      ? `<h3>ATS suggestions</h3>${renderSuggestions(
+                          ats.suggestions
+                        )}`
+                      : ''
+                  }
+                  ${
+                    Array.isArray(cv.tags) && cv.tags.length
+                      ? `<h3>CV tags</h3>${renderKeywordChips(
+                          cv.tags,
+                          '',
+                          'profile'
+                        )}`
+                      : ''
+                  }
+                  ${
+                    Array.isArray(cv.use_cases) && cv.use_cases.length
+                      ? `<h3>Best use cases</h3>${renderSuggestions(
+                          cv.use_cases
+                        )}`
+                      : ''
+                  }
+                </details>
+              </article>
+            `;
+          }).join('')}
+        </fieldset>
+        <button type="submit">Select CV for next action</button>
+      </form>
+    `
+    : '<p>No ranked CV candidates are available for this review.</p>';
+
+  const cvSelectionStatus = cvSelectionMessage
+    ? `<p class="status--success" role="status">${escapeHtml(cvSelectionMessage)}</p>`
+    : '';
+
+  const organisation = renderOptionalDetail(
+    'Organisation',
+    formData.organisationName
+  );
+
+  const organisationUrl = formData.organisationUrl
+    ? `    <p><strong>Organisation website or LinkedIn page:</strong> ${renderAdvertLink(formData.organisationUrl)}</p>
+  `
+    : '';
+
+  const stakeholderSource = formData.stakeholderSource
+    ? `    <p><strong>Stakeholder source:</strong> ${renderAdvertLink(formData.stakeholderSource)}</p>
+  `
+    : '';
+  const reference = renderOptionalDetail(
+    'Vacancy reference',
+    formData.jobReference
+  );
+
+  const advert = formData.jobAdvertLink
+    ? `    <p><strong>Job advert:</strong> ${renderAdvertLink(formData.jobAdvertLink)}</p>
+`
+    : '';
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Application review</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #f5f7fb;
+      color: #152033;
+    }
+
+    body {
+      margin: 0;
+      padding: 2rem 1rem;
+    }
+
+    main {
+      width: min(96vw, 94rem);
+      max-width: none;
+      margin: 0 auto;
+      padding: clamp(1rem, 2.5vw, 2.5rem);
+      background: #ffffff;
+      border: 1px solid #d7deea;
+      border-radius: 0.75rem;
+      box-shadow: 0 0.5rem 1.5rem rgb(21 32 51 / 8%);
+    }
+
+    .notice {
+      padding: 1rem;
+      border-left: 0.25rem solid #2563eb;
+      background: #eff6ff;
+      color: #475569;
+      line-height: 1.5;
+    }
+
+    .panel {
+      margin: 1.5rem 0;
+      padding: 1.25rem;
+      border: 1px solid #cbd5e1;
+      border-left-width: 0.35rem;
+      border-radius: 0.5rem;
+    }
+
+    .panel > h2:first-child {
+      margin-top: 0;
+    }
+
+    .panel--vacancy {
+      border-left-color: #2563eb;
+      background: #eff6ff;
+    }
+
+    .panel--decision {
+      border-left-color: #7c3aed;
+      background: #f5f3ff;
+    }
+
+    .panel--research,
+    .research-panel {
+      border-left-color: #d97706;
+      background: #fffbeb;
+    }
+
+    .panel--proposal,
+    .refinement-panel {
+      border-left-color: #15803d;
+      background: #f0fdf4;
+    }
+
+    .refinement-proposal {
+      margin: 1.5rem 0;
+      padding: 1.25rem;
+      border: 1px solid #86efac;
+      border-left: 0.35rem solid #16a34a;
+      border-radius: 0.5rem;
+      background: #f0fdf4;
+    }
+
+    .panel--current {
+      border-left-color: #0f766e;
+      background: #f0fdfa;
+    }
+
+    .cv-selection-list {
+      display: grid;
+      grid-template-columns: repeat(
+        auto-fit,
+        minmax(min(100%, 32rem), 1fr)
+      );
+      gap: 1rem;
+      margin: 1rem 0;
+      padding: 0;
+      border: 0;
+    }
+
+    .cv-selection-list > legend {
+      font-weight: 700;
+    }
+
+    .cv-candidate {
+      padding: 1rem;
+      border: 1px solid #c4b5fd;
+      border-radius: 0.4rem;
+      background: #ffffff;
+    }
+
+    .cv-candidate--selected {
+      border-left: 0.3rem solid #7c3aed;
+      background: #faf5ff;
+    }
+
+    .cv-candidate__choice {
+      display: flex;
+      gap: 0.6rem;
+      align-items: flex-start;
+      font-weight: 600;
+    }
+
+    .cv-candidate__choice input {
+      width: auto;
+      margin-top: 0.3rem;
+    }
+
+    .cv-candidate__score {
+      margin: 0.75rem 0 0;
+    }
+
+    .cv-candidate__summary {
+      color: #475569;
+      font-size: 0.9rem;
+    }
+
+    .cv-candidate__details-toggle {
+      margin-top: 0.75rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid #ddd6fe;
+    }
+
+    .cv-candidate__details-toggle > summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 2.5rem;
+      padding: 0.55rem 0.7rem;
+      border: 1px solid #c4b5fd;
+      border-radius: 0.4rem;
+      background: #ffffff;
+      color: #5b21b6;
+      cursor: pointer;
+      font-weight: 700;
+      list-style: none;
+      user-select: none;
+    }
+
+    .cv-candidate__details-toggle > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .cv-candidate__details-toggle > summary::marker {
+      content: '';
+    }
+
+    .cv-candidate__details-toggle > summary::after {
+      content: 'Show details +';
+      flex: 0 0 auto;
+      margin-left: 1rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .cv-candidate__details-toggle[open] > summary {
+      border-color: #8b5cf6;
+      background: #f5f3ff;
+    }
+
+    .cv-candidate__details-toggle[open] > summary::after {
+      content: 'Hide details -';
+    }
+
+    .cv-candidate__details-toggle > summary:hover {
+      border-color: #7c3aed;
+      background: #faf5ff;
+    }
+
+    .cv-candidate__details-toggle > summary:focus-visible {
+      outline: 3px solid #c4b5fd;
+      outline-offset: 2px;
+    }
+
+    .cv-candidate__details {
+      display: grid;
+      grid-template-columns: repeat(
+        auto-fit,
+        minmax(min(100%, 14rem), 1fr)
+      );
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    .cv-candidate h3 {
+      margin: 0 0 0.5rem;
+      font-size: 0.95rem;
+    }
+
+    .cv-keywords {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .cv-keyword {
+      display: inline-flex;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      padding: 0.25rem 0.55rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 999px;
+      background: #f8fafc;
+      color: #334155;
+      font-size: 0.86rem;
+      line-height: 1.2;
+    }
+
+    .cv-keywords--matched .cv-keyword {
+      border-color: #86efac;
+      background: #f0fdf4;
+      color: #166534;
+    }
+
+    .cv-keywords--missing .cv-keyword {
+      border-color: #fdba74;
+      background: #fff7ed;
+      color: #9a3412;
+    }
+
+    .cv-keywords--profile .cv-keyword {
+      border-color: #c4b5fd;
+      background: #f5f3ff;
+      color: #5b21b6;
+    }
+
+    .cv-suggestions {
+      margin: 0.75rem 0 0;
+      padding-left: 1.2rem;
+    }
+
+    .cv-suggestions li + li {
+      margin-top: 0.35rem;
+    }
+
+    @media (max-width: 44rem) {
+      main {
+        width: auto;
+        border-radius: 0.4rem;
+      }
+
+      .cv-selection-list {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .status--success {
+      margin: 0 0 1rem;
+      padding: 0.8rem 1rem;
+      border-left: 0.25rem solid #15803d;
+      border-radius: 0.25rem;
+      background: #dcfce7;
+      color: #14532d;
+    }
+
+    .research-panel,
+    .refinement-panel {
+      margin: 1.5rem 0;
+      padding: 1.25rem;
+      border: 1px solid #cbd5e1;
+      border-left-width: 0.35rem;
+      border-radius: 0.5rem;
+    }
+
+    .research-panel details {
+      padding: 0.25rem 0;
+    }
+
+    .research-panel summary {
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    .refinement-panel fieldset {
+      display: grid;
+      gap: 0.65rem;
+      margin: 1rem 0;
+      padding: 0;
+      border: 0;
+    }
+
+    .refinement-panel label {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      font-weight: 400;
+    }
+
+    .draft {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 18rem;
+      resize: vertical;
+      padding: 1rem;
+      border: 1px solid #d7deea;
+      border-radius: 0.4rem;
+      background: #f8fafc;
+      font: inherit;
+      line-height: 1.5;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      margin: 1rem 0;
+    }
+
+    button {
+      padding: 0.7rem 1rem;
+      border: 0;
+      border-radius: 0.4rem;
+      background: #2563eb;
+      color: #ffffff;
+      cursor: pointer;
+      font: inherit;
+    }
+
+    a {
+      color: #1d4ed8;
+    }
+
+    #copy-status {
+      min-height: 1.5rem;
+      color: #475569;
+    }
+    .rich-editor-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      margin: 0.6rem 0;
+      padding: 0.65rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 0.45rem;
+      background: #f8fafc;
+    }
+
+    .rich-editor-toolbar button {
+      min-height: 2.2rem;
+      padding: 0.35rem 0.6rem;
+      border: 1px solid #94a3b8;
+      border-radius: 0.3rem;
+      background: #ffffff;
+      color: #1e293b;
+    }
+
+    .rich-editor-toolbar button:hover {
+      border-color: #7c3aed;
+      background: #faf5ff;
+    }
+
+    .rich-editor {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 18rem;
+      overflow-wrap: anywhere;
+      padding: 1rem;
+      border: 1px solid #94a3b8;
+      border-radius: 0.45rem;
+      background: #ffffff;
+      color: #152033;
+      line-height: 1.55;
+      white-space: normal;
+    }
+
+    .rich-editor:focus {
+      border-color: #7c3aed;
+      outline: 3px solid #ddd6fe;
+      outline-offset: 2px;
+    }
+
+    .rich-editor p {
+      margin: 0 0 1rem;
+    }
+
+    .rich-editor p:last-child {
+      margin-bottom: 0;
+    }
+
+    .rich-editor [data-highlight="true"] {
+      background-color: #fff2a8;
+    }
+
+    .rich-editor-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      margin-top: 0.75rem;
+    }
+
+    .rich-editor-status {
+      color: #475569;
+    }
+
+    .rich-editor-notice {
+      margin: 0.75rem 0;
+      color: #475569;
+      font-size: 0.9rem;
+    }
+
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Application review</h1>
+    <p>Review the prepared local draft before you send anything manually.</p>
+
+    <section class="panel panel--vacancy">
+      <h2>Vacancy details</h2>
+      <p><strong>Role:</strong> ${escapeHtml(role)}</p>
+      <p><strong>Location:</strong> ${escapeHtml(location)}</p>
+      ${organisation}${organisationUrl}${stakeholderSource}${reference}${advert}
+    </section>
+
+    <section class="panel panel--decision">
+      <h2>CV selection and ATS comparison</h2>
+      <p><strong>Recommended CV:</strong> ${escapeHtml(bestCv.role_name || bestCv.role_code || 'Not available')}</p>
+${alternative}
+${score}
+      <p><strong>Subject:</strong> ${escapeHtml(subject)}</p>
+      ${cvSelectionStatus}
+      ${cvSelectionMarkup}
+      <p class="notice">Changing the selected CV does not alter the current cover letter. A future explicit generation or refinement action can use the selected CV.</p>
+    </section>
+
+    <section class="research-panel panel--research">
+      <h2>Organisation research</h2>
+      <p>Research is optional. It will not alter the cover letter automatically.</p>
+      <form method="post" action="/organisation-research">
+        <input type="hidden" name="reviewId" value="${escapeHtml(reviewId)}">
+        <input type="hidden" name="organisationName" value="${escapeHtml(formData.organisationName || '')}">
+        <input type="hidden" name="organisationUrl" value="${escapeHtml(formData.organisationUrl || '')}">
+        <input type="hidden" name="jobTitle" value="${escapeHtml(role)}">
+        <button type="submit">Research organisation</button>
+      </form>
+    </section>
+
+    ${researchMarkup}
+
+    ${refinementMarkup}
+
+    <section class="panel panel--current">
+      <h2>Current cover letter draft</h2>
+      ${
+        refinementProposal?.appliedMessage
+          ? `<p class="status--success" role="status">${escapeHtml(refinementProposal.appliedMessage)}</p>`
+          : ''
+      }
+      <label for="cover-letter-draft">Editable cover letter draft</label>
+      <div class="rich-editor-toolbar" role="toolbar" aria-label="Cover letter formatting" data-editor-target="cover-letter-draft">
+        <button type="button" data-editor-command="bold" title="Bold selected text"><strong>B</strong></button>
+        <button type="button" data-editor-command="italic" title="Italic selected text"><em>I</em></button>
+        <button type="button" data-editor-command="insertUnorderedList" title="Bullet list">â€¢ List</button>
+        <button type="button" data-editor-command="insertOrderedList" title="Numbered list">1. List</button>
+        <button type="button" data-editor-command="hiliteColor" data-command-value="#fff2a8" title="Highlight selected text">Highlight</button>
+        <button type="button" data-editor-command="createLink" title="Add a link">Link</button>
+        <button type="button" data-editor-command="unlink" title="Remove link">Unlink</button>
+        <button type="button" data-editor-command="removeFormat" title="Clear selected formatting">Clear format</button>
+        <button type="button" data-editor-command="undo" title="Undo">Undo</button>
+        <button type="button" data-editor-command="redo" title="Redo">Redo</button>
+      </div>
+      <div
+        id="cover-letter-draft"
+        class="rich-editor rich-editor--current"
+        contenteditable="true"
+        role="textbox"
+        aria-multiline="true"
+        aria-label="Editable current cover letter draft"
+        data-editor-name="Current cover letter">${escapeHtml(plainText).replace(/\n/g, '<br>')}</div>
+      <p class="rich-editor-notice">
+        Formatting and text edits remain in this browser until a later explicit save action is added.
+      </p>
+
+      <div class="actions">
+        <button id="copy-cover-letter" type="button">Copy rich text</button>
+        <span id="copy-status" role="status" aria-live="polite"></span>
+      </div>
+    </section>
+
+    <p><a href="/">Prepare another application</a></p>
+    <p class="notice">This local tool does not send email. Review and send manually.</p>
+  </main>
+
+  <script nonce="__SCRIPT_NONCE__">
+    const copyButton = document.getElementById('copy-cover-letter');
+    const draft = document.getElementById('cover-letter-draft');
+    const copyStatus = document.getElementById('copy-status');
+
+    function selectDraftForManualCopy() {
+      const range = document.createRange();
+      range.selectNodeContents(draft);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      draft.focus();
+      copyStatus.textContent = 'Text selected. Copy it manually.';
+    }
+
+
+
+    function editorPlainText(editor) {
+      return String(editor?.innerText || '')
+        .replace(/\\n{3,}/g, '\\n\\n')
+        .trim();
+    }
+
+    async function copyRichEditor(editor, status) {
+      const html = String(editor?.innerHTML || '').trim();
+      const text = editorPlainText(editor);
+
+      if (
+        !navigator.clipboard ||
+        !navigator.clipboard.write ||
+        !window.ClipboardItem
+      ) {
+        return false;
+      }
+
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': new Blob([html], { type: 'text/html' }),
+            'text/plain': new Blob([text], { type: 'text/plain' })
+          })
+        ]);
+        status.textContent = 'Rich text copied.';
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    function selectEditorForManualCopy(editor, status) {
+      const range = document.createRange();
+      range.selectNodeContents(editor);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      editor.focus();
+      status.textContent = 'Text selected. Copy it manually.';
+    }
+
+    function runEditorCommand(editor, status, command, value = null) {
+      editor.focus();
+
+      if (command === 'createLink') {
+        const href = window.prompt(
+          'Enter a full http(s) link for the selected text:'
+        );
+
+        if (!href) {
+          return;
+        }
+
+        try {
+          const url = new URL(href);
+
+          if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+            status.textContent = 'Only http(s) links are allowed.';
+            return;
+          }
+
+          document.execCommand('createLink', false, url.href);
+          status.textContent = 'Link added locally.';
+        } catch {
+          status.textContent = 'Enter a valid full http(s) link.';
+        }
+
+        return;
+      }
+
+      document.execCommand(command, false, value);
+      status.textContent =
+        'Formatting updated locally; it is not saved yet.';
+    }
+
+    document.querySelectorAll('.rich-editor-toolbar').forEach((toolbar) => {
+      const editor = document.getElementById(toolbar.dataset.editorTarget);
+      const status = editor?.id === 'cover-letter-draft'
+        ? copyStatus
+        : document.querySelector(
+            '[data-editor-status="' + editor?.id + '"]'
+          );
+
+      if (!editor || !status) {
+        return;
+      }
+
+      toolbar.addEventListener('mousedown', (event) => {
+        const button = event.target.closest('button[data-editor-command]');
+
+        if (!button) {
+          return;
+        }
+
+        event.preventDefault();
+        runEditorCommand(
+          editor,
+          status,
+          button.dataset.editorCommand,
+          button.dataset.commandValue || null
+        );
+      });
+    });
+
+    document.querySelectorAll('.rich-copy-button').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const editor = document.getElementById(button.dataset.copyEditor);
+        const status = document.querySelector(
+          '[data-editor-status="' + button.dataset.copyEditor + '"]'
+        );
+
+        if (!editor || !status) {
+          return;
+        }
+
+        const copied = await copyRichEditor(editor, status);
+
+        if (!copied) {
+          selectEditorForManualCopy(editor, status);
+        }
+      });
+    });
+
+    document.querySelectorAll('.rich-editor').forEach((editor) => {
+      editor.addEventListener('input', () => {
+        const status = editor.id === 'cover-letter-draft'
+          ? copyStatus
+          : document.querySelector(
+              '[data-editor-status="' + editor.id + '"]'
+            );
+
+        if (status) {
+          status.textContent =
+            'Local edits are not saved until an explicit save action is added.';
+        }
+      });
+    });
+
+    copyButton.addEventListener('click', async () => {
+      try {
+        const richCopied = await copyRichEditor(draft, copyStatus);
+
+        if (richCopied) {
+          return;
+        }
+
+        if (!navigator.clipboard || !navigator.clipboard.writeText) {
+          selectDraftForManualCopy();
+          return;
+        }
+
+        const copied = await Promise.race([
+          navigator.clipboard.writeText(draft.value).then(() => true),
+          new Promise((resolve) => {
+            window.setTimeout(() => resolve(false), 500);
+          })
+        ]);
+
+        if (!copied) {
+          selectDraftForManualCopy();
+          return;
+        }
+
+        copyStatus.textContent = 'Cover letter copied to clipboard.';
+      } catch {
+        selectDraftForManualCopy();
+      }
+    });
+  </script>
+</body>
+</html>`;
+}
