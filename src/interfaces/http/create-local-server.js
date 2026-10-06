@@ -1,4 +1,4 @@
-import { createServer } from 'node:http';
+﻿import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import {
   acceptRefinedCoverLetter
@@ -257,8 +257,8 @@ function renderApplicationForm({
     <p class="intro">Prepare and review a local application draft before manually sending it.</p>
 ${errorSummary}    <form id="application-form" method="post" action="/applications" autocomplete="on">
 ${renderField('jobTitle', 'Job title', values.jobTitle, { required: true })}
-${renderField('organisationName', 'Organisation name', values.organisationName)}
 ${renderField('organisationUrl', 'Organisation website or LinkedIn page', values.organisationUrl, { type: 'url' })}
+${renderField('organisationName', 'Organisation name', values.organisationName)}
 ${renderField('stakeholderSource', 'Stakeholder source or recruiter page', values.stakeholderSource, {
   placeholder: 'Recruiter name or relevant source URL'
 })}
@@ -282,8 +282,8 @@ ${renderField('cvHighlights', 'CV highlights', values.cvHighlights, { placeholde
 
     const fieldNames = [
       'jobTitle',
-      'organisationName',
       'organisationUrl',
+      'organisationName',
       'stakeholderSource',
       'jobAdvertLink',
       'jobReference',
@@ -291,6 +291,87 @@ ${renderField('cvHighlights', 'CV highlights', values.cvHighlights, { placeholde
       'jobDescriptionText',
       'cvHighlights'
     ];
+
+    const organisationUrlField = form.elements.namedItem('organisationUrl');
+    const organisationNameField = form.elements.namedItem('organisationName');
+    const stakeholderSourceField = form.elements.namedItem('stakeholderSource');
+
+    function normalizeLinkedInCompanyUrl(value) {
+      const text = String(value || '').trim();
+
+      if (!text) {
+        return null;
+      }
+
+      let url;
+
+      try {
+        url = new URL(text);
+      } catch {
+        return null;
+      }
+
+      const hostname = url.hostname.toLowerCase()
+        .replace(/^www\./, '');
+
+      if (hostname !== 'linkedin.com') {
+        return null;
+      }
+
+      const segments = url.pathname
+        .split('/')
+        .filter(Boolean);
+
+      if (segments[0]?.toLowerCase() !== 'company' || !segments[1]) {
+        return null;
+      }
+
+      const slug = decodeURIComponent(segments[1]).trim();
+
+      if (!slug) {
+        return null;
+      }
+
+      const page = String(segments[2] || '').toLowerCase();
+
+      return {
+        slug,
+        companyUrl:
+          'https://www.linkedin.com/company/' + encodeURIComponent(slug),
+        peopleUrl:
+          'https://www.linkedin.com/company/' +
+          encodeURIComponent(slug) +
+          '/people'
+      };
+    }
+
+    function applyLinkedInCompanyDetails() {
+      const normalized = normalizeLinkedInCompanyUrl(
+        organisationUrlField?.value
+      );
+
+      if (!normalized) {
+        return;
+      }
+
+      if (organisationUrlField) {
+        organisationUrlField.value = normalized.companyUrl;
+      }
+
+      if (organisationNameField && !organisationNameField.value.trim()) {
+        organisationNameField.value = normalized.slug;
+      }
+
+      if (
+        stakeholderSourceField &&
+        normalized.peopleUrl &&
+        !stakeholderSourceField.value.trim()
+      ) {
+        stakeholderSourceField.value = normalized.peopleUrl;
+      }
+
+      saveDraft();
+    }
 
     function readSavedDraft() {
       try {
@@ -333,6 +414,17 @@ ${renderField('cvHighlights', 'CV highlights', values.cvHighlights, { placeholde
     }
 
     restoreDraft();
+    applyLinkedInCompanyDetails();
+
+    organisationUrlField?.addEventListener(
+      'change',
+      applyLinkedInCompanyDetails
+    );
+
+    organisationUrlField?.addEventListener(
+      'blur',
+      applyLinkedInCompanyDetails
+    );
 
     form.addEventListener('input', saveDraft);
 
@@ -544,11 +636,29 @@ function renderRefinementPanel({
 
   const proposalMarkup = refinementProposal?.proposedDraft
     ? `
-      <section class="refinement-proposal">
+      <section class="refinement-proposal panel--proposal">
         <h2>Proposed cover-letter refinement</h2>
         <p>This proposal has not changed the current draft.</p>
         <label for="proposed-cover-letter">Proposed cover letter</label>
-        <textarea id="proposed-cover-letter" class="draft" readonly>${escapeHtml(refinementProposal.proposedDraft)}</textarea>
+        <div
+          id="proposed-cover-letter"
+          class="rich-editor rich-editor--proposal"
+          contenteditable="true"
+          role="textbox"
+          aria-multiline="true"
+          aria-label="Editable proposed cover letter"
+          data-editor-name="Proposed cover letter">${escapeHtml(refinementProposal.proposedDraft).replace(/\n/g, '<br>')}</div>
+        <div class="rich-editor-actions">
+          <button
+            type="button"
+            class="rich-copy-button"
+            data-copy-editor="proposed-cover-letter">Copy rich text</button>
+          <span
+            class="rich-editor-status"
+            data-editor-status="proposed-cover-letter"
+            role="status"
+            aria-live="polite"></span>
+        </div>
         ${
           Array.isArray(refinementProposal.warnings) &&
           refinementProposal.warnings.length
@@ -571,7 +681,7 @@ function renderRefinementPanel({
       : '';
 
   return `
-    <section class="refinement-panel">
+    <section class="refinement-panel panel--proposal">
       <h2>Polish cover letter</h2>
       <p>Research is reviewed manually first. Any refinement is a proposal and will not alter the current draft automatically.</p>
       ${selectorMarkup}
@@ -587,11 +697,20 @@ function renderApplicationReview({
   reviewId = '',
   research = null,
   currentDraftPlainText = '',
-  refinementProposal = null
+  refinementProposal = null,
+  selectedCvRoleCode = '',
+  cvSelectionMessage = ''
 }) {
   const bestCv = prepared.recommendation?.bestCv || {};
   const alternativeCv = prepared.recommendation?.alternativeCv || null;
   const atsScore = prepared.recommendation?.ats?.score;
+  const rankedCvs = Array.isArray(prepared.rankedCvs)
+    ? prepared.rankedCvs
+    : [];
+  const defaultCvRoleCode = String(bestCv.role_code || '').trim();
+  const activeCvRoleCode = String(
+    selectedCvRoleCode || defaultCvRoleCode
+  ).trim();
   const plainText =
     currentDraftPlainText || prepared.coverLetter?.plainText || '';
   const researchMarkup = renderOrganisationResearch(
@@ -613,6 +732,138 @@ function renderApplicationReview({
 
   const score = Number.isFinite(atsScore)
     ? `<p><strong>ATS score:</strong> ${escapeHtml(atsScore)}</p>`
+    : '';
+
+  const renderKeywordChips = (keywords, emptyText, variant) => {
+    const values = Array.isArray(keywords)
+      ? keywords
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+      : [];
+
+    return values.length
+      ? `<ul class="cv-keywords cv-keywords--${escapeHtml(variant)}">${values
+        .map((value) => `<li class="cv-keyword">${escapeHtml(value)}</li>`)
+        .join('')}</ul>`
+      : `<p>${escapeHtml(emptyText)}</p>`;
+  };
+
+  const renderSuggestions = (suggestions) => {
+    const values = Array.isArray(suggestions)
+      ? suggestions
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+      : [];
+
+    return values.length
+      ? `<ul class="cv-suggestions">${values
+        .map((value) => `<li>${escapeHtml(value)}</li>`)
+        .join('')}</ul>`
+      : '';
+  };
+
+  const cvSelectionMarkup = rankedCvs.length
+    ? `
+      <form method="post" action="/review-cv-selection">
+        <input type="hidden" name="reviewId" value="${escapeHtml(reviewId)}">
+        <fieldset class="cv-selection-list">
+          <legend>Select the CV to use for the next explicit action</legend>
+          ${rankedCvs.map((candidate, index) => {
+            const cv = candidate?.cv || {};
+            const ats = candidate?.ats || {};
+            const roleCode = String(cv.role_code || '').trim();
+            const roleName = String(
+              cv.role_name || roleCode || 'Unnamed CV'
+            ).trim();
+            const isSelected = roleCode === activeCvRoleCode;
+            const isRecommended = roleCode === defaultCvRoleCode;
+
+            return `
+              <article class="cv-candidate${isSelected ? ' cv-candidate--selected' : ''}">
+                <label class="cv-candidate__choice">
+                  <input
+                    type="radio"
+                    name="selectedCvRoleCode"
+                    value="${escapeHtml(roleCode)}"
+                    ${isSelected ? 'checked' : ''}>
+                  <span>
+                    <strong>${escapeHtml(roleName)}</strong>
+                    ${roleCode ? ` (${escapeHtml(roleCode)})` : ''}
+                    ${isRecommended ? ' â€” recommended by local ATS ranking' : ''}
+                  </span>
+                </label>
+                <p class="cv-candidate__score">
+                  <strong>ATS score:</strong> ${escapeHtml(
+                    Number.isFinite(ats.score) ? ats.score : 'Not available'
+                  )}
+                  <span class="cv-candidate__summary">
+                    Â· Matched ${
+                      Array.isArray(ats.matchedKeywords)
+                        ? ats.matchedKeywords.length
+                        : 0
+                    }
+                    Â· Missing ${
+                      Array.isArray(ats.missingKeywords)
+                        ? ats.missingKeywords.length
+                        : 0
+                    }
+                  </span>
+                </p>
+                <details class="cv-candidate__details-toggle">
+                  <summary>Show ATS evidence and CV profile</summary>
+                  <div class="cv-candidate__details">
+                    <div>
+                      <h3>Matched keywords</h3>
+                      ${renderKeywordChips(
+                        ats.matchedKeywords,
+                        'No matched keywords recorded.',
+                        'matched'
+                      )}
+                    </div>
+                    <div>
+                      <h3>Missing keywords</h3>
+                      ${renderKeywordChips(
+                        ats.missingKeywords,
+                        'No missing keywords recorded.',
+                        'missing'
+                      )}
+                    </div>
+                  </div>
+                  ${
+                    Array.isArray(ats.suggestions) && ats.suggestions.length
+                      ? `<h3>ATS suggestions</h3>${renderSuggestions(
+                          ats.suggestions
+                        )}`
+                      : ''
+                  }
+                  ${
+                    Array.isArray(cv.tags) && cv.tags.length
+                      ? `<h3>CV tags</h3>${renderKeywordChips(
+                          cv.tags,
+                          '',
+                          'profile'
+                        )}`
+                      : ''
+                  }
+                  ${
+                    Array.isArray(cv.use_cases) && cv.use_cases.length
+                      ? `<h3>Best use cases</h3>${renderSuggestions(
+                          cv.use_cases
+                        )}`
+                      : ''
+                  }
+                </details>
+              </article>
+            `;
+          }).join('')}
+        </fieldset>
+        <button type="submit">Select CV for next action</button>
+      </form>
+    `
+    : '<p>No ranked CV candidates are available for this review.</p>';
+
+  const cvSelectionStatus = cvSelectionMessage
+    ? `<p class="status--success" role="status">${escapeHtml(cvSelectionMessage)}</p>`
     : '';
 
   const organisation = renderOptionalDetail(
@@ -659,9 +910,10 @@ function renderApplicationReview({
     }
 
     main {
-      max-width: 52rem;
+      width: min(96vw, 94rem);
+      max-width: none;
       margin: 0 auto;
-      padding: 2rem;
+      padding: clamp(1rem, 2.5vw, 2.5rem);
       background: #ffffff;
       border: 1px solid #d7deea;
       border-radius: 0.75rem;
@@ -674,6 +926,279 @@ function renderApplicationReview({
       background: #eff6ff;
       color: #475569;
       line-height: 1.5;
+    }
+
+    .panel {
+      margin: 1.5rem 0;
+      padding: 1.25rem;
+      border: 1px solid #cbd5e1;
+      border-left-width: 0.35rem;
+      border-radius: 0.5rem;
+    }
+
+    .panel > h2:first-child {
+      margin-top: 0;
+    }
+
+    .panel--vacancy {
+      border-left-color: #2563eb;
+      background: #eff6ff;
+    }
+
+    .panel--decision {
+      border-left-color: #7c3aed;
+      background: #f5f3ff;
+    }
+
+    .panel--research,
+    .research-panel {
+      border-left-color: #d97706;
+      background: #fffbeb;
+    }
+
+    .panel--proposal,
+    .refinement-panel {
+      border-left-color: #15803d;
+      background: #f0fdf4;
+    }
+
+    .refinement-proposal {
+      margin: 1.5rem 0;
+      padding: 1.25rem;
+      border: 1px solid #86efac;
+      border-left: 0.35rem solid #16a34a;
+      border-radius: 0.5rem;
+      background: #f0fdf4;
+    }
+
+    .panel--current {
+      border-left-color: #0f766e;
+      background: #f0fdfa;
+    }
+
+    .cv-selection-list {
+      display: grid;
+      grid-template-columns: repeat(
+        auto-fit,
+        minmax(min(100%, 32rem), 1fr)
+      );
+      gap: 1rem;
+      margin: 1rem 0;
+      padding: 0;
+      border: 0;
+    }
+
+    .cv-selection-list > legend {
+      font-weight: 700;
+    }
+
+    .cv-candidate {
+      padding: 1rem;
+      border: 1px solid #c4b5fd;
+      border-radius: 0.4rem;
+      background: #ffffff;
+    }
+
+    .cv-candidate--selected {
+      border-left: 0.3rem solid #7c3aed;
+      background: #faf5ff;
+    }
+
+    .cv-candidate__choice {
+      display: flex;
+      gap: 0.6rem;
+      align-items: flex-start;
+      font-weight: 600;
+    }
+
+    .cv-candidate__choice input {
+      width: auto;
+      margin-top: 0.3rem;
+    }
+
+    .cv-candidate__score {
+      margin: 0.75rem 0 0;
+    }
+
+    .cv-candidate__summary {
+      color: #475569;
+      font-size: 0.9rem;
+    }
+
+    .cv-candidate__details-toggle {
+      margin-top: 0.75rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid #ddd6fe;
+    }
+
+    .cv-candidate__details-toggle > summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 2.5rem;
+      padding: 0.55rem 0.7rem;
+      border: 1px solid #c4b5fd;
+      border-radius: 0.4rem;
+      background: #ffffff;
+      color: #5b21b6;
+      cursor: pointer;
+      font-weight: 700;
+      list-style: none;
+      user-select: none;
+    }
+
+    .cv-candidate__details-toggle > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .cv-candidate__details-toggle > summary::marker {
+      content: '';
+    }
+
+    .cv-candidate__details-toggle > summary::after {
+      content: 'Show details +';
+      flex: 0 0 auto;
+      margin-left: 1rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .cv-candidate__details-toggle[open] > summary {
+      border-color: #8b5cf6;
+      background: #f5f3ff;
+    }
+
+    .cv-candidate__details-toggle[open] > summary::after {
+      content: 'Hide details -';
+    }
+
+    .cv-candidate__details-toggle > summary:hover {
+      border-color: #7c3aed;
+      background: #faf5ff;
+    }
+
+    .cv-candidate__details-toggle > summary:focus-visible {
+      outline: 3px solid #c4b5fd;
+      outline-offset: 2px;
+    }
+
+    .cv-candidate__details {
+      display: grid;
+      grid-template-columns: repeat(
+        auto-fit,
+        minmax(min(100%, 14rem), 1fr)
+      );
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    .cv-candidate h3 {
+      margin: 0 0 0.5rem;
+      font-size: 0.95rem;
+    }
+
+    .cv-keywords {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .cv-keyword {
+      display: inline-flex;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      padding: 0.25rem 0.55rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 999px;
+      background: #f8fafc;
+      color: #334155;
+      font-size: 0.86rem;
+      line-height: 1.2;
+    }
+
+    .cv-keywords--matched .cv-keyword {
+      border-color: #86efac;
+      background: #f0fdf4;
+      color: #166534;
+    }
+
+    .cv-keywords--missing .cv-keyword {
+      border-color: #fdba74;
+      background: #fff7ed;
+      color: #9a3412;
+    }
+
+    .cv-keywords--profile .cv-keyword {
+      border-color: #c4b5fd;
+      background: #f5f3ff;
+      color: #5b21b6;
+    }
+
+    .cv-suggestions {
+      margin: 0.75rem 0 0;
+      padding-left: 1.2rem;
+    }
+
+    .cv-suggestions li + li {
+      margin-top: 0.35rem;
+    }
+
+    @media (max-width: 44rem) {
+      main {
+        width: auto;
+        border-radius: 0.4rem;
+      }
+
+      .cv-selection-list {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .status--success {
+      margin: 0 0 1rem;
+      padding: 0.8rem 1rem;
+      border-left: 0.25rem solid #15803d;
+      border-radius: 0.25rem;
+      background: #dcfce7;
+      color: #14532d;
+    }
+
+    .research-panel,
+    .refinement-panel {
+      margin: 1.5rem 0;
+      padding: 1.25rem;
+      border: 1px solid #cbd5e1;
+      border-left-width: 0.35rem;
+      border-radius: 0.5rem;
+    }
+
+    .research-panel details {
+      padding: 0.25rem 0;
+    }
+
+    .research-panel summary {
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    .refinement-panel fieldset {
+      display: grid;
+      gap: 0.65rem;
+      margin: 1rem 0;
+      padding: 0;
+      border: 0;
+    }
+
+    .refinement-panel label {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      font-weight: 400;
     }
 
     .draft {
@@ -715,6 +1240,81 @@ function renderApplicationReview({
       min-height: 1.5rem;
       color: #475569;
     }
+    .rich-editor-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      margin: 0.6rem 0;
+      padding: 0.65rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 0.45rem;
+      background: #f8fafc;
+    }
+
+    .rich-editor-toolbar button {
+      min-height: 2.2rem;
+      padding: 0.35rem 0.6rem;
+      border: 1px solid #94a3b8;
+      border-radius: 0.3rem;
+      background: #ffffff;
+      color: #1e293b;
+    }
+
+    .rich-editor-toolbar button:hover {
+      border-color: #7c3aed;
+      background: #faf5ff;
+    }
+
+    .rich-editor {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 18rem;
+      overflow-wrap: anywhere;
+      padding: 1rem;
+      border: 1px solid #94a3b8;
+      border-radius: 0.45rem;
+      background: #ffffff;
+      color: #152033;
+      line-height: 1.55;
+      white-space: normal;
+    }
+
+    .rich-editor:focus {
+      border-color: #7c3aed;
+      outline: 3px solid #ddd6fe;
+      outline-offset: 2px;
+    }
+
+    .rich-editor p {
+      margin: 0 0 1rem;
+    }
+
+    .rich-editor p:last-child {
+      margin-bottom: 0;
+    }
+
+    .rich-editor [data-highlight="true"] {
+      background-color: #fff2a8;
+    }
+
+    .rich-editor-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      margin-top: 0.75rem;
+    }
+
+    .rich-editor-status {
+      color: #475569;
+    }
+
+    .rich-editor-notice {
+      margin: 0.75rem 0;
+      color: #475569;
+      font-size: 0.9rem;
+    }
+
   </style>
 </head>
 <body>
@@ -722,17 +1322,25 @@ function renderApplicationReview({
     <h1>Application review</h1>
     <p>Review the prepared local draft before you send anything manually.</p>
 
-    <h2>Vacancy details</h2>
-    <p><strong>Role:</strong> ${escapeHtml(role)}</p>
-    <p><strong>Location:</strong> ${escapeHtml(location)}</p>
-    ${organisation}${organisationUrl}${stakeholderSource}${reference}${advert}
-    <h2>Recommendation</h2>
-    <p><strong>Recommended CV:</strong> ${escapeHtml(bestCv.role_name || bestCv.role_code || 'Not available')}</p>
+    <section class="panel panel--vacancy">
+      <h2>Vacancy details</h2>
+      <p><strong>Role:</strong> ${escapeHtml(role)}</p>
+      <p><strong>Location:</strong> ${escapeHtml(location)}</p>
+      ${organisation}${organisationUrl}${stakeholderSource}${reference}${advert}
+    </section>
+
+    <section class="panel panel--decision">
+      <h2>CV selection and ATS comparison</h2>
+      <p><strong>Recommended CV:</strong> ${escapeHtml(bestCv.role_name || bestCv.role_code || 'Not available')}</p>
 ${alternative}
 ${score}
-    <p><strong>Subject:</strong> ${escapeHtml(subject)}</p>
+      <p><strong>Subject:</strong> ${escapeHtml(subject)}</p>
+      ${cvSelectionStatus}
+      ${cvSelectionMarkup}
+      <p class="notice">Changing the selected CV does not alter the current cover letter. A future explicit generation or refinement action can use the selected CV.</p>
+    </section>
 
-    <section class="research-panel">
+    <section class="research-panel panel--research">
       <h2>Organisation research</h2>
       <p>Research is optional. It will not alter the cover letter automatically.</p>
       <form method="post" action="/organisation-research">
@@ -748,19 +1356,43 @@ ${score}
 
     ${refinementMarkup}
 
-    <h2>Cover letter draft</h2>
-    ${
-      refinementProposal?.appliedMessage
-        ? `<p class="notice">${escapeHtml(refinementProposal.appliedMessage)}</p>`
-        : ''
-    }
-    <label for="cover-letter-draft">Generated cover letter</label>
-    <textarea id="cover-letter-draft" class="draft" readonly>${escapeHtml(plainText)}</textarea>
+    <section class="panel panel--current">
+      <h2>Current cover letter draft</h2>
+      ${
+        refinementProposal?.appliedMessage
+          ? `<p class="status--success" role="status">${escapeHtml(refinementProposal.appliedMessage)}</p>`
+          : ''
+      }
+      <label for="cover-letter-draft">Editable cover letter draft</label>
+      <div class="rich-editor-toolbar" role="toolbar" aria-label="Cover letter formatting">
+        <button type="button" data-editor-command="bold" title="Bold selected text"><strong>B</strong></button>
+        <button type="button" data-editor-command="italic" title="Italic selected text"><em>I</em></button>
+        <button type="button" data-editor-command="insertUnorderedList" title="Bullet list">â€¢ List</button>
+        <button type="button" data-editor-command="insertOrderedList" title="Numbered list">1. List</button>
+        <button type="button" data-editor-command="hiliteColor" data-command-value="#fff2a8" title="Highlight selected text">Highlight</button>
+        <button type="button" data-editor-command="createLink" title="Add a link">Link</button>
+        <button type="button" data-editor-command="unlink" title="Remove link">Unlink</button>
+        <button type="button" data-editor-command="removeFormat" title="Clear selected formatting">Clear format</button>
+        <button type="button" data-editor-command="undo" title="Undo">Undo</button>
+        <button type="button" data-editor-command="redo" title="Redo">Redo</button>
+      </div>
+      <div
+        id="cover-letter-draft"
+        class="rich-editor rich-editor--current"
+        contenteditable="true"
+        role="textbox"
+        aria-multiline="true"
+        aria-label="Editable current cover letter draft"
+        data-editor-name="Current cover letter">${escapeHtml(plainText).replace(/\n/g, '<br>')}</div>
+      <p class="rich-editor-notice">
+        Formatting and text edits remain in this browser until a later explicit save action is added.
+      </p>
 
-    <div class="actions">
-      <button id="copy-cover-letter" type="button">Copy cover letter</button>
-      <span id="copy-status" role="status" aria-live="polite"></span>
-    </div>
+      <div class="actions">
+        <button id="copy-cover-letter" type="button">Copy rich text</button>
+        <span id="copy-status" role="status" aria-live="polite"></span>
+      </div>
+    </section>
 
     <p><a href="/">Prepare another application</a></p>
     <p class="notice">This local tool does not send email. Review and send manually.</p>
@@ -772,13 +1404,151 @@ ${score}
     const copyStatus = document.getElementById('copy-status');
 
     function selectDraftForManualCopy() {
+      const range = document.createRange();
+      range.selectNodeContents(draft);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
       draft.focus();
-      draft.select();
-      copyStatus.textContent = 'Cover letter selected. Copy it manually.';
+      copyStatus.textContent = 'Text selected. Copy it manually.';
     }
+
+    const editorToolbar = document.querySelector('.rich-editor-toolbar');
+
+    function editorPlainText(editor) {
+      return String(editor?.innerText || '')
+        .replace(/\\n{3,}/g, '\\n\\n')
+        .trim();
+    }
+
+    async function copyRichEditor(editor, status) {
+      const html = String(editor?.innerHTML || '').trim();
+      const text = editorPlainText(editor);
+
+      if (
+        !navigator.clipboard ||
+        !navigator.clipboard.write ||
+        !window.ClipboardItem
+      ) {
+        return false;
+      }
+
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': new Blob([html], { type: 'text/html' }),
+            'text/plain': new Blob([text], { type: 'text/plain' })
+          })
+        ]);
+        status.textContent = 'Rich text copied.';
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    function selectEditorForManualCopy(editor, status) {
+      const range = document.createRange();
+      range.selectNodeContents(editor);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      editor.focus();
+      status.textContent = 'Text selected. Copy it manually.';
+    }
+
+    function runEditorCommand(command, value = null) {
+      draft.focus();
+
+      if (command === 'createLink') {
+        const href = window.prompt(
+          'Enter a full http(s) link for the selected text:'
+        );
+
+        if (!href) {
+          return;
+        }
+
+        try {
+          const url = new URL(href);
+
+          if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+            copyStatus.textContent = 'Only http(s) links are allowed.';
+            return;
+          }
+
+          document.execCommand('createLink', false, url.href);
+          copyStatus.textContent = 'Link added locally.';
+        } catch {
+          copyStatus.textContent = 'Enter a valid full http(s) link.';
+        }
+
+        return;
+      }
+
+      document.execCommand(command, false, value);
+      copyStatus.textContent =
+        'Formatting updated locally; it is not saved yet.';
+    }
+
+    if (editorToolbar) {
+      editorToolbar.addEventListener('mousedown', (event) => {
+        const button = event.target.closest('button[data-editor-command]');
+
+        if (!button) {
+          return;
+        }
+
+        event.preventDefault();
+        runEditorCommand(
+          button.dataset.editorCommand,
+          button.dataset.commandValue || null
+        );
+      });
+    }
+
+    document.querySelectorAll('.rich-copy-button').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const editor = document.getElementById(button.dataset.copyEditor);
+        const status = document.querySelector(
+          '[data-editor-status="' + button.dataset.copyEditor + '"]'
+        );
+
+        if (!editor || !status) {
+          return;
+        }
+
+        const copied = await copyRichEditor(editor, status);
+
+        if (!copied) {
+          selectEditorForManualCopy(editor, status);
+        }
+      });
+    });
+
+    document.querySelectorAll('.rich-editor').forEach((editor) => {
+      editor.addEventListener('input', () => {
+        const status = editor.id === 'cover-letter-draft'
+          ? copyStatus
+          : document.querySelector(
+              '[data-editor-status="' + editor.id + '"]'
+            );
+
+        if (status) {
+          status.textContent =
+            'Local edits are not saved until an explicit save action is added.';
+        }
+      });
+    });
 
     copyButton.addEventListener('click', async () => {
       try {
+        const richCopied = await copyRichEditor(draft, copyStatus);
+
+        if (richCopied) {
+          return;
+        }
+
         if (!navigator.clipboard || !navigator.clipboard.writeText) {
           selectDraftForManualCopy();
           return;
@@ -849,11 +1619,56 @@ export function createLocalServer({
     throw new Error('Application preparation is not configured.');
   },
   researchOrganization = null,
-  coverLetterRefinementPort = null
+  coverLetterRefinementPort = null,
+  localDiagnosticsEnabled = false,
+  diagnosticsWriter = process.stdout
 } = {}) {
+  const writeDiagnostic = (event, fields = {}) => {
+    if (!localDiagnosticsEnabled) {
+      return;
+    }
+
+    const safeFields = Object.entries(fields)
+      .filter(([, value]) =>
+        value !== undefined &&
+        value !== null &&
+        value !== ''
+      )
+      .map(([key, value]) => {
+        const normalized = typeof value === 'boolean'
+          ? String(value)
+          : String(value)
+            .replace(/[\r\n\t]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 160);
+
+        return `${key}=${JSON.stringify(normalized)}`;
+      });
+
+    diagnosticsWriter.write(
+      `[LOCAL_DIAGNOSTICS] event=${event}` +
+      `${safeFields.length ? ` ${safeFields.join(' ')}` : ''}\n`
+    );
+  };
+
+  const wordCount = (value = '') => String(value)
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .length;
+
   return createServer(async (request, response) => {
     const method = request.method || 'GET';
     const url = new URL(request.url || '/', 'http://localhost');
+    const requestId = randomUUID();
+    const requestStartedAt = Date.now();
+
+    writeDiagnostic('request_received', {
+      requestId,
+      method,
+      route: url.pathname
+    });
 
     if (method === 'GET' && url.pathname === '/') {
       sendHtml(response, 200, renderApplicationForm());
@@ -861,6 +1676,12 @@ export function createLocalServer({
     }
 
     if (method === 'POST' && url.pathname === '/applications') {
+      const actionStartedAt = Date.now();
+
+      writeDiagnostic('application_prepare_started', {
+        requestId
+      });
+
       const formBody = await readFormBody(request);
 
       if (formBody.error) {
@@ -888,6 +1709,19 @@ export function createLocalServer({
       }
 
       try {
+        writeDiagnostic('application_prepare_inputs_validated', {
+          requestId,
+          jobTitleProvided: Boolean(formData.jobTitle),
+          organisationProvided: Boolean(formData.organisationName),
+          organisationUrlProvided: Boolean(formData.organisationUrl),
+          jobDescriptionCharacters: String(
+            formData.jobDescriptionText || ''
+          ).length,
+          cvHighlightCount: Array.isArray(formData.cvHighlights)
+            ? formData.cvHighlights.length
+            : 0
+        });
+
         const prepared = await prepareApplication({
         jobDescriptionText: formData.jobDescriptionText,
         jobDescriptionOverrides: {
@@ -902,6 +1736,16 @@ export function createLocalServer({
 
         const reviewId = randomUUID();
 
+      writeDiagnostic('application_prepare_completed', {
+        requestId,
+        reviewId,
+        selectedCvCode: prepared.recommendation?.bestCv?.role_code || 'none',
+        atsScore: Number.isFinite(prepared.recommendation?.ats?.score)
+          ? prepared.recommendation.ats.score
+          : 'none',
+        durationMs: Date.now() - actionStartedAt
+      });
+
       reviewStore.set(reviewId, {
         formData,
         prepared,
@@ -909,6 +1753,8 @@ export function createLocalServer({
         originalDraftPlainText: prepared.coverLetter?.plainText || '',
         currentDraftPlainText: prepared.coverLetter?.plainText || '',
         refinementProposal: null,
+        selectedCvRoleCode: prepared.recommendation?.bestCv?.role_code || '',
+        cvSelectionMessage: '',
         createdAt: Date.now()
       });
 
@@ -926,11 +1772,12 @@ export function createLocalServer({
           ? error.message
           : 'Unknown application preparation error';
 
-        process.stderr.write(
-          `[LOCAL_DIAGNOSTICS] application_prepare_failed ` +
-          `errorType=${error?.name || 'UnknownError'} ` +
-          `message=${JSON.stringify(message)}\n`
-        );
+        writeDiagnostic('application_prepare_failed', {
+          requestId,
+          errorType: error?.name || 'UnknownError',
+          message,
+          durationMs: Date.now() - actionStartedAt
+        });
 
         sendHtml(
           response,
@@ -946,7 +1793,116 @@ export function createLocalServer({
       return;
     }
 
+    if (method === 'POST' && url.pathname === '/review-cv-selection') {
+      const actionStartedAt = Date.now();
+
+      writeDiagnostic('cv_selection_requested', {
+        requestId
+      });
+
+      const formBody = await readFormBody(request);
+
+      if (formBody.error) {
+        sendText(
+          response,
+          formBody.error.statusCode,
+          formBody.error.message
+        );
+        return;
+      }
+
+      const reviewId = String(
+        formBody.values.get('reviewId') || ''
+      ).trim();
+
+      const review = reviewStore.get(reviewId);
+
+      if (!review) {
+        sendHtml(
+          response,
+          410,
+          renderApplicationForm({
+            errors: [
+              'This application review is no longer available. Please prepare the application again.'
+            ]
+          })
+        );
+        return;
+      }
+
+      const selectedCvRoleCode = String(
+        formBody.values.get('selectedCvRoleCode') || ''
+      ).trim();
+
+      const rankedCvs = Array.isArray(review.prepared?.rankedCvs)
+        ? review.prepared.rankedCvs
+        : [];
+
+      const selectedCandidate = rankedCvs.find((candidate) =>
+        String(candidate?.cv?.role_code || '').trim() === selectedCvRoleCode
+      );
+
+      if (!selectedCandidate) {
+        sendHtml(
+          response,
+          400,
+          renderApplicationReview({
+            formData: review.formData,
+            prepared: review.prepared,
+            reviewId,
+            research: review.research,
+            currentDraftPlainText: review.currentDraftPlainText,
+            refinementProposal: review.refinementProposal,
+            selectedCvRoleCode: review.selectedCvRoleCode,
+            cvSelectionMessage: 'Select a CV from the available ranked candidates.'
+          })
+        );
+        return;
+      }
+
+      const updatedReview = {
+        ...review,
+        selectedCvRoleCode,
+        cvSelectionMessage:
+          'Selected CV updated. The current cover letter has not changed.'
+      };
+
+      reviewStore.set(reviewId, updatedReview);
+
+      writeDiagnostic('cv_selection_completed', {
+        requestId,
+        reviewId,
+        selectedCvCode: selectedCvRoleCode,
+        atsScore: Number.isFinite(selectedCandidate.ats?.score)
+          ? selectedCandidate.ats.score
+          : 'none',
+        durationMs: Date.now() - actionStartedAt
+      });
+
+      sendHtml(
+        response,
+        200,
+        renderApplicationReview({
+          formData: updatedReview.formData,
+          prepared: updatedReview.prepared,
+          reviewId,
+          research: updatedReview.research,
+          currentDraftPlainText: updatedReview.currentDraftPlainText,
+          refinementProposal: updatedReview.refinementProposal,
+          selectedCvRoleCode: updatedReview.selectedCvRoleCode,
+          cvSelectionMessage: updatedReview.cvSelectionMessage
+        })
+      );
+      return;
+    }
+
     if (method === 'POST' && url.pathname === '/organisation-research') {
+      const actionStartedAt = Date.now();
+
+      writeDiagnostic('organisation_research_started', {
+        requestId
+      });
+
       const formBody = await readFormBody(request);
 
       if (formBody.error) {
@@ -1029,6 +1985,14 @@ export function createLocalServer({
 
       let research;
 
+      writeDiagnostic('organisation_research_requested', {
+        requestId,
+        reviewId,
+        organisationProvided: Boolean(companyName),
+        organisationUrlProvided: Boolean(companyUrl),
+        roleProvided: Boolean(jobTitle)
+      });
+
       try {
         research = await researchOrganization({
           companyName,
@@ -1047,6 +2011,19 @@ export function createLocalServer({
         };
       }
 
+      writeDiagnostic('organisation_research_completed', {
+        requestId,
+        reviewId,
+        status: research.status || 'unknown',
+        valueCount: Array.isArray(research.companyValues)
+          ? research.companyValues.length
+          : 0,
+        sourceCount: Array.isArray(research.sources)
+          ? research.sources.length
+          : 0,
+        durationMs: Date.now() - actionStartedAt
+      });
+
       reviewStore.set(reviewId, {
         ...review,
         research,
@@ -1062,13 +2039,21 @@ export function createLocalServer({
           reviewId,
           research,
           currentDraftPlainText: review.currentDraftPlainText,
-          refinementProposal: review.refinementProposal
+          refinementProposal: review.refinementProposal,
+          selectedCvRoleCode: review.selectedCvRoleCode,
+          cvSelectionMessage: review.cvSelectionMessage
         })
       );
       return;
     }
 
     if (method === 'POST' && url.pathname === '/cover-letter-refinement') {
+      const actionStartedAt = Date.now();
+
+      writeDiagnostic('refinement_requested', {
+        requestId
+      });
+
       const formBody = await readFormBody(request);
 
       if (formBody.error) {
@@ -1109,7 +2094,9 @@ export function createLocalServer({
             reviewId,
             research: review.research,
             currentDraftPlainText: review.currentDraftPlainText,
-            refinementProposal
+            refinementProposal,
+            selectedCvRoleCode: review.selectedCvRoleCode,
+            cvSelectionMessage: review.cvSelectionMessage
           })
         );
       };
@@ -1155,6 +2142,15 @@ export function createLocalServer({
 
       let refinementProposal;
 
+      writeDiagnostic('refinement_provider_requested', {
+        requestId,
+        reviewId,
+        selectedValueCount: selectedResearchPoints.length,
+        cvHighlightCount: Array.isArray(review.formData.cvHighlights)
+          ? review.formData.cvHighlights.length
+          : 0
+      });
+
       try {
         refinementProposal = await coverLetterRefinementPort.refine({
           draftPlainText: review.currentDraftPlainText,
@@ -1181,6 +2177,16 @@ export function createLocalServer({
         };
       }
 
+      writeDiagnostic('refinement_completed', {
+        requestId,
+        reviewId,
+        proposalWordCount: wordCount(refinementProposal.proposedDraft),
+        warningCount: Array.isArray(refinementProposal.warnings)
+          ? refinementProposal.warnings.length
+          : 0,
+        durationMs: Date.now() - actionStartedAt
+      });
+
       reviewStore.set(reviewId, {
         ...review,
         refinementProposal
@@ -1191,6 +2197,12 @@ export function createLocalServer({
     }
 
     if (method === 'POST' && url.pathname === '/cover-letter-refinement/apply') {
+      const actionStartedAt = Date.now();
+
+      writeDiagnostic('refinement_apply_requested', {
+        requestId
+      });
+
       const formBody = await readFormBody(request);
 
       if (formBody.error) {
@@ -1298,6 +2310,15 @@ export function createLocalServer({
 
       reviewStore.set(reviewId, updatedReview);
 
+      writeDiagnostic('refinement_applied', {
+        requestId,
+        reviewId,
+        historyCount: updatedReview.refinementHistory.length,
+        previousWordCount: wordCount(review.currentDraftPlainText),
+        currentWordCount: wordCount(updatedReview.currentDraftPlainText),
+        durationMs: Date.now() - actionStartedAt
+      });
+
       sendHtml(
         response,
         200,
@@ -1307,7 +2328,9 @@ export function createLocalServer({
           reviewId,
           research: updatedReview.research,
           currentDraftPlainText: updatedReview.currentDraftPlainText,
-          refinementProposal: updatedReview.refinementProposal
+          refinementProposal: updatedReview.refinementProposal,
+          selectedCvRoleCode: updatedReview.selectedCvRoleCode,
+          cvSelectionMessage: updatedReview.cvSelectionMessage
         })
       );
       return;
@@ -1323,3 +2346,5 @@ export function createLocalServer({
     sendText(response, 404, 'Not Found');
   });
 }
+
+

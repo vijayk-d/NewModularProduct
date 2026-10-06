@@ -32,12 +32,16 @@ function createPreparedApplication() {
 async function startServer({
   prepareApplication = async () => createPreparedApplication(),
   researchOrganization = null,
-  coverLetterRefinementPort = null
+  coverLetterRefinementPort = null,
+  localDiagnosticsEnabled = false,
+  diagnosticsWriter = null
 } = {}) {
   const server = createLocalServer({
     prepareApplication,
     researchOrganization,
-    coverLetterRefinementPort
+    coverLetterRefinementPort,
+    localDiagnosticsEnabled,
+    diagnosticsWriter: diagnosticsWriter || process.stdout
   });
 
   server.listen(0, '127.0.0.1');
@@ -92,6 +96,29 @@ async function prepareReview(baseUrl, values = {}) {
   assert.equal(response.status, 200);
   return response;
 }
+
+test('renders organisation URL before organisation name in the preparation form', async (t) => {
+  const { server, baseUrl } = await startServer();
+  t.after(() => server.close());
+
+  const response = await request(baseUrl);
+
+  assert.equal(response.status, 200);
+
+  assert.ok(
+    response.text.indexOf('name="organisationUrl"') <
+      response.text.indexOf('name="organisationName"')
+  );
+  assert.match(response.text, /normalizeLinkedInCompanyUrl/);
+  assert.match(
+    response.text,
+    /normalizeLinkedInCompanyUrl/
+  );
+  assert.match(
+    response.text,
+    /https:\/\/www\.linkedin\.com\/company\//
+  );
+});
 
 test('serves the application preparation form at the root route', async (t) => {
   const { server, baseUrl } = await startServer();
@@ -374,11 +401,11 @@ test('renders review details, a safe advert link, and local copy controls', asyn
   );
   assert.match(
     response.text,
-    /<textarea id="cover-letter-draft" class="draft" readonly>/
+    /id="cover-letter-draft"[\s\S]*contenteditable="true"/
   );
   assert.match(
     response.text,
-    /<button id="copy-cover-letter" type="button">Copy cover letter<\/button>/
+    /<button id="copy-cover-letter" type="button">Copy rich text<\/button>/
   );
   assert.match(
     response.text,
@@ -534,7 +561,7 @@ test('re-renders an application review with inline organisation research', async
 
   assert.ok(
     response.text.indexOf('Research result') <
-      response.text.indexOf('Cover letter draft')
+      response.text.indexOf('Current cover letter draft')
   );
 });
 
@@ -784,7 +811,7 @@ test('returns a refinement proposal without changing the current draft', async (
   assert.match(refined.text, /Dear Hiring Manager,/);
   assert.ok(
     refined.text.indexOf('Proposed refined draft') <
-      refined.text.indexOf('Cover letter draft')
+      refined.text.indexOf('Current cover letter draft')
   );
 });
 
@@ -911,7 +938,7 @@ test('applies a refinement proposal only through the explicit local apply route'
   );
   assert.match(
     proposed.text,
-    /Dear Hiring Manager,\n\nI am applying for the Project Manager role\./
+    /Dear Hiring Manager,[\s\S]*I am applying for the Project Manager role\./
   );
 
   const applied = await request(
@@ -934,11 +961,11 @@ test('applies a refinement proposal only through the explicit local apply route'
   );
   assert.match(
     applied.text,
-    /Dear Hiring Manager,\n\nThis is the approved refined draft\./
+    /Dear Hiring Manager,[\s\S]*This is the approved refined draft\./
   );
   assert.doesNotMatch(
     applied.text,
-    /<textarea id="proposed-cover-letter"/
+    /id="proposed-cover-letter"[\s\S]*contenteditable="true"/
   );
   assert.doesNotMatch(
     applied.text,
@@ -972,7 +999,7 @@ test('does not apply a refinement when no proposal exists', async (t) => {
   );
   assert.match(
     response.text,
-    /Dear Hiring Manager,\n\nI am applying for the Project Manager role\./
+    /Dear Hiring Manager,[\s\S]*I am applying for the Project Manager role\./
   );
 });
 
@@ -1000,3 +1027,212 @@ test('returns 410 when applying a refinement for an expired review', async (t) =
     /This application review is no longer available\. Please prepare the application again\./
   );
 });
+
+
+test('emits safe verbose diagnostics when enabled', async (t) => {
+  const lines = [];
+  const diagnosticsWriter = {
+    write(line) {
+      lines.push(line);
+    }
+  };
+
+  const { server, baseUrl } = await startServer({
+    localDiagnosticsEnabled: true,
+    diagnosticsWriter
+  });
+  t.after(() => server.close());
+
+  const response = await request(baseUrl, '/applications', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: formBody({
+      jobTitle: 'Project Manager',
+      jobDescriptionText: 'Private job description that must not be logged.'
+    })
+  });
+
+  assert.equal(response.status, 200);
+
+  const output = lines.join('');
+
+  assert.match(output, /event="request_received"|event=request_received/);
+  assert.match(output, /event="application_prepare_started"|event=application_prepare_started/);
+  assert.match(output, /event="application_prepare_completed"|event=application_prepare_completed/);
+  assert.match(output, /jobDescriptionCharacters=/);
+  assert.doesNotMatch(
+    output,
+    /Private job description that must not be logged/
+  );
+  assert.doesNotMatch(output, /Dear Hiring Manager,/);
+});
+
+test('does not emit verbose diagnostics when disabled', async (t) => {
+  const lines = [];
+  const diagnosticsWriter = {
+    write(line) {
+      lines.push(line);
+    }
+  };
+
+  const { server, baseUrl } = await startServer({
+    localDiagnosticsEnabled: false,
+    diagnosticsWriter
+  });
+  t.after(() => server.close());
+
+  const response = await request(baseUrl);
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(lines, []);
+});
+
+
+test('renders ranked CV candidates and preserves the cover letter after selection', async (t) => {
+  const prepared = createPreparedApplication();
+
+  prepared.rankedCvs = [
+    {
+      cv: {
+        role_code: 'PM',
+        role_name: 'Project Manager'
+      },
+      ats: {
+        score: 82,
+        matchedKeywords: ['delivery', 'stakeholder'],
+        missingKeywords: ['programme'],
+        suggestions: ['Add measurable delivery outcomes.']
+      }
+    },
+    {
+      cv: {
+        role_code: 'ADL',
+        role_name: 'Agile Delivery Lead'
+      },
+      ats: {
+        score: 61,
+        matchedKeywords: ['delivery'],
+        missingKeywords: ['stakeholder'],
+        suggestions: []
+      }
+    }
+  ];
+
+  const { server, baseUrl } = await startServer({
+    prepareApplication: async () => prepared
+  });
+  t.after(() => server.close());
+
+  const review = await prepareReview(baseUrl);
+  const reviewId = extractReviewId(review.text);
+
+  assert.match(review.text, /CV selection and ATS comparison/);
+  assert.match(review.text, /Project Manager/);
+  assert.match(review.text, /Agile Delivery Lead/);
+  assert.match(review.text, /Matched keywords/);
+  assert.match(review.text, /Missing keywords/);
+  assert.match(review.text, /Add measurable delivery outcomes/);
+  assert.match(review.text, /value="PM"[^>]*checked/);
+
+  const response = await request(baseUrl, '/review-cv-selection', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: formBody({
+      reviewId,
+      selectedCvRoleCode: 'ADL'
+    })
+  });
+
+  assert.equal(response.status, 200);
+  assert.match(
+    response.text,
+    /Selected CV updated\. The current cover letter has not changed\./
+  );
+  assert.match(response.text, /value="ADL"[^>]*checked/);
+  assert.match(
+    response.text,
+    /Dear Hiring Manager,[\s\S]*I am applying for the Project Manager role\./
+  );
+
+  assert.match(
+    response.text,
+    /id="cover-letter-draft"[\s\S]*contenteditable="true"/
+  );
+
+  assert.match(
+    response.text,
+    /Formatting and text edits remain in this browser until a later explicit save action is added\./
+  );
+});
+
+test('rejects an unknown CV selection without changing the active CV', async (t) => {
+  const prepared = createPreparedApplication();
+
+  prepared.rankedCvs = [{
+    cv: {
+      role_code: 'PM',
+      role_name: 'Project Manager'
+    },
+    ats: {
+      score: 82,
+      matchedKeywords: [],
+      missingKeywords: [],
+      suggestions: []
+    }
+  }];
+
+  const { server, baseUrl } = await startServer({
+    prepareApplication: async () => prepared
+  });
+  t.after(() => server.close());
+
+  const review = await prepareReview(baseUrl);
+  const reviewId = extractReviewId(review.text);
+
+  const response = await request(baseUrl, '/review-cv-selection', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: formBody({
+      reviewId,
+      selectedCvRoleCode: 'UNKNOWN'
+    })
+  });
+
+  assert.equal(response.status, 400);
+  assert.match(
+    response.text,
+    /Select a CV from the available ranked candidates\./
+  );
+  assert.match(response.text, /value="PM"[^>]*checked/);
+});
+
+test('returns 410 when selecting a CV for an expired review', async (t) => {
+  const { server, baseUrl } = await startServer();
+  t.after(() => server.close());
+
+  const response = await request(baseUrl, '/review-cv-selection', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: formBody({
+      reviewId: 'missing-review',
+      selectedCvRoleCode: 'PM'
+    })
+  });
+
+  assert.equal(response.status, 410);
+  assert.match(
+    response.text,
+    /This application review is no longer available\. Please prepare the application again\./
+  );
+});
+
+
+

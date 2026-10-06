@@ -27,13 +27,58 @@ test('shows the application preparation form and manual-send notice', async ({ p
   ).toBeVisible();
 });
 
+test('normalizes a LinkedIn company People URL without overwriting user-entered fields', async ({ page }) => {
+  await page.goto('/');
+
+  const organisationUrl = page.getByLabel(
+    'Organisation website or LinkedIn page'
+  );
+
+  await organisationUrl.fill(
+    'https://www.linkedin.com/company/leidos/about/?trk=example'
+  );
+  await organisationUrl.blur();
+
+  await expect(organisationUrl).toHaveValue(
+    'https://www.linkedin.com/company/leidos'
+  );
+
+  await expect(
+    page.getByLabel('Organisation name')
+  ).toHaveValue('leidos');
+
+  await expect(
+    page.getByLabel('Stakeholder source or recruiter page')
+  ).toHaveValue(
+    'https://www.linkedin.com/company/leidos/people'
+  );
+
+  await page.getByLabel('Organisation name').fill('Leidos UK');
+  await page.getByLabel('Stakeholder source or recruiter page').fill(
+    'Existing recruiter source'
+  );
+
+  await organisationUrl.fill(
+    'https://www.linkedin.com/company/leidos/about/?trk=updated'
+  );
+  await organisationUrl.blur();
+
+  await expect(
+    page.getByLabel('Organisation name')
+  ).toHaveValue('Leidos UK');
+
+  await expect(
+    page.getByLabel('Stakeholder source or recruiter page')
+  ).toHaveValue('Existing recruiter source');
+});
+
 test('reviews vacancy details and provides local cover-letter copying', async ({ page }) => {
   await page.goto('/');
 
   await page.getByLabel('Job title').fill('Project Manager');
-  await page.getByLabel('Recruiter or hiring manager').fill(
-    'Hiring Manager'
-  );
+  await page.getByLabel(
+    'Stakeholder source or recruiter page'
+  ).fill('Hiring Manager');
   await page.getByLabel('Job advert URL').fill(
     'https://example.com/jobs/project-manager'
   );
@@ -66,7 +111,7 @@ test('reviews vacancy details and provides local cover-letter copying', async ({
 
   await expect(
     page.locator('p', {
-      hasText: 'Recruiter or hiring manager: Hiring Manager'
+      hasText: 'Stakeholder source: Hiring Manager'
     })
   ).toBeVisible();
 

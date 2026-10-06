@@ -68,6 +68,7 @@ const server = createLocalServer({
       )
     : null,
   coverLetterRefinementPort,
+  localDiagnosticsEnabled,
   prepareApplication(request) {
     if (localDiagnosticsEnabled) {
       process.stdout.write(
