@@ -1,20 +1,10 @@
 ﻿import { renderApplicationReview, renderRefinementPanel, renderOrganisationResearch, renderField, renderAdvertLink, getSelectableCompanyValues, renderResearchSource, renderOptionalDetail , renderApplicationForm, escapeHtml, sendHtml } from './rendering.js';
-import { readFormBody } from './form-body.js';
+import { readFormBody, sendText } from './form-body.js';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import {
   acceptRefinedCoverLetter
 } from '../../application/accept-refined-cover-letter.js';
-
-function sendText(response, statusCode, text, headers = {}) {
-  response.writeHead(statusCode, {
-    'content-type': 'text/plain; charset=utf-8',
-    'x-content-type-options': 'nosniff',
-    ...headers
-  });
-
-  response.end(text);
-}
 
 const reviewStore = new Map();
 
