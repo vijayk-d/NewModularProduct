@@ -18,7 +18,25 @@ test-results/
 blob-report/
 
 scripts/*.ps1
+scripts/*.ps1
 .patch-backups/# Local secrets and generated artifacts
+.env
+*.bak
+data/application-output.local.json
+
+.patch-backups/
+scripts/*.py
+test-perplexity-connectivity.bat
+"t research and cover letter refinement"
+
+
+scripts/*.ps1
+scripts/*.py
+.patch-backups/
+test-perplexity-connectivity.bat
+"t research and cover letter refinement"
+
+# Local secrets and generated artifacts
 .env
 *.bak
 data/application-output.local.json
