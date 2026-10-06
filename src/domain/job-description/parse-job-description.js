@@ -1,4 +1,5 @@
-import { normalize, tokenize, unique } from '../shared/text-normalization.js';
+import { normalize, unique } from '../shared/text-normalization.js';
+import { extractJobKeywords } from './extract-job-keywords.js';
 
 const methodologies = [
   'scrum',
@@ -94,9 +95,7 @@ export function parseJobDescription(text = '', provided = {}) {
     seniority: findTerms(normalizedText, seniorityTerms),
     domain: findTerms(normalizedText, domainTerms),
     methodologies: findTerms(normalizedText, methodologies),
-    keywords: unique(
-      tokenize(rawText).filter((token) => !stopWords.has(token))
-    ),
+    keywords: extractJobKeywords(rawText),
     location: suppliedLocation.length
       ? suppliedLocation
       : findTerms(normalizedText, locationTerms),
