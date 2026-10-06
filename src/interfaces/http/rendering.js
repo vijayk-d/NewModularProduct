@@ -437,3 +437,18 @@ export function renderResearchSource(source) {
     return `<li>${escapeHtml(title)}</li>`;
   }
 }
+
+export function getSelectableCompanyValues(research) {
+  const values = Array.isArray(research?.companyValues)
+    ? research.companyValues
+    : [];
+
+  return values
+    .map((value, index) => ({
+      id: `company-value-${index + 1}`,
+      type: 'value',
+      text: String(value || '').trim(),
+      sourceUrl: ''
+    }))
+    .filter((value) => value.text);
+}

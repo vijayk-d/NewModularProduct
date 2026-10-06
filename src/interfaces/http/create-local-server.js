@@ -1,4 +1,4 @@
-﻿import { renderField, renderAdvertLink, renderResearchSource, renderOptionalDetail , renderApplicationForm, escapeHtml, sendHtml } from './rendering.js';
+﻿import { renderField, renderAdvertLink, getSelectableCompanyValues, renderResearchSource, renderOptionalDetail , renderApplicationForm, escapeHtml, sendHtml } from './rendering.js';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import {
@@ -163,21 +163,6 @@ function renderOrganisationResearch(research, organisationUrl = '') {
       </details>
     </section>
   `;
-}
-
-function getSelectableCompanyValues(research) {
-  const values = Array.isArray(research?.companyValues)
-    ? research.companyValues
-    : [];
-
-  return values
-    .map((value, index) => ({
-      id: `company-value-${index + 1}`,
-      type: 'value',
-      text: String(value || '').trim(),
-      sourceUrl: ''
-    }))
-    .filter((value) => value.text);
 }
 
 function renderRefinementPanel({
