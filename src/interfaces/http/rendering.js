@@ -24,3 +24,30 @@ export function escapeHtml(value = '') {
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
 }
+
+export function renderField(name, label, value, options = {}) {
+  const {
+    type = 'text',
+    required = false,
+    placeholder = '',
+    textarea = false
+  } = options;
+
+  const requiredAttribute = required ? ' required' : '';
+  const placeholderAttribute = placeholder
+    ? ` placeholder="${escapeHtml(placeholder)}"`
+    : '';
+
+  if (textarea) {
+    return `      <label>
+        ${escapeHtml(label)}
+        <textarea name="${escapeHtml(name)}"${requiredAttribute}${placeholderAttribute}>${escapeHtml(value)}</textarea>
+      </label>`;
+  }
+
+  return `      <label>
+        ${escapeHtml(label)}
+        <input name="${escapeHtml(name)}" type="${escapeHtml(type)}" value="${escapeHtml(value)}"${requiredAttribute}${placeholderAttribute}>
+      </label>`;
+}
+
