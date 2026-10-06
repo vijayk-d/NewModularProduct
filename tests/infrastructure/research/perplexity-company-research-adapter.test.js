@@ -210,3 +210,77 @@ test('maps network, HTTP, and empty responses to controlled errors', async (t) =
     );
   });
 });
+
+
+test('accepts fenced JSON research output', async () => {
+  const adapter = createPerplexityCompanyResearchAdapter({
+    apiKey: 'test-key',
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({
+        choices: [{
+          message: {
+            content: [
+              '```json',
+              '{"summary":"A short factual summary.","companyValues":["Customer focus","Continuous improvement"]}',
+              '```'
+            ].join('\n')
+          }
+        }],
+        citations: []
+      })
+    })
+  });
+
+  const result = await adapter.research({
+    companyName: 'Example Organisation',
+    companyUrl: 'https://example.com',
+    jobDescriptionSummary: 'Project Manager'
+  });
+
+  assert.deepEqual(result.companyValues, [
+    'Customer focus',
+    'Continuous improvement'
+  ]);
+  assert.equal(result.summary, 'A short factual summary.');
+});
+
+test('accepts bare JSON research output and limits values', async () => {
+  const adapter = createPerplexityCompanyResearchAdapter({
+    apiKey: 'test-key',
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              summary: 'A factual organisation summary.',
+              companyValues: [
+                'Customer focus',
+                'Customer focus',
+                'Collaboration',
+                'Continuous improvement',
+                'Inclusion',
+                'Innovation',
+                'This sixth value is excluded'
+              ]
+            })
+          }
+        }],
+        citations: []
+      })
+    })
+  });
+
+  const result = await adapter.research({
+    companyName: 'Example Organisation'
+  });
+
+  assert.deepEqual(result.companyValues, [
+    'Customer focus',
+    'Collaboration',
+    'Continuous improvement',
+    'Inclusion',
+    'Innovation'
+  ]);
+});

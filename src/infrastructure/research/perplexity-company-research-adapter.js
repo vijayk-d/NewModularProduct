@@ -10,7 +10,9 @@ function normalizeCompanyValues(value) {
   const seen = new Set();
 
   return value.reduce((values, item) => {
-    const normalized = normalizeText(item);
+    const normalized = normalizeText(item)
+      .replace(/\s+/g, ' ')
+      .slice(0, 160);
 
     if (!normalized) {
       return values;
@@ -18,7 +20,7 @@ function normalizeCompanyValues(value) {
 
     const key = normalized.toLowerCase();
 
-    if (seen.has(key)) {
+    if (seen.has(key) || values.length >= 5) {
       return values;
     }
 
@@ -27,6 +29,24 @@ function normalizeCompanyValues(value) {
 
     return values;
   }, []);
+}
+
+function parseJsonObject(value = '') {
+  const content = normalizeText(value);
+
+  if (!content.startsWith('{') || !content.endsWith('}')) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(content);
+
+    return parsed && typeof parsed === 'object'
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function normalizeSource(source) {
@@ -62,30 +82,30 @@ function normalizeSource(source) {
 function parseStructuredResearch(text = '') {
   const content = normalizeText(text);
 
-  const match = content.match(
+  const taggedMatch = content.match(
     /<organisation-research>\s*([\s\S]*?)\s*<\/organisation-research>/i
   );
 
-  if (!match) {
+  const fencedMatch = content.match(
+    /```(?:json)?\s*([\s\S]*?)\s*```/i
+  );
+
+  const parsed =
+    parseJsonObject(taggedMatch?.[1]) ||
+    parseJsonObject(fencedMatch?.[1]) ||
+    parseJsonObject(content);
+
+  if (!parsed) {
     return {
-      summary: content,
+      summary: content.slice(0, 800),
       companyValues: []
     };
   }
 
-  try {
-    const parsed = JSON.parse(match[1]);
-
-    return {
-      summary: normalizeText(parsed?.summary) || content,
-      companyValues: normalizeCompanyValues(parsed?.companyValues)
-    };
-  } catch {
-    return {
-      summary: content,
-      companyValues: []
-    };
-  }
+  return {
+    summary: normalizeText(parsed.summary).slice(0, 800),
+    companyValues: normalizeCompanyValues(parsed.companyValues)
+  };
 }
 
 export function createPerplexityCompanyResearchAdapter({
@@ -100,26 +120,27 @@ export function createPerplexityCompanyResearchAdapter({
 
   return {
     async research(request) {
-      const prompt = [
-        `Research the organisation "${request.companyName}".`,
-        request.companyUrl
-          ? `Official website: ${request.companyUrl}.`
-          : '',
+      const companyName = normalizeText(request.companyName).slice(0, 120);
+      const companyUrl = normalizeText(request.companyUrl).slice(0, 300);
+      const jobDescriptionSummary = normalizeText(
         request.jobDescriptionSummary
-          ? `Relevant role context: ${request.jobDescriptionSummary}.`
-          : '',
-        'Use web sources and prefer the official organisation website.',
+      ).slice(0, 160);
+
+      const prompt = [
+        'Research this organisation using web sources.',
+        `Organisation: ${companyName}`,
+        companyUrl ? `Official website: ${companyUrl}` : '',
+        jobDescriptionSummary ? `Role context: ${jobDescriptionSummary}` : '',
+        'Prefer official organisation sources.',
         'Identify only explicitly stated organisation values.',
-        'Do not infer values from marketing language.',
-        'Return a short factual summary plus values in exactly this tagged JSON block:',
+        'Do not infer values from generic marketing language.',
+        'Return ONLY this tagged JSON block. Do not add prose before or after it.',
         '<organisation-research>',
-        '{"summary":"short factual summary","companyValues":["Value 1","Value 2"]}',
+        '{"summary":"Maximum 70 factual words.","companyValues":["Up to 5 explicit values, each under 12 words."]}',
         '</organisation-research>',
-        'The companyValues array must contain 0 to 8 concise values.',
-        'If no explicit values are found, return an empty companyValues array.',
-        'After the tagged block, list only sources actually used.',
+        'Use an empty companyValues array if no explicit values can be verified.',
         'Do not make claims about candidates or individuals.'
-      ].filter(Boolean).join('\n\n');
+      ].filter(Boolean).join('\n');
 
       let response;
 
