@@ -640,7 +640,8 @@ export function renderApplicationReview({
   currentDraftPlainText = '',
   refinementProposal = null,
   selectedCvRoleCode = '',
-  cvSelectionMessage = ''
+  cvSelectionMessage = '',
+  contacts = []
 }) {
   const bestCv = prepared.recommendation?.bestCv || {};
   const alternativeCv = prepared.recommendation?.alternativeCv || null;
@@ -1527,5 +1528,45 @@ ${score}
     });
   </script>
 </body>
-</html>`;
+</html>
+
+${renderRecruiterContacts(contacts)}
+`;
+
+}
+
+export function renderRecruiterContacts(contacts = []) {
+  if (!contacts.length) {
+    return "";
+  }
+
+  const rows = contacts.map((contact) => `
+    <tr>
+      <td>${escapeHtml(contact.fullName)}</td>
+      <td>${escapeHtml(contact.role || "")}</td>
+      <td>
+        <a href="${escapeHtml(contact.linkedinUrl)}" target="_blank" rel="noopener">
+          LinkedIn profile
+        </a>
+      </td>
+      <td>${escapeHtml(contact.emailDomain || "Not resolved")}</td>
+    </tr>
+  `).join("");
+
+  return `
+    <section class="review-section">
+      <h2>Organisation contacts</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Role</th>
+            <th>LinkedIn</th>
+            <th>Email domain</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </section>
+  `;
 }

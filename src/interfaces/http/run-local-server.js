@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { createRecruiterContactStore } from "../../application/recruiter-contact-store.js";
+import { createRecruiterContactImportService } from "../../application/import-recruiter-contacts.js";
 import { loadRuntimeConfig } from '../../config/load-runtime-config.js';
 import {
   createFileTemplateRepository
@@ -60,7 +62,29 @@ const coverLetterRefinementPort =
       })
     : null;
 
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const projectRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../"
+);
+
+const recruiterContactStore = createRecruiterContactStore({
+  filePath: path.join(
+    projectRoot,
+    "output",
+    "imported-recruiter-contacts.json"
+  )
+});
+
+const recruiterContactImportService = createRecruiterContactImportService({
+  contactStore: recruiterContactStore
+});
+
 const server = createLocalServer({
+  recruiterContactImportService,
+  recruiterContactStore,
   researchOrganization: companyResearchPort
     ? (request) => researchOrganization(
         request,

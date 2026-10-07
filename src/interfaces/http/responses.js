@@ -8,7 +8,6 @@ export function sendText(response, statusCode, text, headers = {}) {
   response.end(text);
 }
 
-
 export function sendHtml(response, statusCode, html) {
   const scriptNonce = crypto.randomUUID().replaceAll('-', '');
 
@@ -23,4 +22,12 @@ export function sendHtml(response, statusCode, html) {
   });
 
   response.end(document);
+}
+
+export function sendJson(response, statusCode, payload) {
+  response.writeHead(statusCode, {
+    "Content-Type": "application/json; charset=utf-8"
+  });
+
+  response.end(JSON.stringify(payload));
 }

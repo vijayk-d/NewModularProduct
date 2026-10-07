@@ -1,6 +1,6 @@
 ﻿import { renderApplicationReview, renderRefinementPanel, renderOrganisationResearch, renderField, renderAdvertLink, getSelectableCompanyValues, renderResearchSource, renderOptionalDetail , renderApplicationForm, escapeHtml} from './rendering.js';
 import { readFormBody } from './form-body.js';
-import { sendText, sendHtml } from './responses.js';
+import { sendText, sendHtml, sendJson } from './responses.js';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import {  acceptRefinedCoverLetter } from '../../application/accept-refined-cover-letter.js';
@@ -71,15 +71,59 @@ function validationErrors(formData) {
   return errors;
 }
 
+function readJsonBody(request) {
+  return new Promise((resolve, reject) => {
+    let rawBody = "";
+
+    request.on("data", (chunk) => {
+      rawBody += chunk;
+    });
+
+    request.on("end", () => {
+      try {
+        resolve(rawBody ? JSON.parse(rawBody) : {});
+      } catch {
+        reject(new Error("Request body must be valid JSON."));
+      }
+    });
+
+    request.on("error", reject);
+  });
+}
+
+function deriveReviewOrganisationId(formData) {
+  const organisationUrl = formData.organisationUrl || "";
+
+  try {
+    const hostname = new URL(organisationUrl).hostname
+      .replace(/^www\./, "");
+
+    return `domain:${hostname}`;
+  } catch {
+    return "organisation:unknown";
+  }
+}
+
 export function createLocalServer({
   prepareApplication = async () => {
     throw new Error('Application preparation is not configured.');
   },
+  recruiterContactImportService = null,
+  recruiterContactStore = null,
   researchOrganization = null,
   coverLetterRefinementPort = null,
   localDiagnosticsEnabled = false,
   diagnosticsWriter = process.stdout,
-} = {}) {
+} = {}) { // just added
+    async function loadOrganisationContacts(formData) {
+    if (!recruiterContactStore) {
+      return [];
+    }
+
+    return recruiterContactStore.listByOrganisation(
+      deriveReviewOrganisationId(formData)
+    );
+  }
   const writeDiagnostic = createDiagnosticWriter({
   enabled: localDiagnosticsEnabled,
   writer: diagnosticsWriter
@@ -324,7 +368,8 @@ export function createLocalServer({
           currentDraftPlainText: updatedReview.currentDraftPlainText,
           refinementProposal: updatedReview.refinementProposal,
           selectedCvRoleCode: updatedReview.selectedCvRoleCode,
-          cvSelectionMessage: updatedReview.cvSelectionMessage
+          cvSelectionMessage: updatedReview.cvSelectionMessage,
+          contacts: await loadOrganisationContacts(review.formData)
         })
       );
       return;
@@ -770,6 +815,48 @@ export function createLocalServer({
       return;
     }
 
+    if (
+      method === "POST" &&
+      (url.pathname === "/api/recruiters/import" ||
+        url.pathname === "/api/recruiter-contacts/import")
+    ) {
+      if (!recruiterContactImportService) {
+        sendJson(response, 503, {
+          ok: false,
+          error: "Recruiter contact import is not configured."
+        });
+        return;
+      }
+
+      try {
+        const body = await readJsonBody(request);
+
+        const result = await recruiterContactImportService.import({
+          sourceUrl: body.sourceUrl,
+          emailDomain: body.emailDomain,
+          recruiters: body.recruiters
+        });
+
+        writeDiagnostic("recruiter_contacts_imported", {
+          requestId,
+          organisationId: result.organisationId,
+          imported: result.imported,
+          duplicates: result.duplicates
+        });
+
+        sendJson(response, 200, result);
+      } catch (error) {
+        sendJson(response, 400, {
+          ok: false,
+          error: error instanceof Error
+            ? error.message
+            : "Recruiter contact import failed."
+        });
+      }
+
+      return;
+    }
+ 
     if (method !== 'GET' && method !== 'POST') {
       sendText(response, 405, 'Method Not Allowed', {
         allow: 'GET, POST'
