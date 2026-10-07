@@ -91,13 +91,30 @@ function responseSchema() {
 }
 
 function buildPrompt(request) {
+  const researchSources = Array.isArray(request.researchSources)
+    ? request.researchSources.slice(0, 5)
+    : [];
+
+  const researchContext = researchSources
+    .map((source) => {
+      const title = normalizeText(source?.title) || "Source";
+      const url = normalizeText(source?.url);
+
+      return url ? `- ${title}: ${url}` : `- ${title}`;
+    })
+    .join("\n");
+
   return JSON.stringify({
-    task: 'Propose a refined UK cover letter',
+    task: "Propose a refined UK cover letter",
     jobTitle: request.jobDescriptionSummary,
+    organisationName: normalizeText(request.organisationName),
+    organisationUrl: normalizeText(request.organisationUrl),
     originalCoverLetter: request.draftPlainText,
     candidateEvidence: request.selectedCvHighlights,
     selectedCompanyValues: request.companyValues,
     selectedResearchPoints: request.selectedResearchPoints,
+    publicResearchSources: researchSources,
+    researchContext,
     instructions: request.instructions,
     constraints: {
       maxWords: request.maxWords,
@@ -218,7 +235,8 @@ export function createPerplexityCoverLetterRefinementAdapter({
                       'You are a careful editor for UK job-application cover letters.',
                       'Return a proposal only; never mutate the original draft.',
                       'Use candidate evidence and manually selected research points supplied in the request.',
-                      'Web search is permitted only to check official organisation pages within the configured domain filter.',
+                      'When no selected research points are supplied, use only the supplied organisation details and public research sources as background context.',
+                      'Do not treat public research sources as verified organisational values.','Web search is permitted only to check official organisation pages within the configured domain filter.',
                       'Do not invent candidate achievements, metrics, employers, qualifications, certifications, tools, clearances, or company facts.',
                       'Do not claim the candidate has direct experience with the organisation.',
                       'Do not put citations, URLs, Markdown, headings, or commentary inside proposedDraft.',

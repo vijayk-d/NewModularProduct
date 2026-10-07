@@ -24,7 +24,7 @@ function createPreparedApplication() {
     },
     coverLetter: {
       subject: 'Project Manager application',
-      plainText: 'Dear Hiring Manager,\n\nI am applying for the Project Manager role.'
+      plainText: 'Dear Hiring Manager,\nI am applying for the Project Manager role.'
     }
   };
 }
@@ -797,20 +797,27 @@ test('returns a refinement proposal without changing the current draft', async (
 
   assert.equal(refined.status, 200);
   assert.deepEqual(refinementCalls, [{
-    draftPlainText:
-      'Dear Hiring Manager,\n\nI am applying for the Project Manager role.',
-    jobDescriptionSummary: 'Project Manager',
-    selectedCvHighlights: [],
-    companyValues: ['Delivery excellence'],
-    selectedResearchPoints: [{
-      id: 'company-value-1',
-      type: 'value',
-      text: 'Delivery excellence',
-      sourceUrl: ''
-    }],
-    organisationUrl: 'https://example.test',
-    instructions: '',
-    maxWords: 450
+  draftPlainText: "Dear Hiring Manager,\nI am applying for the Project Manager role.", jobDescriptionSummary: "Project Manager",
+  selectedCvHighlights: [],
+  companyValues: ["Delivery excellence"],
+  selectedResearchPoints: [
+    {
+      id: "company-value-1",
+      type: "value",
+      text: "Delivery excellence",
+      sourceUrl: ""
+    }
+  ],
+  organisationName: "Example Ltd",
+  organisationUrl: "https://example.test",
+  researchSources: [
+    {
+      title: "Example Ltd",
+      url: "https://example.test"
+    }
+  ],
+  instructions: "",
+  maxWords: 450
   }]);
   assert.match(refined.text, /Proposed refined draft/);
   assert.match(
@@ -824,48 +831,51 @@ test('returns a refinement proposal without changing the current draft', async (
   );
 });
 
-test('rejects refinement when no research value is selected', async (t) => {
+test("returns a refinement proposal when no research value is selected", async (t) => {
   const { server, baseUrl } = await startServer({
     researchOrganization: async () => ({
-      status: 'found',
-      companyValues: ['Delivery excellence'],
-      summary: 'Summary',
+      status: "found",
+      companyValues: ["Delivery excellence"],
+      summary: "Summary",
       sources: []
     }),
     coverLetterRefinementPort: {
       async refine() {
-        throw new Error('Should not be called.');
+        return {
+          proposedDraft: "Refined cover letter",
+          appliedResearchPointIds: [],
+          omittedResearchPointIds: [],
+          suggestedResearchPoints: [],
+          warnings: []
+        };
       }
     }
   });
+
   t.after(() => server.close());
 
   const review = await prepareReview(baseUrl);
   const reviewId = extractReviewId(review.text);
 
-  await request(baseUrl, '/organisation-research', {
-    method: 'POST',
+  await request(baseUrl, "/organisation-research", {
+    method: "POST",
     headers: {
-      'content-type': 'application/x-www-form-urlencoded'
+      "content-type": "application/x-www-form-urlencoded"
     },
     body: formBody({ reviewId })
   });
 
-  const response = await request(baseUrl, '/cover-letter-refinement', {
-    method: 'POST',
+  const response = await request(baseUrl, "/cover-letter-refinement", {
+    method: "POST",
     headers: {
-      'content-type': 'application/x-www-form-urlencoded'
+      "content-type": "application/x-www-form-urlencoded"
     },
     body: formBody({ reviewId })
   });
 
-  assert.equal(response.status, 400);
-  assert.match(
-    response.text,
-    /Select at least one verified organisation value/
-  );
+  assert.equal(response.status, 200);
+  assert.match(response.text, /Refined cover letter/);
 });
-
 test('retains the review when refinement is disabled', async (t) => {
   const { server, baseUrl } = await startServer();
   t.after(() => server.close());

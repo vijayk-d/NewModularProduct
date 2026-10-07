@@ -609,16 +609,6 @@ export function createLocalServer({
         review.research
       ).filter((point) => selectedIds.includes(point.id));
 
-      if (!selectedResearchPoints.length) {
-        renderReview(400, {
-          proposedDraft: '',
-          warnings: [
-            'Select at least one verified organisation value before requesting a refinement.'
-          ]
-        });
-        return;
-      }
-
       let refinementProposal;
 
       writeDiagnostic('refinement_provider_requested', {
@@ -631,22 +621,26 @@ export function createLocalServer({
       });
 
       try {
-        refinementProposal = await coverLetterRefinementPort.refine({
-          draftPlainText: review.currentDraftPlainText,
-          jobDescriptionSummary: review.formData.jobTitle,
-          selectedCvHighlights: Array.isArray(review.formData.cvHighlights)
-            ? review.formData.cvHighlights
-                .map((highlight) => String(highlight ?? '').trim())
-                .filter((highlight) =>
-                  highlight && highlight.toLowerCase() !== 'null'
-                )
-            : [],
-          companyValues: selectedResearchPoints.map((point) => point.text),
-          selectedResearchPoints,
-          organisationUrl: review.formData.organisationUrl,
-          instructions: '',
-          maxWords: 450
-        });
+      refinementProposal = await coverLetterRefinementPort.refine({
+        draftPlainText: review.currentDraftPlainText,
+        jobDescriptionSummary: review.formData.jobTitle,
+        selectedCvHighlights: Array.isArray(review.formData.cvHighlights)
+          ? review.formData.cvHighlights
+              .map((highlight) => String(highlight ?? "").trim())
+              .filter((highlight) =>
+                highlight && highlight.toLowerCase() !== "null"
+              )
+          : [],
+        companyValues: selectedResearchPoints.map((point) => point.text),
+        selectedResearchPoints,
+        organisationName: review.formData.organisationName,
+        organisationUrl: review.formData.organisationUrl,
+        researchSources: Array.isArray(review.research.sources)
+          ? review.research.sources
+          : [],
+        instructions: "",
+        maxWords: 450
+      });
       } catch {
         refinementProposal = {
           proposedDraft: '',

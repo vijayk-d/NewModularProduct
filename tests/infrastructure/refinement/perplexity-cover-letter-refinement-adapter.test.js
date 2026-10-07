@@ -216,3 +216,41 @@ test('maps network, HTTP, and malformed responses to controlled errors', async (
     );
   });
 });
+
+test("returns a proposal when no company values are selected", async () => {
+  const adapter = createPerplexityCoverLetterRefinementAdapter({
+    apiKey: "test-key",
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({
+        output_parsed: {
+          proposedDraft: "Refined cover letter",
+          appliedResearchPointIds: [],
+          omittedResearchPointIds: [],
+          suggestedResearchPoints: [],
+          warnings: []
+        }
+      })
+    })
+  });
+
+  const result = await adapter.refine({
+    draftPlainText: "Original cover letter",
+    jobDescriptionSummary: "Product Manager",
+    selectedCvHighlights: [],
+    companyValues: [],
+    selectedResearchPoints: [],
+    organisationName: "Example Ltd",
+    organisationUrl: "https://example.com",
+    researchSources: [
+      {
+        title: "About Example",
+        url: "https://example.com/about"
+      }
+    ],
+    instructions: "",
+    maxWords: 450
+  });
+
+  assert.equal(result.proposedDraft, "Refined cover letter");
+});

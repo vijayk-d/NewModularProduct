@@ -556,7 +556,7 @@ export function renderRefinementPanel({
                 `).join('')}
               </fieldset>
             `
-            : '<p class="rich-editor-notice">No verified organisation values were returned. You can still request a manual refinement.</p>'
+            : '<p class="rich-editor-notice">`No verified organisation values were returned. You can still polish the cover letter using the organisation details and available research sources.`</p>'
         }
         <button type="submit">Polish cover letter</button>
       </form>
