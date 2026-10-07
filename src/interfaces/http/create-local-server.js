@@ -4,8 +4,9 @@ import { sendText, sendHtml } from './responses.js';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import {  acceptRefinedCoverLetter } from '../../application/accept-refined-cover-letter.js';
+import { createReviewStore } from './review-store.js';
 
-const reviewStore = new Map();
+const reviewStore = createReviewStore();
 
 import { createDiagnosticWriter } from './diagnostics.js';
 
