@@ -632,6 +632,59 @@ export function renderRefinementPanel({
   `;
 }
 
+export function renderContactLinking(contactLinking = null) {
+  if (!contactLinking) {
+    return "";
+  }
+
+  const unlinkedContacts = contactLinking.unlinked || [];
+  const linkedContacts = contactLinking.linked || [];
+
+  const unlinkedRows = unlinkedContacts.map((contact) => `
+    <label>
+      <input
+        type="checkbox"
+        name="contactIds"
+        value="${escapeHtml(contact.id)}"
+      />
+      ${escapeHtml(contact.fullName)}
+      ${escapeHtml(contact.role || "")}
+    </label>
+  `).join("");
+
+  const linkedRows = linkedContacts.map((contact) => `
+    <li>${escapeHtml(contact.fullName)}</li>
+  `).join("");
+
+  return `
+    <section class="review-section">
+      <h2>Link imported contacts</h2>
+
+      ${contactLinking.linkedMessage
+        ? `<p>${escapeHtml(contactLinking.linkedMessage)}</p>`
+        : ""}
+
+      ${linkedContacts.length
+        ? `<h3>Linked contacts</h3><ul>${linkedRows}</ul>`
+        : ""}
+
+      ${unlinkedContacts.length
+        ? `
+          <form method="post" action="/recruiter-contacts/link">
+            <input
+              type="hidden"
+              name="reviewId"
+              value="${escapeHtml(contactLinking.reviewId)}"
+            />
+            ${unlinkedRows}
+            <button type="submit">Link selected contacts</button>
+          </form>
+        `
+        : "<p>No unlinked imported contacts are available.</p>"}
+    </section>
+  `;
+}
+
 export function renderApplicationReview({
   formData,
   prepared,
@@ -641,7 +694,8 @@ export function renderApplicationReview({
   refinementProposal = null,
   selectedCvRoleCode = '',
   cvSelectionMessage = '',
-  contacts = []
+  contacts = [],
+  contactLinking = null
 }) {
   const bestCv = prepared.recommendation?.bestCv || {};
   const alternativeCv = prepared.recommendation?.alternativeCv || null;
@@ -1531,6 +1585,8 @@ ${score}
 </html>
 
 ${renderRecruiterContacts(contacts)}
+
+${renderContactLinking(contactLinking)}
 `;
 
 }
