@@ -641,19 +641,43 @@ export function renderContactLinking(contactLinking = null) {
   const linkedContacts = contactLinking.linked || [];
 
   const unlinkedRows = unlinkedContacts.map((contact) => `
-    <label>
-      <input
-        type="checkbox"
-        name="contactIds"
-        value="${escapeHtml(contact.id)}"
-      />
-      ${escapeHtml(contact.fullName)}
-      ${escapeHtml(contact.role || "")}
-    </label>
+    <tr>
+      <td>
+        <input
+          type="checkbox"
+          class="contact-link-checkbox"
+          name="contactIds"
+          value="${escapeHtml(contact.id)}"
+        />
+      </td>
+      <td>${escapeHtml(contact.fullName)}</td>
+      <td>${escapeHtml(contact.role || "")}</td>
+      <td>
+        <a
+          href="${escapeHtml(contact.linkedinUrl)}"
+          target="_blank"
+          rel="noopener"
+        >
+          LinkedIn profile
+        </a>
+      </td>
+    </tr>
   `).join("");
 
   const linkedRows = linkedContacts.map((contact) => `
-    <li>${escapeHtml(contact.fullName)}</li>
+    <tr>
+      <td>${escapeHtml(contact.fullName)}</td>
+      <td>${escapeHtml(contact.role || "")}</td>
+      <td>
+        <a
+          href="${escapeHtml(contact.linkedinUrl)}"
+          target="_blank"
+          rel="noopener"
+        >
+          LinkedIn profile
+        </a>
+      </td>
+    </tr>
   `).join("");
 
   return `
@@ -665,26 +689,68 @@ export function renderContactLinking(contactLinking = null) {
         : ""}
 
       ${linkedContacts.length
-        ? `<h3>Linked contacts</h3><ul>${linkedRows}</ul>`
+        ? `
+          <h3>Linked contacts</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Role</th>
+                <th>LinkedIn</th>
+              </tr>
+            </thead>
+            <tbody>${linkedRows}</tbody>
+          </table>
+        `
         : ""}
 
       ${unlinkedContacts.length
         ? `
+          <h3>Available imported contacts</h3>
+
           <form method="post" action="/recruiter-contacts/link">
             <input
               type="hidden"
               name="reviewId"
               value="${escapeHtml(contactLinking.reviewId)}"
             />
-            ${unlinkedRows}
+
+            <table>
+              <thead>
+                <tr>
+                  <th>
+                    <input
+                      type="checkbox"
+                      id="select-all-contact-links"
+                    />
+                  </th>
+                  <th>Name</th>
+                  <th>Role</th>
+                  <th>LinkedIn</th>
+                </tr>
+              </thead>
+              <tbody>${unlinkedRows}</tbody>
+            </table>
+
             <button type="submit">Link selected contacts</button>
           </form>
+
+          <script>
+            document
+              .getElementById("select-all-contact-links")
+              ?.addEventListener("change", (event) => {
+                document
+                  .querySelectorAll(".contact-link-checkbox")
+                  .forEach((checkbox) => {
+                    checkbox.checked = event.target.checked;
+                  });
+              });
+          </script>
         `
         : "<p>No unlinked imported contacts are available.</p>"}
     </section>
   `;
 }
-
 export function renderApplicationReview({
   formData,
   prepared,
@@ -1588,7 +1654,6 @@ ${renderRecruiterContacts(contacts)}
 
 ${renderContactLinking(contactLinking)}
 `;
-
 }
 
 export function renderRecruiterContacts(contacts = []) {
