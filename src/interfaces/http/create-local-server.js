@@ -151,6 +151,15 @@ export function createLocalServer({
       return;
     }
 
+    if (method === "GET" && url.pathname === "/api/health") {
+      sendJson(response, 200, {
+        ok: true,
+        service: "new-modular-product"
+      });
+
+      return;
+    }
+
     if (method === 'POST' && url.pathname === '/applications') {
       const actionStartedAt = Date.now();
 

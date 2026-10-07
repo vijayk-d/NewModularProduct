@@ -9,6 +9,46 @@ export function createRecruiterContactStore({ filePath }) {
   let cache = null;
 
   return {
+    async listAll() {
+      return load();
+    },
+
+    async listByReview(reviewId) {
+      const contacts = await load();
+
+      return contacts.filter((contact) =>
+        Array.isArray(contact.linkedApplicationReviewIds) &&
+        contact.linkedApplicationReviewIds.includes(reviewId)
+      );
+    },
+
+    async linkToReview({ reviewId, contactIds }) {
+      const contacts = await load();
+      const linked = [];
+
+      for (const contact of contacts) {
+        if (!contactIds.includes(contact.id)) {
+          continue;
+        }
+
+        contact.linkedApplicationReviewIds = Array.isArray(
+          contact.linkedApplicationReviewIds
+        )
+          ? contact.linkedApplicationReviewIds
+          : [];
+
+        if (!contact.linkedApplicationReviewIds.includes(reviewId)) {
+          contact.linkedApplicationReviewIds.push(reviewId);
+        }
+
+        linked.push(contact);
+      }
+
+      await save(contacts);
+
+      return linked;
+    },
+
     async listByOrganisation(organisationId) {
       const contacts = await load();
       return contacts.filter(
