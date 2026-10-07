@@ -4,9 +4,8 @@ import { sendText, sendHtml } from './responses.js';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import {  acceptRefinedCoverLetter } from '../../application/accept-refined-cover-letter.js';
-import { createReviewStore } from './review-store.js';
 
-const reviewStore = createReviewStore();
+const reviewStore = new Map();
 
 import { createDiagnosticWriter } from './diagnostics.js';
 
@@ -79,13 +78,12 @@ export function createLocalServer({
   researchOrganization = null,
   coverLetterRefinementPort = null,
   localDiagnosticsEnabled = false,
-  diagnosticsWriter = process.stdout
+  diagnosticsWriter = process.stdout,
 } = {}) {
   const writeDiagnostic = createDiagnosticWriter({
-    enabled: localDiagnosticsEnabled,
-    writer: diagnosticsWriter
-  });
-
+  enabled: localDiagnosticsEnabled,
+  writer: diagnosticsWriter
+});
   const wordCount = (value = '') => String(value)
     .trim()
     .split(/\s+/)
@@ -112,10 +110,6 @@ export function createLocalServer({
     if (method === 'POST' && url.pathname === '/applications') {
       const actionStartedAt = Date.now();
 
-      writeDiagnostic('application_prepare_started', {
-        requestId
-      });
-
       const formBody = await readFormBody(request);
 
       if (formBody.error) {
@@ -128,6 +122,12 @@ export function createLocalServer({
       }
 
       const formData = normalizeFormData(formBody.values);
+
+      writeDiagnostic('application_prepare_started', {
+        requestId,
+        jobDescriptionCharacters: (formData.jobDescriptionText || '').length
+      });
+
       const errors = validationErrors(formData);
 
       if (errors.length) {
