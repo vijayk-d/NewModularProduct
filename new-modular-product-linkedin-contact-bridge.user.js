@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         New Modular Product - LinkedIn Contact Bridge
 // @namespace    local.new-modular-product
-// @version      0.1.0
+// @version      0.2.0
 // @description  Import visible LinkedIn People profiles into the New Modular Product local server.
 // @match        https://www.linkedin.com/company/*/people/*
 // @connect      127.0.0.1
@@ -16,6 +16,7 @@
 
   const API_URL = "http://127.0.0.1:3000/api/recruiters/import";
   const BUTTON_ID = "new-modular-product-contact-import";
+  const TABLE_ID = "new-modular-product-contact-table";
 
   const recruiterRoleKeywords = [
     "talent acquisition",
@@ -27,15 +28,23 @@
     "manager",
     "partner",
     "hr",
-    "human resources"
+    "human resources",
+    "people"
   ];
 
+  let importedProfiles = [];
+
   function cleanText(value) {
-    return String(value ?? "").replace(/\s+/g, " ").trim();
+    return String(value ?? "")
+      .replace(/\s+/g, " ")
+      .trim();
   }
 
   function normaliseProfileName(value) {
     return cleanText(value)
+      .replace(/^view\s+/i, "")
+      .replace(/’s profile$/i, "")
+      .replace(/'s profile$/i, "")
       .replace(/\(?\d+[\d,]*\+?\)?\s*(connections?|followers?|following)/gi, "")
       .replace(/•/g, "")
       .trim();
@@ -50,6 +59,64 @@
       firstName: parts[0] || "",
       lastName: parts.slice(1).join(" ") || ""
     };
+  }
+
+  function cleanRoleText(value, profileName) {
+    let role = cleanText(value);
+
+    if (profileName) {
+      const escapedName = profileName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      role = role.replace(new RegExp(`^view\\s+${escapedName}\\s*’?s?\\s*profile\\s*`, "i"), "");
+      role = role.replace(new RegExp(escapedName, "i"), "");
+    }
+
+    return role
+      .replace(/\d+(st|nd|rd|th)?\s+degree\s+connection/gi, "")
+      .replace(/mutual connections?/gi, "")
+      .replace(/\bconnect\b/gi, "")
+      .replace(/\bmessage\b/gi, "")
+      .replace(/\bfollow\b/gi, "")
+      .replace(/[•·|]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function extractRole(cardText, profileName) {
+    const cleaned = cleanRoleText(cardText, profileName);
+    const words = cleaned.split(" ").filter(Boolean);
+
+    // Prefer a concise trailing role phrase rather than connection noise.
+    const candidate = words.slice(-12).join(" ");
+
+    return hasRecruiterRole(candidate) ? candidate : "";
+  }
+
+  function extractLocation(cardText, profileName, role) {
+    let location = cleanText(cardText);
+
+    if (profileName) {
+      location = location.replace(profileName, "");
+    }
+
+    if (role) {
+      location = location.replace(role, "");
+    }
+
+    location = location
+      .replace(/\d+(st|nd|rd|th)?\s+degree\s+connection/gi, "")
+      .replace(/mutual connections?/gi, "")
+      .replace(/\bconnect\b/gi, "")
+      .replace(/[•·|]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    // Best-effort: LinkedIn often places a short location-like fragment
+    // before connection and action text. Avoid inventing data.
+    const locationMatch = location.match(
+      /\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*,\s*[A-Z]{2}\b)/
+    );
+
+    return locationMatch ? locationMatch[1] : "";
   }
 
   function hasRecruiterRole(value) {
@@ -68,24 +135,20 @@
       .querySelectorAll('a[href*="linkedin.com/in/"]')
       .forEach((anchor) => {
         const profileUrl = anchor.href.split("?")[0];
-        const name = normaliseProfileName(
-          anchor.getAttribute("aria-label") || anchor.textContent
-        );
+        const rawName =
+          anchor.getAttribute("aria-label") || anchor.textContent;
+        const name = normaliseProfileName(rawName);
 
         if (!name || name.length < 3 || seenUrls.has(profileUrl)) {
           return;
         }
 
         const card = anchor.closest("li") || anchor.parentElement;
-        const role = cleanText(card?.innerText || "");
-
-        if (!hasRecruiterRole(role)) {
-          return;
-        }
-
+        const cardText = cleanText(card?.innerText || "");
         const { firstName, lastName } = splitName(name);
+        const role = extractRole(cardText, name);
 
-        if (!firstName || !lastName) {
+        if (!firstName || !lastName || !hasRecruiterRole(role)) {
           return;
         }
 
@@ -95,14 +158,48 @@
           firstName,
           lastName,
           linkedinUrl: profileUrl,
-          role: cleanText(role).slice(0, 180),
-          location: "",
+          role,
+          location: extractLocation(cardText, name, role),
           source: "linkedin-visible",
           verified: false
         });
       });
 
     return profiles;
+  }
+
+  function renderTable() {
+    const table = document.getElementById(TABLE_ID);
+
+    if (!table) {
+      return;
+    }
+
+    const rows = importedProfiles.map((profile, index) => `
+      <tr>
+        <td>${index + 1}</td>
+        <td>${escapeHtml(profile.firstName)}</td>
+        <td>${escapeHtml(profile.lastName)}</td>
+        <td>${escapeHtml(profile.role)}</td>
+        <td>${escapeHtml(profile.location)}</td>
+      </tr>
+    `).join("");
+
+    table.querySelector("tbody").innerHTML = rows;
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+  }
+
+  function clearImportedProfiles() {
+    importedProfiles = [];
+    renderTable();
   }
 
   function importProfiles() {
@@ -113,6 +210,9 @@
         "No visible recruiter profiles found. Scroll the People page and try again."
       );
     }
+
+    importedProfiles = recruiters;
+    renderTable();
 
     return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
@@ -159,46 +259,84 @@
       return;
     }
 
-    const button = document.createElement("button");
+    const panel = document.createElement("div");
 
-    button.id = BUTTON_ID;
-    button.type = "button";
-    button.textContent = "Import contacts (New Modular Product)";
+    panel.id = BUTTON_ID;
 
-    Object.assign(button.style, {
+    Object.assign(panel.style, {
       position: "fixed",
       right: "24px",
       bottom: "24px",
       zIndex: "2147483647",
-      padding: "12px 16px",
-      border: "0",
-      borderRadius: "6px",
-      background: "#1f6f4a",
-      color: "#fff",
-      font: "600 14px sans-serif",
-      cursor: "pointer",
-      boxShadow: "0 8px 24px rgba(0, 0, 0, 0.25)"
+      padding: "16px",
+      borderRadius: "8px",
+      background: "#fff",
+      color: "#111",
+      font: "14px sans-serif",
+      boxShadow: "0 8px 24px rgba(0, 0, 0, 0.25)",
+      maxWidth: "720px",
+      maxHeight: "70vh",
+      overflow: "auto"
     });
 
-    button.addEventListener("click", async () => {
-      button.disabled = true;
-      button.textContent = "Importing…";
+    panel.innerHTML = `
+      <div style="display:flex;gap:8px;margin-bottom:8px;">
+        <button id="new-modular-product-import-button" type="button">
+          Import contacts
+        </button>
+        <button id="new-modular-product-clear-button" type="button">
+          Clear table
+        </button>
+      </div>
 
-      try {
-        const result = await importProfiles();
+      <div id="new-modular-product-status" style="margin-bottom:8px;">
+        Ready.
+      </div>
 
-        button.textContent = `${result.imported} imported, ${result.duplicates} duplicates`;
-      } catch (error) {
-        button.textContent = error.message || "Import failed.";
-      } finally {
-        setTimeout(() => {
-          button.disabled = false;
-          button.textContent = "Import contacts (New Modular Product)";
-        }, 5000);
-      }
-    });
+      <table id="${TABLE_ID}" style="border-collapse:collapse;width:100%;">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding:6px;border:1px solid #ccc;">#</th>
+            <th style="text-align:left;padding:6px;border:1px solid #ccc;">First name</th>
+            <th style="text-align:left;padding:6px;border:1px solid #ccc;">Last name</th>
+            <th style="text-align:left;padding:6px;border:1px solid #ccc;">Role</th>
+            <th style="text-align:left;padding:6px;border:1px solid #ccc;">Location</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    `;
 
-    document.body.append(button);
+    panel
+      .querySelector("#new-modular-product-import-button")
+      .addEventListener("click", async (event) => {
+        const status = panel.querySelector("#new-modular-product-status");
+
+        event.target.disabled = true;
+        status.textContent = "Importing…";
+
+        try {
+          const result = await importProfiles();
+
+          status.textContent =
+            `${result.imported} imported, ${result.duplicates} duplicates.`;
+        } catch (error) {
+          status.textContent = error.message || "Import failed.";
+        } finally {
+          event.target.disabled = false;
+        }
+      });
+
+    panel
+      .querySelector("#new-modular-product-clear-button")
+      .addEventListener("click", () => {
+        clearImportedProfiles();
+
+        panel.querySelector("#new-modular-product-status").textContent =
+          "Cleared the local import table. Server records were not deleted.";
+      });
+
+    document.body.append(panel);
   }
 
   addButton();
