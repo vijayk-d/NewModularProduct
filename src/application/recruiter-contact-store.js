@@ -56,6 +56,7 @@ export function createRecruiterContactStore({ filePath }) {
   }) {
     const contacts = await load();
     const requestedIds = new Set(contactIds || []);
+    const clearAll = !Array.isArray(contactIds) || contactIds.length === 0;
     const deletedContacts = [];
 
     const remainingContacts = contacts.filter((contact) => {
@@ -67,7 +68,7 @@ export function createRecruiterContactStore({ filePath }) {
         contact.linkedApplicationReviewIds.includes(reviewId);
 
       const isRequested =
-        !contactIds || requestedIds.has(contact.id);
+        clearAll || requestedIds.has(contact.id);
 
       const shouldDelete =
         belongsToOrganisation &&
