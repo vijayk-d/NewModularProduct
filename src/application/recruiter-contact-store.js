@@ -60,9 +60,6 @@ export function createRecruiterContactStore({ filePath }) {
     const deletedContacts = [];
 
     const remainingContacts = contacts.filter((contact) => {
-      const belongsToOrganisation =
-        contact.organisationId === organisationId;
-
       const isLinkedToReview =
         Array.isArray(contact.linkedApplicationReviewIds) &&
         contact.linkedApplicationReviewIds.includes(reviewId);
@@ -70,10 +67,17 @@ export function createRecruiterContactStore({ filePath }) {
       const isRequested =
         clearAll || requestedIds.has(contact.id);
 
+      const isLinkedInImported =
+        contact.source === "linkedin-visible" ||
+        contact.organisationId === "domain:linkedin.com" ||
+        contact.organisationId === "unknown:linkedin-import";
+
       const shouldDelete =
-        belongsToOrganisation &&
         !isLinkedToReview &&
-        isRequested;
+        isRequested &&
+        (clearAll
+          ? isLinkedInImported
+          : true);
 
       if (shouldDelete) {
         deletedContacts.push(contact);

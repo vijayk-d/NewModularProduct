@@ -735,6 +735,22 @@ export function renderContactLinking(contactLinking = null) {
             <button type="submit">Link selected contacts</button>
           </form>
 
+          <div class="contact-linking-actions" style="display:flex;gap:8px;margin-top:12px;">
+            <button
+              type="button"
+              class="delete-selected-contacts-button"
+              data-review-id="${escapeHtml(contactLinking.reviewId)}"
+            >
+              Delete selected
+            </button>
+            <button
+              type="button"
+              class="clear-imported-contacts-button"
+              data-review-id="${escapeHtml(contactLinking.reviewId)}"
+            >
+              Clear imported contacts
+            </button>
+          </div>
           <script nonce="__SCRIPT_NONCE__">
             document
               .getElementById("select-all-contact-links")
@@ -1649,6 +1665,7 @@ ${score}
   </script>
 
 
+      <script type="module" src="/review-page.js" nonce="__SCRIPT_NONCE__"></script>
 </body>
 </html>
 

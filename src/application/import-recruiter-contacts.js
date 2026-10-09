@@ -50,7 +50,11 @@ function deriveOrganisationId({ emailDomain, sourceUrl }) {
       .toLowerCase()
       .replace(/^www\./, "");
 
-    if (hostname && hostname !== "linkedin.com") {
+    if (hostname === "linkedin.com") {
+      return "domain:linkedin.com";
+    }
+
+    if (hostname) {
       return `domain:${hostname}`;
     }
   } catch {
