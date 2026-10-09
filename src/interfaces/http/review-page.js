@@ -135,15 +135,16 @@ export function attachReviewPageListeners() {
         "delete-selected-contacts-button"
       );
 
-      var contactIds = deleteSelected
-        ? Array.from(
-            document.querySelectorAll(
-              ".contact-link-checkbox:checked"
-            )
-          ).map(function (checkbox) {
-            return checkbox.value;
-          })
-        : [];
+      var contactSection = button.closest(".review-section");
+      var selector = deleteSelected
+        ? ".available-imported-contacts-body .contact-link-checkbox:checked"
+        : ".available-imported-contacts-body .contact-link-checkbox";
+
+      var contactIds = Array.from(
+        contactSection.querySelectorAll(selector)
+      ).map(function (checkbox) {
+        return checkbox.value;
+      });
 
       if (deleteSelected && !contactIds.length) {
         alert("Select at least one imported contact to delete.");
@@ -152,8 +153,8 @@ export function attachReviewPageListeners() {
 
       if (!deleteSelected) {
         var confirmed = window.confirm(
-          "Delete all unlinked imported contacts for this organisation? " +
-            "This cannot be undone."
+          "Delete all available imported contacts displayed in this section? " +
+            "Contacts linked to an application will be kept. This cannot be undone."
         );
 
         if (!confirmed) {
@@ -173,6 +174,7 @@ export function attachReviewPageListeners() {
             },
             body: JSON.stringify({
               reviewId: reviewId,
+              action: deleteSelected ? "deleteSelected" : "clearDisplayed",
               contactIds: contactIds
             })
           }

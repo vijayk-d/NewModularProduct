@@ -545,6 +545,97 @@ export function createLocalServer({
       return;
     }
 
+
+    if (method === "POST" && url.pathname === "/recruiter-contacts/link") {
+      const formBody = await readFormBody(request);
+
+      if (formBody.error) {
+        sendText(
+          response,
+          formBody.error.statusCode,
+          formBody.error.message
+        );
+        return;
+      }
+
+      const reviewId = String(
+        formBody.values.get("reviewId") || ""
+      ).trim();
+
+      const review = reviewStore.get(reviewId);
+
+      if (!review) {
+        sendHtml(response, 410, renderApplicationForm({
+          errors: [
+            "This application review is no longer available. Please prepare the application again."
+          ]
+        }));
+        return;
+      }
+
+      if (!recruiterContactStore) {
+        sendHtml(response, 503, await renderCompleteReview({ reviewId }));
+        return;
+      }
+
+      const contactIds = [...new Set(
+        formBody.values.getAll("contactIds")
+          .map((value) => String(value).trim())
+          .filter(Boolean)
+      )];
+
+      async function respondWithLinkMessage(statusCode, message) {
+        const html = await renderCompleteReview({ reviewId });
+        sendHtml(
+          response,
+          statusCode,
+          html.replace(
+            "<h2>Link imported contacts</h2>",
+            "<h2>Link imported contacts</h2>" +
+              `<p role="status">${escapeHtml(message)}</p>`
+          )
+        );
+      }
+
+      if (!contactIds.length) {
+        await respondWithLinkMessage(
+          400,
+          "Select at least one imported contact to link."
+        );
+        return;
+      }
+
+      try {
+        const contacts = await recruiterContactStore.listAll();
+        const existingIds = new Set(contacts.map((contact) => contact.id));
+
+        if (contactIds.some((id) => !existingIds.has(id))) {
+          await respondWithLinkMessage(
+            400,
+            "One or more selected contacts are no longer available. Refresh contacts and try again."
+          );
+          return;
+        }
+
+        await recruiterContactStore.linkToReview({
+          reviewId,
+          contactIds
+        });
+      } catch {
+        await respondWithLinkMessage(
+          500,
+          "Unable to link the selected contacts."
+        );
+        return;
+      }
+
+      await respondWithLinkMessage(
+        200,
+        "Selected contacts are linked to this application."
+      );
+      return;
+    }
+
     if (method === 'POST' && url.pathname === '/organisation-research') {
       const actionStartedAt = Date.now();
 
@@ -1190,12 +1281,64 @@ export function createLocalServer({
           review.formData
         );
 
-        const deletedContacts =
-          await recruiterContactStore.deleteUnlinkedContacts({
-            organisationId,
-            reviewId,
-            contactIds: body.contactIds || []
-          });
+        let deletedContacts;
+
+        if (body.action !== undefined) {
+          if (!["deleteSelected", "clearDisplayed"].includes(body.action)) {
+            sendJson(response, 400, {
+              ok: false,
+              error: "Unsupported contact deletion action."
+            });
+            return;
+          }
+
+          if (
+            !Array.isArray(body.contactIds) ||
+            body.contactIds.some((id) =>
+              typeof id !== "string" || !id.trim()
+            )
+          ) {
+            sendJson(response, 400, {
+              ok: false,
+              error: "Contact IDs must be an array of non-empty strings."
+            });
+            return;
+          }
+
+          const explicitIds = [...new Set(
+            body.contactIds.map((id) => id.trim())
+          )];
+
+          if (!explicitIds.length) {
+            if (body.action === "deleteSelected") {
+              sendJson(response, 400, {
+                ok: false,
+                error: "Select at least one imported contact to delete."
+              });
+            } else {
+              sendJson(response, 200, {
+                ok: true,
+                deleted: 0,
+                deletedContacts: []
+              });
+            }
+            return;
+          }
+
+          deletedContacts =
+            await recruiterContactStore.deleteUnlinkedContacts({
+              reviewId,
+              contactIds: explicitIds
+            });
+        } else {
+          // Preserve the existing organisation-scoped API contract.
+          deletedContacts =
+            await recruiterContactStore.deleteUnlinkedContacts({
+              organisationId,
+              reviewId,
+              contactIds: body.contactIds || []
+            });
+        }
 
         writeDiagnostic("recruiter_contacts_deleted", {
           requestId,

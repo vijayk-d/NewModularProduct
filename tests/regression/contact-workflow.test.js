@@ -1,4 +1,4 @@
-﻿import test from "node:test";
+import test from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -238,5 +238,203 @@ test("clear operation respects saved organisation scope and all review links", a
   assert.deepEqual(
     (await f.store.listAll()).map((c) => c.id).sort(),
     ["linked", "other", "protected"]
+  );
+});
+
+
+test("linking selected contacts preserves review state and is idempotent", async (t) => {
+  const f = await fixture(t);
+
+  const saved = await f.json("/api/reviews/email-domain/save", {
+    reviewId: f.reviewId,
+    emailDomain: "twinstream.com"
+  });
+  assert.equal(saved.status, 200);
+
+  await f.form("/organisation-research", { reviewId: f.reviewId });
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const result = await f.form("/recruiter-contacts/link", {
+      reviewId: f.reviewId,
+      contactIds: "selected"
+    });
+
+    assert.equal(result.status, 200);
+    assertContactSections(result.html);
+    assert.match(result.html, /Selected contacts are linked/);
+    assert.match(
+      result.html,
+      /id="email-domain-input"[\s\S]*?value="twinstream\.com"/
+    );
+
+    const linkedBody = result.html.match(
+      /<tbody class="linked-imported-contacts-body">([\s\S]*?)<\/tbody>/
+    )?.[1];
+    const availableBody = result.html.match(
+      /<tbody class="available-imported-contacts-body">([\s\S]*?)<\/tbody>/
+    )?.[1];
+
+    assert.ok(linkedBody);
+    assert.ok(availableBody);
+    assert.match(linkedBody, /Test selected/);
+    assert.doesNotMatch(availableBody, /Test selected/);
+    assert.match(availableBody, /Test unselected/);
+
+    const contacts = await f.store.listAll();
+    const selected = contacts.find((c) => c.id === "selected");
+    const unselected = contacts.find((c) => c.id === "unselected");
+
+    assert.deepEqual(selected.linkedApplicationReviewIds, [f.reviewId]);
+    assert.deepEqual(unselected.linkedApplicationReviewIds, []);
+    assert.equal(contacts.length, 5);
+  }
+});
+
+test("linking rejects empty and unknown selections without changing storage", async (t) => {
+  const f = await fixture(t);
+  const before = JSON.stringify(await f.store.listAll());
+
+  for (const extra of [{}, { contactIds: "missing-contact" }]) {
+    const result = await f.form("/recruiter-contacts/link", {
+      reviewId: f.reviewId,
+      ...extra
+    });
+
+    assert.equal(result.status, 400);
+    assertContactSections(result.html);
+    assert.equal(JSON.stringify(await f.store.listAll()), before);
+  }
+});
+
+test("linking rejects an expired review without changing storage", async (t) => {
+  const f = await fixture(t);
+  const before = JSON.stringify(await f.store.listAll());
+
+  const result = await f.form("/recruiter-contacts/link", {
+    reviewId: "expired-review",
+    contactIds: "selected"
+  });
+
+  assert.equal(result.status, 410);
+  assert.equal(JSON.stringify(await f.store.listAll()), before);
+});
+
+
+test("selected deletion works before research or domain saving", async (t) => {
+  const f = await fixture(t);
+
+  const result = await f.json("/api/recruiter-contacts/delete", {
+    reviewId: f.reviewId,
+    contactIds: ["selected"]
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.data.ok, true);
+  assert.equal(result.data.deleted, 1);
+  assert.deepEqual(
+    result.data.deletedContacts.map((contact) => contact.id),
+    ["selected"]
+  );
+
+  const remaining = await f.store.listAll();
+  assert.ok(!remaining.some((contact) => contact.id === "selected"));
+  assert.ok(remaining.some((contact) => contact.id === "unselected"));
+  assert.ok(remaining.some((contact) => contact.id === "linked"));
+
+  const response = await fetch(
+    `${f.base}/api/recruiter-contacts/linking?reviewId=${encodeURIComponent(f.reviewId)}`
+  );
+  assert.equal(response.status, 200);
+  const refreshed = await response.json();
+  assert.equal(refreshed.ok, true);
+  assert.ok(!refreshed.unlinked.some((contact) => contact.id === "selected"));
+});
+
+
+test("clear displayed contacts works without domain setup and after selected deletion", async (t) => {
+  for (const deleteSelectedFirst of [false, true]) {
+    await t.test(
+      deleteSelectedFirst ? "delete selected then clear displayed" : "clear displayed directly",
+      async (t) => {
+        const f = await fixture(t);
+
+        if (deleteSelectedFirst) {
+          const selected = await f.json("/api/recruiter-contacts/delete", {
+            reviewId: f.reviewId,
+            action: "deleteSelected",
+            contactIds: ["selected"]
+          });
+          assert.equal(selected.status, 200);
+          assert.equal(selected.data.deleted, 1);
+        }
+
+        const ids = deleteSelectedFirst
+          ? ["unselected", "other"]
+          : ["selected", "unselected", "other"];
+
+        const cleared = await f.json("/api/recruiter-contacts/delete", {
+          reviewId: f.reviewId,
+          action: "clearDisplayed",
+          contactIds: ids
+        });
+
+        assert.equal(cleared.status, 200);
+        assert.equal(cleared.data.ok, true);
+        assert.equal(cleared.data.deleted, ids.length);
+        assert.deepEqual(
+          cleared.data.deletedContacts.map((c) => c.id).sort(),
+          [...ids].sort()
+        );
+        assert.deepEqual(
+          (await f.store.listAll()).map((c) => c.id).sort(),
+          ["linked", "protected"].sort()
+        );
+
+        const response = await fetch(
+          `${f.base}/api/recruiter-contacts/linking?reviewId=${encodeURIComponent(f.reviewId)}`
+        );
+        assert.equal(response.status, 200);
+        const refreshed = await response.json();
+        assert.ok(!refreshed.unlinked.some((c) =>
+          ["selected", "unselected", "other"].includes(c.id)
+        ));
+
+        const repeated = await f.json("/api/recruiter-contacts/delete", {
+          reviewId: f.reviewId,
+          action: "clearDisplayed",
+          contactIds: []
+        });
+        assert.equal(repeated.status, 200);
+        assert.equal(repeated.data.deleted, 0);
+        assert.equal((await f.store.listAll()).length, 2);
+      }
+    );
+  }
+});
+
+test("explicit deletion protects linked and omitted contacts and rejects empty selection", async (t) => {
+  const f = await fixture(t);
+
+  const empty = await f.json("/api/recruiter-contacts/delete", {
+    reviewId: f.reviewId,
+    action: "deleteSelected",
+    contactIds: []
+  });
+  assert.equal(empty.status, 400);
+  assert.equal((await f.store.listAll()).length, 5);
+
+  const cleared = await f.json("/api/recruiter-contacts/delete", {
+    reviewId: f.reviewId,
+    action: "clearDisplayed",
+    contactIds: ["selected", "linked", "protected"]
+  });
+  assert.equal(cleared.status, 200);
+  assert.deepEqual(
+    cleared.data.deletedContacts.map((c) => c.id),
+    ["selected"]
+  );
+  assert.deepEqual(
+    (await f.store.listAll()).map((c) => c.id).sort(),
+    ["unselected", "other", "linked", "protected"].sort()
   );
 });

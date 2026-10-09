@@ -91,7 +91,7 @@ test("clears all unlinked contacts but protects linked contacts", async () => {
   );
 });
 
-test("deletion protects other organisations and links to other reviews", async () => {
+test("selected deletion ignores organisation scope while clear remains scoped", async () => {
   for (const contactIds of [
     [],
     ["unlinked", "other-organisation", "linked-elsewhere"]
@@ -116,16 +116,22 @@ test("deletion protects other organisations and links to other reviews", async (
       contactIds
     });
 
+    const isSelectedDeletion = contactIds.length > 0;
+
     assert.deepEqual(
       deleted.map((item) => item.id),
-      ["unlinked"]
+      isSelectedDeletion
+        ? ["unlinked", "other-organisation"]
+        : ["unlinked"]
     );
 
     const remaining = JSON.parse(await readFile(filePath, "utf8"));
 
     assert.deepEqual(
       remaining.map((item) => item.id),
-      ["other-organisation", "linked-elsewhere"]
+      isSelectedDeletion
+        ? ["linked-elsewhere"]
+        : ["other-organisation", "linked-elsewhere"]
     );
   }
 });

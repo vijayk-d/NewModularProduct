@@ -55,17 +55,20 @@ export function createRecruiterContactStore({ filePath }) {
     contactIds
   }) {
     if (
-      typeof organisationId !== "string" ||
-      !organisationId.trim()
-    ) {
-      throw new Error("An organisation ID is required for deletion.");
-    }
-
-    if (
       contactIds !== undefined &&
       !Array.isArray(contactIds)
     ) {
       throw new Error("Contact IDs must be an array.");
+    }
+
+    const isBulkClear =
+      contactIds === undefined || contactIds.length === 0;
+
+    if (
+      isBulkClear &&
+      (typeof organisationId !== "string" || !organisationId.trim())
+    ) {
+      throw new Error("An organisation ID is required for deletion.");
     }
 
     const contacts = await load();
@@ -85,9 +88,9 @@ export function createRecruiterContactStore({ filePath }) {
         clearAll || requestedIds.has(contact.id);
 
       const shouldDelete =
-        belongsToOrganisation &&
         !isLinked &&
-        isRequested;
+        isRequested &&
+        (!clearAll || belongsToOrganisation);
 
       if (shouldDelete) {
         deletedContacts.push(contact);
