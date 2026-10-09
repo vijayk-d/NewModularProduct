@@ -121,6 +121,12 @@ export function attachReviewPageListeners() {
       event.preventDefault();
 
       var reviewId = button.dataset.reviewId;
+
+      if (!reviewId) {
+        window.alert("Missing review ID.");
+        return;
+      }
+
       var deleteSelected = button.classList.contains(
         "delete-selected-contacts-button"
       );
@@ -183,7 +189,14 @@ export function attachReviewPageListeners() {
             : "Unable to delete imported contacts."
         );
 
-        button.disabled = false;
+        document
+          .querySelectorAll(
+            ".delete-selected-contacts-button, " +
+              ".clear-imported-contacts-button"
+          )
+          .forEach(function (item) {
+            item.disabled = false;
+          });
       }
     },
     true

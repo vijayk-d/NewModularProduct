@@ -1,9 +1,10 @@
 // ==UserScript==
-// @name         New Modular Product - LinkedIn Contact Bridge
+// @name         New Modular Product - Clean LinkedIn Contact Bridge
 // @namespace    local.new-modular-product
-// @version      0.2.0
-// @description  Import visible LinkedIn People profiles into the New Modular Product local server.
+// @version      0.4.0
+// @description  Import clean visible LinkedIn People contacts.
 // @match        https://www.linkedin.com/company/*/people/*
+// @match        https://www.linkedin.com/search/results/people/*
 // @connect      127.0.0.1
 // @connect      localhost
 // @run-at       document-idle
@@ -11,49 +12,55 @@
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
-(function () {
+(() => {
   "use strict";
 
   const API_URL = "http://127.0.0.1:3000/api/recruiters/import";
-  const BUTTON_ID = "new-modular-product-contact-import";
-  const TABLE_ID = "new-modular-product-contact-table";
+  const BUTTON_ID = "clean-linkedin-contact-import";
+  const EMAIL_DOMAIN = "twinstream.com";
 
-  const recruiterRoleKeywords = [
+  const roleKeywords = [
     "talent acquisition",
     "talent",
     "recruiter",
     "recruitment",
+    "chief people",
+    "people officer",
     "head",
     "director",
     "manager",
     "partner",
-    "hr",
     "human resources",
-    "people"
+    "hr"
   ];
 
-  let importedProfiles = [];
-
-  function cleanText(value) {
-    return String(value ?? "")
+  const clean = (value) =>
+    String(value || "")
+      .replace(/\u00c2\u00b7/g, "·")
+      .replace(/\u00c2\u00a3/g, "£")
+      .replace(/\u00e2\u0080\u0099/g, "'")
+      .replace(/\u00e2\u0080\u0093/g, "-")
+      .replace(/\u00e2\u0080\u0094/g, "-")
       .replace(/\s+/g, " ")
       .trim();
+
+  function removeRepeatedName(value) {
+    const parts = clean(value).split(/\s+/).filter(Boolean);
+    const half = Math.floor(parts.length / 2);
+
+    if (
+      half >= 2 &&
+      parts.slice(0, half).join(" ").toLowerCase() ===
+        parts.slice(half).join(" ").toLowerCase()
+    ) {
+      return parts.slice(0, half).join(" ");
+    }
+
+    return clean(value);
   }
 
-  function normaliseProfileName(value) {
-    return cleanText(value)
-      .replace(/^view\s+/i, "")
-      .replace(/’s profile$/i, "")
-      .replace(/'s profile$/i, "")
-      .replace(/\(?\d+[\d,]*\+?\)?\s*(connections?|followers?|following)/gi, "")
-      .replace(/•/g, "")
-      .trim();
-  }
-
-  function splitName(value) {
-    const parts = normaliseProfileName(value)
-      .split(" ")
-      .filter(Boolean);
+  function splitName(name) {
+    const parts = clean(name).split(/\s+/).filter(Boolean);
 
     return {
       firstName: parts[0] || "",
@@ -61,170 +68,252 @@
     };
   }
 
-  function cleanRoleText(value, profileName) {
-    let role = cleanText(value);
+  function profileNameFromAnchor(anchor) {
+    const rawValues = [
+      anchor.getAttribute("aria-label"),
+      anchor.querySelector("span")?.textContent,
+      anchor.textContent
+    ];
 
-    if (profileName) {
-      const escapedName = profileName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      role = role.replace(new RegExp(`^view\\s+${escapedName}\\s*’?s?\\s*profile\\s*`, "i"), "");
-      role = role.replace(new RegExp(escapedName, "i"), "");
+    for (const raw of rawValues) {
+      const original = clean(raw);
+
+      if (!original) continue;
+
+      const value = original
+        .replace(/^view\s+/i, "")
+        .replace(/\s+profile$/i, "")
+        .replace(
+          /\s*[·•|]\s*(?:\d+(?:st|nd|rd|th)?|\d+\+|connection|connections?|followers?|following).*$/i,
+          ""
+        )
+        .replace(/\s+\d+(?:st|nd|rd|th)?\s*$/i, "")
+        .trim();
+
+      if (!value) continue;
+
+      if (
+        /^(see open roles|open roles|view profile|profile)$/i.test(value)
+      ) {
+        continue;
+      }
+
+      const normalised = removeRepeatedName(value);
+      const parts = normalised.split(/\s+/).filter(Boolean);
+
+      if (
+        parts.length >= 2 &&
+        parts.length <= 5 &&
+        parts.every((part) =>
+          /^[A-Za-zÀ-ÖØ-öø-ÿ.'-]+$/.test(part)
+        ) &&
+        !/\b(at|and|for|of|in|united|kingdom|area)\b/i.test(normalised)
+      ) {
+        return normalised;
+      }
     }
 
-    return role
-      .replace(/\d+(st|nd|rd|th)?\s+degree\s+connection/gi, "")
-      .replace(/mutual connections?/gi, "")
-      .replace(/\bconnect\b/gi, "")
-      .replace(/\bmessage\b/gi, "")
-      .replace(/\bfollow\b/gi, "")
-      .replace(/[•·|]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
+    return "";
   }
 
-  function extractRole(cardText, profileName) {
-    const cleaned = cleanRoleText(cardText, profileName);
-    const words = cleaned.split(" ").filter(Boolean);
+  function getProfileCard(anchor) {
+    const candidates = [
+      anchor.closest("li"),
+      anchor.closest("article"),
+      anchor.parentElement?.parentElement,
+      anchor.parentElement?.parentElement?.parentElement
+    ].filter(Boolean);
 
-    // Prefer a concise trailing role phrase rather than connection noise.
-    const candidate = words.slice(-12).join(" ");
+    return candidates.find((node) => {
+      const cardText = clean(node.innerText || node.textContent);
+      const profileLinks = node.querySelectorAll(
+        'a[href*="/in/"]'
+      ).length;
 
-    return hasRecruiterRole(candidate) ? candidate : "";
+      return (
+        profileLinks === 1 &&
+        cardText.length >= 10 &&
+        cardText.length <= 1800 &&
+        !/^.*is a mutual connection$/i.test(cardText)
+      );
+    }) || null;
   }
 
-  function extractLocation(cardText, profileName, role) {
-    let location = cleanText(cardText);
+  function extractRole(card, profileName) {
+    const raw = String(card?.innerText || "");
 
-    if (profileName) {
-      location = location.replace(profileName, "");
-    }
+    if (!raw) return "";
+
+    const nameTokens = profileName
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    const lines = raw
+      .split(/\r?\n/)
+      .map((line) =>
+        clean(line)
+          .replace(/^[·•|]\s*/, "")
+          .replace(/\b\d+(st|nd|rd|th)\b/gi, "")
+          .replace(/\b\d+\s+(other\s+)?mutual connections?\b.*$/i, "")
+          .replace(/\b(?:and|is)\s+a\s+mutual connection\b.*$/i, "")
+          .replace(/\b(?:connect|message|follow)\b.*$/i, "")
+          .trim()
+      )
+      .filter(Boolean)
+      .filter((line) => {
+        const lower = line.toLowerCase();
+
+        if (lower === profileName.toLowerCase()) return false;
+
+        const containsFullName =
+          nameTokens.length >= 2 &&
+          nameTokens.every((token) => lower.includes(token));
+
+        if (containsFullName) return false;
+
+        if (/^(2nd|3rd|3rd\+|view full profile)$/i.test(line)) {
+          return false;
+        }
+
+        if (
+          /\b(?:united kingdom|england|scotland|wales|ireland)\b/i.test(line)
+        ) {
+          return false;
+        }
+
+        if (/\bmutual connection\b/i.test(line)) return false;
+
+        return line.length >= 3 && line.length <= 220;
+      });
+
+    const role = lines.find((line) =>
+      roleKeywords.some((keyword) =>
+        line.toLowerCase().includes(keyword)
+      )
+    );
 
     if (role) {
-      location = location.replace(role, "");
+      return role
+        .replace(/\s+(Jess|Raj|Ryan|Andy|David|Swetha|Emma)\s*$/i, "")
+        .replace(/\s+(United Kingdom|England|Scotland|Wales)$/i, "")
+        .trim();
     }
 
-    location = location
-      .replace(/\d+(st|nd|rd|th)?\s+degree\s+connection/gi, "")
-      .replace(/mutual connections?/gi, "")
-      .replace(/\bconnect\b/gi, "")
-      .replace(/[•·|]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    // Best-effort: LinkedIn often places a short location-like fragment
-    // before connection and action text. Avoid inventing data.
-    const locationMatch = location.match(
-      /\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*,\s*[A-Z]{2}\b)/
-    );
-
-    return locationMatch ? locationMatch[1] : "";
-  }
-
-  function hasRecruiterRole(value) {
-    const role = cleanText(value).toLowerCase();
-
-    return recruiterRoleKeywords.some((keyword) =>
-      role.includes(keyword)
-    );
+    return lines.find((line) =>
+      /\b(at|@|manager|director|engineer|officer|lead|architect|consultant|analyst)\b/i.test(
+        line
+      )
+    ) || "";
   }
 
   function extractProfiles() {
-    const profiles = [];
-    const seenUrls = new Set();
+    const contacts = [];
+    const seen = new Set();
+    const allAnchors = document.querySelectorAll('a[href*="/in/"]');
 
-    document
-      .querySelectorAll('a[href*="linkedin.com/in/"]')
-      .forEach((anchor) => {
-        const profileUrl = anchor.href.split("?")[0];
-        const rawName =
-          anchor.getAttribute("aria-label") || anchor.textContent;
-        const name = normaliseProfileName(rawName);
+    console.log(
+      "[Clean LinkedIn Bridge] Found",
+      allAnchors.length,
+      "profile anchors on this page."
+    );
 
-        if (!name || name.length < 3 || seenUrls.has(profileUrl)) {
-          return;
-        }
+    allAnchors.forEach((anchor) => {
+      const linkedinUrl = anchor.href.split("?")[0];
 
-        const card = anchor.closest("li") || anchor.parentElement;
-        const cardText = cleanText(card?.innerText || "");
-        const { firstName, lastName } = splitName(name);
-        const role = extractRole(cardText, name);
+      if (
+        seen.has(linkedinUrl) ||
+        /\/opportunities\//i.test(linkedinUrl)
+      ) {
+        return;
+      }
 
-        if (!firstName || !lastName || !hasRecruiterRole(role)) {
-          return;
-        }
+      const profileName = profileNameFromAnchor(anchor);
 
-        seenUrls.add(profileUrl);
+      if (!profileName) {
+        console.log(
+          "[Clean LinkedIn Bridge] Rejected: no profile name",
+          anchor.href,
+          anchor.getAttribute("aria-label"),
+          anchor.textContent?.slice(0, 120)
+        );
+        return;
+      }
 
-        profiles.push({
-          firstName,
-          lastName,
-          linkedinUrl: profileUrl,
-          role,
-          location: extractLocation(cardText, name, role),
-          source: "linkedin-visible",
-          verified: false
-        });
+      const card = getProfileCard(anchor);
+
+      if (!card) {
+        console.log(
+          "[Clean LinkedIn Bridge] Rejected: no card",
+          profileName,
+          anchor.href
+        );
+        return;
+      }
+
+      const { firstName, lastName } = splitName(profileName);
+      const role = extractRole(card, profileName);
+
+      if (!firstName || !lastName || !role) {
+        console.log(
+          "[Clean LinkedIn Bridge] Rejected: incomplete contact",
+          {
+            profileName,
+            firstName,
+            lastName,
+            role,
+            cardText: card.innerText?.slice(0, 300)
+          }
+        );
+        return;
+      }
+
+      seen.add(linkedinUrl);
+
+      contacts.push({
+        firstName,
+        lastName,
+        fullName: `${firstName} ${lastName}`,
+        role,
+        location: "",
+        linkedinUrl,
+        emailDomain: EMAIL_DOMAIN,
+        source: "linkedin-visible",
+        verified: false
       });
+    });
 
-    return profiles;
-  }
+    console.log(
+      "[Clean LinkedIn Bridge] Extracted",
+      contacts.length,
+      "valid contacts before validation."
+    );
 
-  function renderTable() {
-    const table = document.getElementById(TABLE_ID);
-
-    if (!table) {
-      return;
-    }
-
-    const rows = importedProfiles.map((profile, index) => `
-      <tr>
-        <td>${index + 1}</td>
-        <td>${escapeHtml(profile.firstName)}</td>
-        <td>${escapeHtml(profile.lastName)}</td>
-        <td>${escapeHtml(profile.role)}</td>
-        <td>${escapeHtml(profile.location)}</td>
-      </tr>
-    `).join("");
-
-    table.querySelector("tbody").innerHTML = rows;
-  }
-
-  function escapeHtml(value) {
-    return String(value ?? "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#39;");
-  }
-
-  function clearImportedProfiles() {
-    importedProfiles = [];
-    renderTable();
-  }
-
-  function importProfiles() {
-    const recruiters = extractProfiles();
-
-    if (!recruiters.length) {
-      throw new Error(
-        "No visible recruiter profiles found. Scroll the People page and try again."
+    if (contacts.length) {
+      console.table(
+        contacts.map((c) => ({
+          firstName: c.firstName,
+          lastName: c.lastName,
+          role: c.role
+        }))
       );
     }
 
-    importedProfiles = recruiters;
-    renderTable();
+    return contacts;
+  }
 
+  function importContacts(contacts) {
     return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
         method: "POST",
         url: API_URL,
         headers: {
-          "content-type": "application/json"
+          "Content-Type": "application/json"
         },
         data: JSON.stringify({
           sourceUrl: location.href,
-          emailDomain: "",
-          recruiters
+          emailDomain: EMAIL_DOMAIN,
+          recruiters: contacts
         }),
         timeout: 12000,
         onload(response) {
@@ -233,22 +322,26 @@
           try {
             result = JSON.parse(response.responseText);
           } catch {
-            reject(new Error("Local server returned an invalid response."));
+            reject(new Error("The server returned invalid JSON."));
             return;
           }
 
-          if (response.status < 200 || response.status >= 300 || !result.ok) {
-            reject(new Error(result.error || "Contact import failed."));
+          if (
+            response.status < 200 ||
+            response.status >= 300 ||
+            !result.ok
+          ) {
+            reject(new Error(result.error || "Import failed."));
             return;
           }
 
           resolve(result);
         },
         onerror() {
-          reject(new Error("Cannot reach the New Modular Product server."));
+          reject(new Error("Cannot reach the local server."));
         },
         ontimeout() {
-          reject(new Error("The New Modular Product server did not respond."));
+          reject(new Error("The local server timed out."));
         }
       });
     });
@@ -259,90 +352,96 @@
       return;
     }
 
-    const panel = document.createElement("div");
+    const button = document.createElement("button");
 
-    panel.id = BUTTON_ID;
+    button.id = BUTTON_ID;
+    button.textContent = "Import clean LinkedIn contacts";
 
-    Object.assign(panel.style, {
+    Object.assign(button.style, {
       position: "fixed",
-      right: "24px",
-      bottom: "24px",
+      left: "0",
+      top: "50%",
+      transform: "translateY(-50%)",
       zIndex: "2147483647",
-      padding: "16px",
-      borderRadius: "8px",
-      background: "#fff",
-      color: "#111",
-      font: "14px sans-serif",
-      boxShadow: "0 8px 24px rgba(0, 0, 0, 0.25)",
-      maxWidth: "720px",
-      maxHeight: "70vh",
-      overflow: "auto"
+      padding: "14px 18px",
+      border: "2px solid #b45309",
+      borderRadius: "0 8px 8px 0",
+      background: "#ffd400",
+      color: "#111827",
+      font: "700 14px sans-serif",
+      cursor: "pointer",
+      boxShadow: "0 4px 12px rgba(0, 0, 0, 0.25)"
     });
 
-    panel.innerHTML = `
-      <div style="display:flex;gap:8px;margin-bottom:8px;">
-        <button id="new-modular-product-import-button" type="button">
-          Import contacts
-        </button>
-        <button id="new-modular-product-clear-button" type="button">
-          Clear table
-        </button>
-      </div>
+    button.addEventListener("click", async () => {
+      button.disabled = true;
 
-      <div id="new-modular-product-status" style="margin-bottom:8px;">
-        Ready.
-      </div>
+      try {
+        const contacts = extractProfiles();
 
-      <table id="${TABLE_ID}" style="border-collapse:collapse;width:100%;">
-        <thead>
-          <tr>
-            <th style="text-align:left;padding:6px;border:1px solid #ccc;">#</th>
-            <th style="text-align:left;padding:6px;border:1px solid #ccc;">First name</th>
-            <th style="text-align:left;padding:6px;border:1px solid #ccc;">Last name</th>
-            <th style="text-align:left;padding:6px;border:1px solid #ccc;">Role</th>
-            <th style="text-align:left;padding:6px;border:1px solid #ccc;">Location</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    `;
-
-    panel
-      .querySelector("#new-modular-product-import-button")
-      .addEventListener("click", async (event) => {
-        const status = panel.querySelector("#new-modular-product-status");
-
-        event.target.disabled = true;
-        status.textContent = "Importing…";
-
-        try {
-          const result = await importProfiles();
-
-          status.textContent =
-            `${result.imported} imported, ${result.duplicates} duplicates.`;
-        } catch (error) {
-          status.textContent = error.message || "Import failed.";
-        } finally {
-          event.target.disabled = false;
+        if (!contacts.length) {
+          throw new Error("No clean LinkedIn contacts found.");
         }
-      });
 
-    panel
-      .querySelector("#new-modular-product-clear-button")
-      .addEventListener("click", () => {
-        clearImportedProfiles();
+        console.table(contacts);
 
-        panel.querySelector("#new-modular-product-status").textContent =
-          "Cleared the local import table. Server records were not deleted.";
-      });
+        const invalid = contacts.filter((contact) =>
+          !contact.firstName ||
+          !contact.lastName ||
+          !contact.role ||
+          contact.lastName.split(/\s+/).length > 6 ||
+          /open roles|mutual connection/i.test(
+            `${contact.lastName} ${contact.role}`
+          )
+        );
 
-    document.body.append(panel);
+        if (invalid.length) {
+          console.table(invalid);
+          throw new Error(
+            `${invalid.length} contacts failed validation. Nothing was imported.`
+          );
+        }
+
+        const result = await importContacts(contacts);
+
+        button.textContent =
+          `${result.imported} imported, ` +
+          `${result.duplicates} duplicates`;
+      } catch (error) {
+        console.error("[Clean LinkedIn Bridge]", error);
+        button.textContent = error.message;
+      } finally {
+        setTimeout(() => {
+          button.disabled = false;
+          button.textContent = "Import clean LinkedIn contacts";
+        }, 5000);
+      }
+    });
+
+    document.body.append(button);
   }
 
-  addButton();
+  function pageIsSupported() {
+    return (
+      location.pathname.startsWith("/company/") &&
+      location.pathname.includes("/people") ||
+      location.pathname.startsWith("/search/results/people")
+    );
+  }
 
-  new MutationObserver(addButton).observe(document.documentElement, {
-    childList: true,
-    subtree: true
-  });
+  function installWhenSupported() {
+    if (pageIsSupported()) {
+      addButton();
+    }
+  }
+
+  installWhenSupported();
+
+  new MutationObserver(installWhenSupported).observe(
+    document.documentElement,
+    { childList: true, subtree: true }
+  );
+
+  window.addEventListener("popstate", installWhenSupported);
+  window.addEventListener("locationchange", installWhenSupported);
 })();

@@ -1,8 +1,5 @@
-import {
-  createRecruiterContact,
-  isDuplicateContact,
-  mergeRecruiterContact
-} from "./recruiter-contact.js";
+﻿import { createRecruiterContact } from "./recruiter-contact.js";
+import { normaliseRecruiterContact } from "./normalise-recruiter-contact.js";
 
 export function createRecruiterContactImportService({ contactStore }) {
   return {
@@ -17,12 +14,9 @@ export function createRecruiterContactImportService({ contactStore }) {
       });
 
       const incomingContacts = recruiters.map((recruiter) =>
-        createRecruiterContact({
-          ...recruiter,
-          organisationId,
-          emailDomain,
-          sourceUrl
-        })
+        createRecruiterContact(
+          normaliseRecruiterContact(recruiter, { organisationId })
+        )
       );
 
       const result = await contactStore.upsertMany({
@@ -43,14 +37,25 @@ export function createRecruiterContactImportService({ contactStore }) {
 
 function deriveOrganisationId({ emailDomain, sourceUrl }) {
   if (emailDomain) {
-    return `domain:${emailDomain.toLowerCase()}`;
+    return `domain:${String(emailDomain)
+      .toLowerCase()
+      .replace(/^https?:\/\//, "")
+      .replace(/^www\./, "")
+      .split("/")[0]
+      .trim()}`;
   }
 
   try {
-    const hostname = new URL(sourceUrl).hostname;
+    const hostname = new URL(sourceUrl).hostname
+      .toLowerCase()
+      .replace(/^www\./, "");
 
-    return `linkedin:${hostname}`;
+    if (hostname && hostname !== "linkedin.com") {
+      return `domain:${hostname}`;
+    }
   } catch {
-    return "organisation:unknown";
+    // Fall through to the unknown organisation identifier.
   }
+
+  return "unknown:linkedin-import";
 }

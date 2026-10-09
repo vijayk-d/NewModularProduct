@@ -40,3 +40,8 @@ test-perplexity-connectivity.bat
 .env
 *.bak
 data/application-output.local.json
+output/
+
+*.backup
+*.before-recovery
+*.corrupted-backup
