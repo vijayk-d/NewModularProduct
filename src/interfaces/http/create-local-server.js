@@ -1,10 +1,17 @@
-﻿import { renderApplicationReview, renderRefinementPanel, renderOrganisationResearch, renderField, renderAdvertLink, getSelectableCompanyValues, renderResearchSource, renderOptionalDetail , renderApplicationForm, escapeHtml} from './rendering.js';
+﻿import { createPerplexityClient } from "../../infrastructure/perplexity-client.js";
+import { createEmailDomainResolutionService } from "../../application/email-domain-resolution-service.js";
+import { renderApplicationReview, renderRefinementPanel, renderOrganisationResearch, renderField, renderAdvertLink, getSelectableCompanyValues, renderResearchSource, renderOptionalDetail , renderApplicationForm, escapeHtml} from './rendering.js';
 import { readFormBody } from './form-body.js';
 import { sendText, sendHtml, sendJson } from './responses.js';
 import { createServer } from 'node:http';
-import { randomUUID } from 'node:crypto';
-import {  acceptRefinedCoverLetter } from '../../application/accept-refined-cover-letter.js';
+import { randomUUID, randomBytes } from 'node:crypto';
+import { acceptRefinedCoverLetter } from '../../application/accept-refined-cover-letter.js';
+import { attachReviewPageListeners } from './review-page.js';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const reviewStore = new Map();
 
 import { createDiagnosticWriter } from './diagnostics.js';
@@ -114,8 +121,8 @@ export function createLocalServer({
   coverLetterRefinementPort = null,
   localDiagnosticsEnabled = false,
   diagnosticsWriter = process.stdout,
-} = {}) { // just added
-    async function loadOrganisationContacts(formData) {
+} = {}) {
+  async function loadOrganisationContacts(formData) {
     if (!recruiterContactStore) {
       return [];
     }
@@ -124,10 +131,54 @@ export function createLocalServer({
       deriveReviewOrganisationId(formData)
     );
   }
+
+  async function loadReviewContacts(reviewId) {
+    if (!recruiterContactStore) {
+      return [];
+    }
+
+    return recruiterContactStore.listByReview(reviewId);
+  }
+
+  const perplexityClient = createPerplexityClient({
+    apiKey: process.env.PERPLEXITY_API_KEY
+  });
+
+  const emailDomainResolutionService = createEmailDomainResolutionService({
+    perplexityClient,
+    recruiterContactStore
+  });
+
+  async function loadContactLinking(reviewId) {
+    if (!recruiterContactStore) {
+      return {
+        reviewId,
+        unlinked: [],
+        linked: []
+      };
+    }
+
+    const contacts = await recruiterContactStore.listAll();
+
+    return {
+      reviewId,
+      unlinked: contacts.filter((contact) =>
+        !Array.isArray(contact.linkedApplicationReviewIds) ||
+        !contact.linkedApplicationReviewIds.includes(reviewId)
+      ),
+      linked: contacts.filter((contact) =>
+        Array.isArray(contact.linkedApplicationReviewIds) &&
+        contact.linkedApplicationReviewIds.includes(reviewId)
+      )
+    };
+  }
+
   const writeDiagnostic = createDiagnosticWriter({
-  enabled: localDiagnosticsEnabled,
-  writer: diagnosticsWriter
-});
+    enabled: localDiagnosticsEnabled,
+    writer: diagnosticsWriter
+  });
+
+// new changes to be addeduntil here
   const wordCount = (value = '') => String(value)
     .trim()
     .split(/\s+/)
@@ -138,6 +189,7 @@ export function createLocalServer({
     const method = request.method || 'GET';
     const url = new URL(request.url || '/', 'http://localhost');
     const requestId = randomUUID();
+    const scriptNonce = randomBytes(16).toString("base64");
     const requestStartedAt = Date.now();
 
     writeDiagnostic('request_received', {
@@ -245,16 +297,19 @@ export function createLocalServer({
         createdAt: Date.now()
       });
 
-      sendHtml(
-        response,
-        200,
-        renderApplicationReview({
-          formData,
-          prepared,
-          reviewId
-        })
-      );
-      } catch (error) {
+        sendHtml(
+          response,
+          200,
+          renderApplicationReview({
+            formData,
+            prepared,
+            reviewId,
+            contacts: await loadReviewContacts(reviewId),
+            contactLinking: await loadContactLinking(reviewId),
+            scriptNonce
+          }),
+        );
+     } catch (error) {
         const message = error instanceof Error
           ? error.message
           : 'Unknown application preparation error';
@@ -860,6 +915,164 @@ export function createLocalServer({
       return;
     }
  
+    if (
+      method === "POST" &&
+      /^\/api\/reviews\/[^/]+\/resolve-email-domain$/.test(url.pathname)
+    ) {
+      const reviewId = decodeURIComponent(url.pathname.split("/")[3]);
+      const review = reviewStore.get(reviewId);
+
+      if (!review) {
+        sendJson(response, 404, {
+          ok: false,
+          error: "Application review not found."
+        });
+        return;
+      }
+
+      try {
+        const body = await readJsonBody(request);
+
+        const job = await emailDomainResolutionService.startResolution({
+          reviewId,
+          organisation: {
+            name: review.formData.organisationName,
+            url: review.formData.organisationUrl,
+            linkedinUrl: body.linkedinUrl || ""
+          }
+        });
+
+        sendJson(response, 202, {
+          ok: true,
+          job
+        });
+      } catch (error) {
+        sendJson(response, 400, {
+          ok: false,
+          error: error instanceof Error
+            ? error.message
+            : "Email-domain resolution could not be started."
+        });
+      }
+
+      return;
+    }
+
+    if (
+      method === "GET" &&
+      /^\/api\/email-domain-jobs\/[^/]+$/.test(url.pathname)
+    ) {
+      const jobId = decodeURIComponent(url.pathname.split("/").pop());
+      const job = await emailDomainResolutionService.getJob(jobId);
+
+      if (!job) {
+        sendJson(response, 404, {
+          ok: false,
+          error: "Email-domain resolution job not found."
+        });
+        return;
+      }
+
+      sendJson(response, 200, {
+        ok: true,
+        job
+      });
+      return;
+    }
+
+    if (
+      method === "GET" &&
+      /^\/api\/reviews\/[^/]+\/email-domain$/.test(url.pathname)
+    ) {
+      const reviewId = decodeURIComponent(url.pathname.split("/")[3]);
+      const resolution = await emailDomainResolutionService.getResolution(
+        reviewId
+      );
+
+      sendJson(response, 200, {
+        ok: true,
+        resolution
+      });
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      url.pathname === "/api/recruiter-contacts/delete"
+    ) {
+      if (!recruiterContactStore) {
+        sendJson(response, 503, {
+          ok: false,
+          error: "Recruiter contact store is not configured."
+        });
+        return;
+      }
+
+      try {
+        const body = await readJsonBody(request);
+        const reviewId = body.reviewId;
+        const review = reviewStore.get(reviewId);
+
+        if (!review) {
+          sendJson(response, 404, {
+            ok: false,
+            error: "Application review not found."
+          });
+          return;
+        }
+
+        const organisationId = deriveReviewOrganisationId(
+          review.formData
+        );
+
+        const deletedContacts =
+          await recruiterContactStore.deleteUnlinkedContacts({
+            organisationId,
+            reviewId,
+            contactIds: body.contactIds || []
+          });
+
+        writeDiagnostic("recruiter_contacts_deleted", {
+          requestId,
+          reviewId,
+          organisationId,
+          deleted: deletedContacts.length
+        });
+
+        sendJson(response, 200, {
+          ok: true,
+          deleted: deletedContacts.length,
+          deletedContacts
+        });
+      } catch (error) {
+        sendJson(response, 400, {
+          ok: false,
+          error: error instanceof Error
+            ? error.message
+            : "Unable to delete imported contacts."
+        });
+      }
+
+      return;
+    }
+
+    if (method === 'GET' && url.pathname === '/review-page.js') {
+      try {
+        const content = await readFile(
+          join(__dirname, 'review-page.js'),
+          'utf8'
+        );
+
+        sendText(response, 200, content, {
+          'content-type': 'application/javascript'
+        });
+      } catch {
+        sendText(response, 500, 'Unable to load review-page.js');
+      }
+
+      return;
+    }
+
     if (method !== 'GET' && method !== 'POST') {
       sendText(response, 405, 'Method Not Allowed', {
         allow: 'GET, POST'
