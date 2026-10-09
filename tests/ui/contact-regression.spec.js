@@ -1,4 +1,4 @@
-﻿import { test as base, expect } from "@playwright/test";
+import { test as base, expect } from "@playwright/test";
 import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
@@ -253,4 +253,49 @@ test("link selected moves only the checked row and retains the page sections", a
 
   const selected = (await app.store.listAll()).find((contact) => contact.id === "selected");
   expect(selected.linkedApplicationReviewIds).toEqual([reviewId]);
+});
+
+
+test("saving a domain refreshes linked emails without losing local draft edits", async ({ page, app }) => {
+  const reviewId = await prepare(page, app);
+  const contact = (await app.store.listAll()).find((c) => c.id === "linked");
+  contact.emailSource = "inferred";
+  await app.store.linkToReview({ reviewId, contactIds: ["linked"] });
+
+  await Promise.all([
+    page.waitForNavigation(),
+    page.getByRole("button", { name: "Research organisation", exact: true }).click()
+  ]);
+
+  const localDraft = "Local draft edit must survive saving the domain.";
+  await page.locator("#cover-letter-draft").fill(localDraft);
+
+  for (const domain of ["first-company.test", "second-company.test"]) {
+    await page.locator("#email-domain-input").fill(domain);
+
+    const saved = page.waitForResponse((response) =>
+      response.url().endsWith("/api/reviews/email-domain/save") &&
+      response.request().method() === "POST"
+    );
+
+    await page.getByRole("button", { name: "Save domain", exact: true }).click();
+    expect((await saved).status()).toBe(200);
+
+    await expect(page.locator("#email-domain-status")).toHaveText(
+      "Domain saved for this active review."
+    );
+
+    const emailCell = page.locator(
+      ".linked-imported-contacts-body .contact-email-cell"
+    );
+    await expect(emailCell.locator("a")).toHaveCount(2);
+    await expect(emailCell).toContainText(`test.linked@${domain}`);
+    await expect(emailCell).toContainText(`linked.test@${domain}`);
+    await expect(emailCell).not.toContainText("@twinstream.com");
+    await expect(page.locator("#cover-letter-draft")).toHaveText(localDraft);
+
+    await expect(
+      availableRow(page, "selected").locator(".contact-email-cell")
+    ).toContainText("test.selected@twinstream.com");
+  }
 });

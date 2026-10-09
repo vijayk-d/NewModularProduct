@@ -524,6 +524,13 @@ export function createLocalServer({
           return;
         }
 
+        const updatedContacts = recruiterContactStore
+          ? await recruiterContactStore.updateLinkedEmailCandidates({
+              reviewId,
+              emailDomain
+            })
+          : [];
+
         reviewStore.set(reviewId, {
           ...review,
           formData: {
@@ -534,7 +541,8 @@ export function createLocalServer({
 
         sendJson(response, 200, {
           ok: true,
-          emailDomain
+          emailDomain,
+          updatedContacts: updatedContacts.length
         });
       } catch {
         sendJson(response, 400, {

@@ -410,6 +410,15 @@ function attachEditableEmailDomainListener() {
 
       input.value = data.emailDomain;
       input.dataset.manual = "true";
+
+      try {
+        await refreshImportedContacts(button.dataset.reviewId);
+      } catch {
+        status.textContent =
+          "Domain saved, but contacts could not refresh. Click Refresh contacts.";
+        return;
+      }
+
       status.textContent = "Domain saved for this active review.";
     } catch (error) {
       status.textContent = error.message || "Unable to save domain.";

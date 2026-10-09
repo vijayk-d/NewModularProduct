@@ -49,6 +49,94 @@ export function createRecruiterContactStore({ filePath }) {
     return linked;
   },
 
+
+  async updateLinkedEmailCandidates({ reviewId, emailDomain }) {
+    if (typeof reviewId !== "string" || !reviewId.trim()) {
+      throw new Error("A review ID is required.");
+    }
+
+    const domain = String(emailDomain || "").trim().toLowerCase();
+    const labels = domain.split(".");
+    const blocked = [
+      "linkedin.com", "gmail.com", "googlemail.com",
+      "outlook.com", "hotmail.com", "yahoo.com", "icloud.com",
+      "example.com", "example.org", "example.net"
+    ];
+
+    if (
+      domain.length > 253 ||
+      labels.length < 2 ||
+      !labels.every((label) =>
+        label.length <= 63 &&
+        /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label)
+      ) ||
+      !/^[a-z]{2,63}$/.test(labels.at(-1)) ||
+      blocked.some((value) =>
+        domain === value || domain.endsWith(`.${value}`)
+      )
+    ) {
+      throw new Error("A valid business email domain is required.");
+    }
+
+    const namePart = (value) => String(value || "")
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+
+    const contacts = await load();
+    const changed = [];
+
+    const nextContacts = contacts.map((contact) => {
+      if (
+        !Array.isArray(contact.linkedApplicationReviewIds) ||
+        !contact.linkedApplicationReviewIds.includes(reviewId)
+      ) {
+        return contact;
+      }
+
+      const first = namePart(contact.firstName);
+      const last = namePart(contact.lastName);
+
+      if (!first || !last) {
+        return contact;
+      }
+
+      const generated = [...new Set([
+        `${first}.${last}@${domain}`,
+        `${last}.${first}@${domain}`
+      ])];
+
+      const existingSelected = String(contact.selectedEmail || "").trim();
+      const preserveSelected = Boolean(
+        existingSelected &&
+        (contact.verified === true || contact.emailSource !== "inferred")
+      );
+
+      const updatedContact = {
+        ...contact,
+        emailDomain: domain,
+        emailCandidates: [...new Set([
+          ...(preserveSelected ? [existingSelected] : []),
+          ...generated
+        ])],
+        selectedEmail: preserveSelected ? existingSelected : generated[0],
+        emailSource: preserveSelected
+          ? contact.emailSource || "supplied"
+          : "inferred"
+      };
+
+      changed.push(updatedContact);
+      return updatedContact;
+    });
+
+    if (changed.length) {
+      await save(nextContacts);
+    }
+
+    return changed;
+  },
+
   async deleteUnlinkedContacts({
     organisationId,
     reviewId,

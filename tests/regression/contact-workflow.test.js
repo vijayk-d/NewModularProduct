@@ -438,3 +438,97 @@ test("explicit deletion protects linked and omitted contacts and rejects empty s
     ["unselected", "other", "linked", "protected"].sort()
   );
 });
+
+
+test("saved domain replaces generated linked emails and leaves unlinked contacts unchanged", async (t) => {
+  const f = await fixture(t);
+  const contacts = await f.store.listAll();
+  const linked = contacts.find((c) => c.id === "linked");
+  linked.emailSource = "inferred";
+
+  const unlinkedBefore = JSON.stringify(
+    contacts.filter((c) => c.id !== "linked")
+  );
+
+  for (const domain of ["first-company.test", "second-company.test"]) {
+    const result = await f.json("/api/reviews/email-domain/save", {
+      reviewId: f.reviewId,
+      emailDomain: domain
+    });
+
+    assert.equal(result.status, 200);
+    assert.equal(result.data.ok, true);
+    assert.equal(result.data.updatedContacts, 1);
+
+    const stored = (await f.store.listAll()).find((c) => c.id === "linked");
+    assert.deepEqual(stored.emailCandidates, [
+      `test.linked@${domain}`,
+      `linked.test@${domain}`
+    ]);
+    assert.equal(stored.selectedEmail, `test.linked@${domain}`);
+    assert.equal(stored.emailSource, "inferred");
+
+    assert.equal(
+      JSON.stringify((await f.store.listAll()).filter((c) => c.id !== "linked")),
+      unlinkedBefore
+    );
+  }
+
+  const reloaded = await f.form("/organisation-research", {
+    reviewId: f.reviewId
+  });
+  assert.equal(reloaded.status, 200);
+  assert.match(
+    reloaded.html,
+    /value="second-company\.test"/
+  );
+});
+
+test("saved domain preserves supplied and verified selected emails", async (t) => {
+  for (const verified of [false, true]) {
+    const f = await fixture(t);
+    const linked = (await f.store.listAll()).find((c) => c.id === "linked");
+    linked.selectedEmail = "published@original-company.test";
+    linked.emailSource = verified ? "inferred" : "supplied";
+    linked.verified = verified;
+
+    const result = await f.json("/api/reviews/email-domain/save", {
+      reviewId: f.reviewId,
+      emailDomain: "new-company.test"
+    });
+
+    assert.equal(result.status, 200);
+    const stored = (await f.store.listAll()).find((c) => c.id === "linked");
+    assert.equal(stored.selectedEmail, "published@original-company.test");
+    assert.ok(stored.emailCandidates.includes("published@original-company.test"));
+    assert.ok(stored.emailCandidates.includes("test.linked@new-company.test"));
+    assert.ok(stored.emailCandidates.includes("linked.test@new-company.test"));
+    assert.equal(stored.verified, verified);
+  }
+});
+
+test("invalid saved domain changes neither contacts nor the saved review domain", async (t) => {
+  const f = await fixture(t);
+  const saved = await f.json("/api/reviews/email-domain/save", {
+    reviewId: f.reviewId,
+    emailDomain: "valid-company.test"
+  });
+  assert.equal(saved.status, 200);
+
+  const before = JSON.stringify(await f.store.listAll());
+
+  for (const invalid of ["gmail.com", "https://company.test", "person@company.test"]) {
+    const result = await f.json("/api/reviews/email-domain/save", {
+      reviewId: f.reviewId,
+      emailDomain: invalid
+    });
+    assert.equal(result.status, 400);
+    assert.equal(JSON.stringify(await f.store.listAll()), before);
+  }
+
+  const review = await f.form("/organisation-research", {
+    reviewId: f.reviewId
+  });
+  assert.equal(review.status, 200);
+  assert.match(review.html, /value="valid-company\.test"/);
+});
