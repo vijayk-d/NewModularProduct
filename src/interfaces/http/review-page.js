@@ -146,13 +146,15 @@ export function attachReviewPageListeners() {
         return;
       }
 
-      var question = deleteSelected
-        ? "Delete the selected imported contacts? This cannot be undone."
-        : "Delete all unlinked imported contacts for this organisation? " +
-          "This cannot be undone.";
+      if (!deleteSelected) {
+        var confirmed = window.confirm(
+          "Delete all unlinked imported contacts for this organisation? " +
+            "This cannot be undone."
+        );
 
-      if (!window.confirm(question)) {
-        return;
+        if (!confirmed) {
+          return;
+        }
       }
 
       button.disabled = true;
@@ -182,6 +184,7 @@ export function attachReviewPageListeners() {
         }
 
         await refreshImportedContacts(reviewId);
+        button.disabled = false;
       } catch (error) {
         alert(
           error instanceof Error
