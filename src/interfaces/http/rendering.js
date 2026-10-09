@@ -651,7 +651,7 @@ export function renderContactLinking(contactLinking = null) {
         />
       </td>
       <td>${escapeHtml(contact.fullName)}</td>
-      <td>${escapeHtml(contact.role || "")}</td>
+      <td class="contact-role-cell">${escapeHtml(contact.role || "")}</td>
       <td>
         <a
           href="${escapeHtml(contact.linkedinUrl)}"
@@ -667,7 +667,7 @@ export function renderContactLinking(contactLinking = null) {
   const linkedRows = linkedContacts.map((contact) => `
     <tr>
       <td>${escapeHtml(contact.fullName)}</td>
-      <td>${escapeHtml(contact.role || "")}</td>
+      <td class="contact-role-cell">${escapeHtml(contact.role || "")}</td>
       <td>
         <a
           href="${escapeHtml(contact.linkedinUrl)}"
@@ -699,7 +699,7 @@ export function renderContactLinking(contactLinking = null) {
                 <th>LinkedIn</th>
               </tr>
             </thead>
-            <tbody>${linkedRows}</tbody>
+            <tbody class="linked-imported-contacts-body">${linkedRows}</tbody>
           </table>
         `
         : ""}
@@ -729,13 +729,20 @@ export function renderContactLinking(contactLinking = null) {
                   <th>LinkedIn</th>
                 </tr>
               </thead>
-              <tbody>${unlinkedRows}</tbody>
+              <tbody class="available-imported-contacts-body">${unlinkedRows}</tbody>
             </table>
 
             <button type="submit">Link selected contacts</button>
           </form>
 
           <div class="contact-linking-actions" style="display:flex;gap:8px;margin-top:12px;">
+            <button
+              type="button"
+              class="refresh-imported-contacts-button"
+              data-review-id="${escapeHtml(contactLinking.reviewId)}"
+            >
+              Refresh contacts
+            </button>
             <button
               type="button"
               class="delete-selected-contacts-button"
@@ -1177,7 +1184,13 @@ export function renderApplicationReview({
       font-size: 0.95rem;
     }
 
-    .cv-keywords {
+    .contact-role-cell {
+  max-width: 28rem;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.cv-keywords {
       display: flex;
       flex-wrap: wrap;
       gap: 0.4rem;
@@ -1705,7 +1718,7 @@ export function renderRecruiterContacts(contacts = []) {
   const rows = contacts.map((contact) => `
     <tr>
       <td>${escapeHtml(contact.fullName)}</td>
-      <td>${escapeHtml(contact.role || "")}</td>
+      <td class="contact-role-cell">${escapeHtml(contact.role || "")}</td>
       <td>
         <a href="${escapeHtml(contact.linkedinUrl)}" target="_blank" rel="noopener">
           LinkedIn profile

@@ -997,6 +997,58 @@ export function createLocalServer({
     }
 
     if (
+      method === "GET" &&
+      url.pathname === "/api/recruiter-contacts/linking"
+    ) {
+      if (!recruiterContactStore) {
+        sendJson(response, 503, {
+          ok: false,
+          error: "Recruiter contact store is not configured."
+        });
+        return;
+      }
+
+      try {
+        const reviewId = url.searchParams.get("reviewId");
+
+        if (!reviewId) {
+          sendJson(response, 400, {
+            ok: false,
+            error: "reviewId is required."
+          });
+          return;
+        }
+
+        const review = reviewStore.get(reviewId);
+
+        if (!review) {
+          sendJson(response, 404, {
+            ok: false,
+            error: "Application review not found."
+          });
+          return;
+        }
+
+        const contactLinking = await loadContactLinking(reviewId);
+
+        sendJson(response, 200, {
+          ok: true,
+          linked: contactLinking.linked || [],
+          unlinked: contactLinking.unlinked || []
+        });
+      } catch (error) {
+        sendJson(response, 400, {
+          ok: false,
+          error: error instanceof Error
+            ? error.message
+            : "Unable to load imported contacts."
+        });
+      }
+
+      return;
+    }
+
+    if (
       method === "POST" &&
       url.pathname === "/api/recruiter-contacts/delete"
     ) {

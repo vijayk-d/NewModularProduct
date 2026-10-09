@@ -181,7 +181,7 @@ export function attachReviewPageListeners() {
           );
         }
 
-        window.location.reload();
+        await refreshImportedContacts(reviewId);
       } catch (error) {
         alert(
           error instanceof Error
@@ -202,7 +202,155 @@ export function attachReviewPageListeners() {
     true
   );
 }
+
+function escapeContactValue(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function renderRefreshableContactRows(contacts) {
+  return contacts
+    .map(
+      (contact) => `
+        <tr>
+          <td>
+            <input
+              type="checkbox"
+              class="contact-link-checkbox"
+              name="contactIds"
+              value="${escapeContactValue(contact.id)}"
+            />
+          </td>
+          <td>${escapeContactValue(contact.fullName)}</td>
+          <td>${escapeContactValue(contact.role)}</td>
+          <td>
+            <a
+              href="${escapeContactValue(contact.linkedinUrl)}"
+              target="_blank"
+              rel="noopener"
+            >
+              LinkedIn profile
+            </a>
+          </td>
+        </tr>`
+    )
+    .join("");
+}
+
+function renderRefreshableLinkedRows(contacts) {
+  return contacts
+    .map(
+      (contact) => `
+        <tr>
+          <td>${escapeContactValue(contact.fullName)}</td>
+          <td>${escapeContactValue(contact.role)}</td>
+          <td>
+            <a
+              href="${escapeContactValue(contact.linkedinUrl)}"
+              target="_blank"
+              rel="noopener"
+            >
+              LinkedIn profile
+            </a>
+          </td>
+        </tr>`
+    )
+    .join("");
+}
+
+async function refreshImportedContacts(reviewId) {
+  const response = await fetch(
+    `/api/recruiter-contacts/linking?reviewId=${encodeURIComponent(reviewId)}`
+  );
+
+  const responseText = await response.text();
+
+  let payload;
+
+  try {
+    payload = JSON.parse(responseText);
+  } catch {
+    throw new Error(
+      `Unable to refresh imported contacts (HTTP ${response.status}).`
+    );
+  }
+
+  if (!response.ok || !payload.ok) {
+    throw new Error(
+      payload.error ||
+        `Unable to refresh imported contacts (HTTP ${response.status}).`
+    );
+  }
+
+  const unlinkedContacts =
+    payload.unlinked ||
+    payload.unlinkedContacts ||
+    payload.contacts ||
+    [];
+
+  const linkedContacts =
+    payload.linked ||
+    payload.linkedContacts ||
+    [];
+
+  const unlinkedBody = document.querySelector(
+    ".available-imported-contacts-body"
+  );
+
+  const linkedBody = document.querySelector(
+    ".linked-imported-contacts-body"
+  );
+
+  if (unlinkedBody) {
+    unlinkedBody.innerHTML = renderRefreshableContactRows(unlinkedContacts);
+  }
+
+  if (linkedBody) {
+    linkedBody.innerHTML = renderRefreshableLinkedRows(linkedContacts);
+  }
+}
+
+function attachRefreshImportedContactsListener() {
+  document.addEventListener(
+    "click",
+    async function (event) {
+      const button = event.target.closest(
+        ".refresh-imported-contacts-button"
+      );
+
+      if (!button) {
+        return;
+      }
+
+      event.preventDefault();
+
+      const originalText = button.textContent;
+      button.disabled = true;
+      button.textContent = "Refreshing…";
+
+      try {
+        await refreshImportedContacts(button.dataset.reviewId);
+      } catch (error) {
+        window.alert(
+          error instanceof Error
+            ? error.message
+            : "Unable to refresh imported contacts."
+        );
+      } finally {
+        button.disabled = false;
+        button.textContent = originalText;
+      }
+    },
+    true
+  );
+}
+
 if (typeof document !== "undefined") {
   attachReviewPageListeners();
+  attachRefreshImportedContactsListener();
   attachEmailDomainListener();
 }
