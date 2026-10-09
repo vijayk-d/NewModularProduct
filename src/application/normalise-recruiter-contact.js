@@ -64,6 +64,26 @@ export function normaliseRecruiterContact(
     [firstName, lastName].filter(Boolean).join(" ")
   );
 
+  const emailDomain = cleanText(incoming.emailDomain)
+    .replace(/^@/, "")
+    .toLowerCase();
+
+  const emailCandidates = [];
+  let selectedEmail = cleanText(incoming.selectedEmail);
+  let emailSource = selectedEmail ? "supplied" : null;
+
+  if (!selectedEmail && emailDomain && firstName && lastName) {
+    const localPart = `${firstName}.${lastName}`
+      .toLowerCase()
+      .replace(/[^a-z0-9.]/g, "")
+      .replace(/\.+/g, ".")
+      .replace(/^\.|\.$/g, "");
+
+    selectedEmail = `${localPart}@${emailDomain}`;
+    emailSource = "inferred";
+    emailCandidates.push(selectedEmail);
+  }
+
   return {
     ...incoming,
     organisationId,
@@ -73,6 +93,10 @@ export function normaliseRecruiterContact(
     role,
     location: cleanText(incoming.location),
     linkedinUrl: cleanText(incoming.linkedinUrl),
+    emailDomain,
+    emailCandidates,
+    selectedEmail,
+    emailSource,
     source: "linkedin-visible",
     verified: false
   };

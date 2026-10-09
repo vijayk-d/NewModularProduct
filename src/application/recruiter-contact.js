@@ -22,8 +22,11 @@ export function createRecruiterContact(input, { now = Date.now } = {}) {
     role: clean(input.role),
     linkedinUrl: linkedinUrl.split("?")[0],
     emailDomain: clean(input.emailDomain) || null,
-    emailCandidates: [],
-    selectedEmail: null,
+    emailCandidates: Array.isArray(input.emailCandidates)
+      ? input.emailCandidates.map(clean).filter(Boolean)
+      : [],
+    selectedEmail: clean(input.selectedEmail) || null,
+    emailSource: clean(input.emailSource) || null,
     source: clean(input.source) || "linkedin-visible",
     sourceUrl: clean(input.sourceUrl),
     verified: Boolean(input.verified),
@@ -49,6 +52,11 @@ export function mergeRecruiterContact(existing, incoming) {
     ...existing,
     role: incoming.role || existing.role,
     emailDomain: incoming.emailDomain || existing.emailDomain,
+    emailCandidates: incoming.emailCandidates?.length
+      ? incoming.emailCandidates
+      : existing.emailCandidates,
+    selectedEmail: incoming.selectedEmail || existing.selectedEmail,
+    emailSource: incoming.emailSource || existing.emailSource,
     sourceUrl: incoming.sourceUrl || existing.sourceUrl,
     lastImportedAt: incoming.lastImportedAt
   };

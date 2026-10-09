@@ -643,23 +643,26 @@ export function renderContactLinking(contactLinking = null) {
   const unlinkedRows = unlinkedContacts.map((contact) => `
     <tr>
       <td>
-        <input
-          type="checkbox"
-          class="contact-link-checkbox"
-          name="contactIds"
-          value="${escapeHtml(contact.id)}"
-        />
+        <input type="checkbox" class="contact-link-checkbox"
+          name="contactIds" value="${escapeHtml(contact.id)}" />
       </td>
       <td>${escapeHtml(contact.fullName)}</td>
-      <td class="contact-role-cell">${escapeHtml(contact.role || "")}</td>
+      <td class="contact-role-cell"
+          style="max-width:28rem;white-space:normal;overflow-wrap:anywhere;">
+        ${escapeHtml(contact.role || "")}
+      </td>
+      <td class="contact-email-cell"
+          style="max-width:24rem;white-space:normal;overflow-wrap:anywhere;">
+        ${escapeHtml(
+          contact.selectedEmail
+            ? contact.selectedEmail +
+              (contact.emailSource === "inferred" ? " (inferred)" : "")
+            : "Not available"
+        )}
+      </td>
       <td>
-        <a
-          href="${escapeHtml(contact.linkedinUrl)}"
-          target="_blank"
-          rel="noopener"
-        >
-          LinkedIn profile
-        </a>
+        <a href="${escapeHtml(contact.linkedinUrl)}"
+           target="_blank" rel="noopener">LinkedIn profile</a>
       </td>
     </tr>
   `).join("");
@@ -667,15 +670,22 @@ export function renderContactLinking(contactLinking = null) {
   const linkedRows = linkedContacts.map((contact) => `
     <tr>
       <td>${escapeHtml(contact.fullName)}</td>
-      <td class="contact-role-cell">${escapeHtml(contact.role || "")}</td>
+      <td class="contact-role-cell"
+          style="max-width:28rem;white-space:normal;overflow-wrap:anywhere;">
+        ${escapeHtml(contact.role || "")}
+      </td>
+      <td class="contact-email-cell"
+          style="max-width:24rem;white-space:normal;overflow-wrap:anywhere;">
+        ${escapeHtml(
+          contact.selectedEmail
+            ? contact.selectedEmail +
+              (contact.emailSource === "inferred" ? " (inferred)" : "")
+            : "Not available"
+        )}
+      </td>
       <td>
-        <a
-          href="${escapeHtml(contact.linkedinUrl)}"
-          target="_blank"
-          rel="noopener"
-        >
-          LinkedIn profile
-        </a>
+        <a href="${escapeHtml(contact.linkedinUrl)}"
+           target="_blank" rel="noopener">LinkedIn profile</a>
       </td>
     </tr>
   `).join("");
@@ -693,12 +703,13 @@ export function renderContactLinking(contactLinking = null) {
           <h3>Linked contacts</h3>
           <table>
             <thead>
-              <tr>
-                <th>Name</th>
-                <th>Role</th>
-                <th>LinkedIn</th>
-              </tr>
-            </thead>
+      <tr>
+        <th scope="col">Name</th>
+        <th scope="col">Role</th>
+        <th scope="col">Email</th>
+        <th scope="col">LinkedIn</th>
+      </tr>
+    </thead>
             <tbody class="linked-imported-contacts-body">${linkedRows}</tbody>
           </table>
         `
@@ -717,18 +728,18 @@ export function renderContactLinking(contactLinking = null) {
 
             <table>
               <thead>
-                <tr>
-                  <th>
-                    <input
-                      type="checkbox"
-                      id="select-all-contact-links"
-                    />
-                  </th>
-                  <th>Name</th>
-                  <th>Role</th>
-                  <th>LinkedIn</th>
-                </tr>
-              </thead>
+      <tr>
+        <th scope="col">
+          Select
+          <input type="checkbox" id="select-all-contact-links"
+                 aria-label="Select all available contacts" />
+        </th>
+        <th scope="col">Name</th>
+        <th scope="col">Role</th>
+        <th scope="col">Email</th>
+        <th scope="col">LinkedIn</th>
+      </tr>
+    </thead>
               <tbody class="available-imported-contacts-body">${unlinkedRows}</tbody>
             </table>
 

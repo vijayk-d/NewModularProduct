@@ -216,53 +216,57 @@ function escapeContactValue(value) {
 }
 
 function renderRefreshableContactRows(contacts) {
-  return contacts
-    .map(
-      (contact) => `
-        <tr>
-          <td>
-            <input
-              type="checkbox"
-              class="contact-link-checkbox"
-              name="contactIds"
-              value="${escapeContactValue(contact.id)}"
-            />
-          </td>
-          <td>${escapeContactValue(contact.fullName)}</td>
-          <td>${escapeContactValue(contact.role)}</td>
-          <td>
-            <a
-              href="${escapeContactValue(contact.linkedinUrl)}"
-              target="_blank"
-              rel="noopener"
-            >
-              LinkedIn profile
-            </a>
-          </td>
-        </tr>`
-    )
-    .join("");
+  return contacts.map((contact) => `
+    <tr>
+      <td>
+        <input type="checkbox" class="contact-link-checkbox"
+          name="contactIds" value="${escapeContactValue(contact.id)}" />
+      </td>
+      <td>${escapeContactValue(contact.fullName)}</td>
+      <td class="contact-role-cell"
+          style="max-width:28rem;white-space:normal;overflow-wrap:anywhere;">
+        ${escapeContactValue(contact.role || "")}
+      </td>
+      <td class="contact-email-cell"
+          style="max-width:24rem;white-space:normal;overflow-wrap:anywhere;">
+        ${escapeContactValue(
+          contact.selectedEmail
+            ? contact.selectedEmail +
+              (contact.emailSource === "inferred" ? " (inferred)" : "")
+            : "Not available"
+        )}
+      </td>
+      <td>
+        <a href="${escapeContactValue(contact.linkedinUrl)}"
+           target="_blank" rel="noopener">LinkedIn profile</a>
+      </td>
+    </tr>
+  `).join("");
 }
 
 function renderRefreshableLinkedRows(contacts) {
-  return contacts
-    .map(
-      (contact) => `
-        <tr>
-          <td>${escapeContactValue(contact.fullName)}</td>
-          <td>${escapeContactValue(contact.role)}</td>
-          <td>
-            <a
-              href="${escapeContactValue(contact.linkedinUrl)}"
-              target="_blank"
-              rel="noopener"
-            >
-              LinkedIn profile
-            </a>
-          </td>
-        </tr>`
-    )
-    .join("");
+  return contacts.map((contact) => `
+    <tr>
+      <td>${escapeContactValue(contact.fullName)}</td>
+      <td class="contact-role-cell"
+          style="max-width:28rem;white-space:normal;overflow-wrap:anywhere;">
+        ${escapeContactValue(contact.role || "")}
+      </td>
+      <td class="contact-email-cell"
+          style="max-width:24rem;white-space:normal;overflow-wrap:anywhere;">
+        ${escapeContactValue(
+          contact.selectedEmail
+            ? contact.selectedEmail +
+              (contact.emailSource === "inferred" ? " (inferred)" : "")
+            : "Not available"
+        )}
+      </td>
+      <td>
+        <a href="${escapeContactValue(contact.linkedinUrl)}"
+           target="_blank" rel="noopener">LinkedIn profile</a>
+      </td>
+    </tr>
+  `).join("");
 }
 
 async function refreshImportedContacts(reviewId) {
