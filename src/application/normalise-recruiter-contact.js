@@ -68,22 +68,40 @@ export function normaliseRecruiterContact(
     .replace(/^@/, "")
     .toLowerCase();
 
-  const emailCandidates = [];
-  let selectedEmail = cleanText(incoming.selectedEmail);
-  let emailSource = selectedEmail ? "supplied" : null;
-
-  if (!selectedEmail && emailDomain && firstName && lastName) {
-    const localPart = `${firstName}.${lastName}`
+  const namePart = (value) =>
+    cleanText(value)
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase()
-      .replace(/[^a-z0-9.]/g, "")
-      .replace(/\.+/g, ".")
-      .replace(/^\.|\.$/g, "");
+      .replace(/[^a-z0-9]/g, "");
 
-    selectedEmail = `${localPart}@${emailDomain}`;
-    emailSource = "inferred";
+  const first = namePart(firstName);
+  const last = namePart(lastName);
+
+  let selectedEmail = cleanText(incoming.selectedEmail);
+  let emailSource = selectedEmail
+    ? cleanText(incoming.emailSource) || "supplied"
+    : null;
+
+  const emailCandidates = [];
+
+  if (selectedEmail) {
     emailCandidates.push(selectedEmail);
   }
 
+  if (emailDomain && first && last) {
+    emailCandidates.push(
+      `${first}.${last}@${emailDomain}`,
+      `${last}.${first}@${emailDomain}`
+    );
+  }
+
+  const uniqueCandidates = [...new Set(emailCandidates)];
+
+  if (!selectedEmail && uniqueCandidates.length) {
+    selectedEmail = uniqueCandidates[0];
+    emailSource = "inferred";
+  }
   return {
     ...incoming,
     organisationId,
@@ -94,7 +112,7 @@ export function normaliseRecruiterContact(
     location: cleanText(incoming.location),
     linkedinUrl: cleanText(incoming.linkedinUrl),
     emailDomain,
-    emailCandidates,
+    emailCandidates: uniqueCandidates,
     selectedEmail,
     emailSource,
     source: "linkedin-visible",

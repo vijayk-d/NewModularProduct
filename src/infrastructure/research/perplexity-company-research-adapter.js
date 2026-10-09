@@ -79,6 +79,73 @@ function normalizeSource(source) {
   }
 }
 
+
+function normalizeEmailDomainResearch(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const rawDomain = normalizeText(value.emailDomain).toLowerCase();
+  let emailDomain = "";
+
+  if (rawDomain) {
+    try {
+      const url = new URL(
+        /^[a-z]+:\/\//i.test(rawDomain)
+          ? rawDomain
+          : `https://${rawDomain}`
+      );
+
+      if (
+        !["http:", "https:"].includes(url.protocol) ||
+        url.username ||
+        url.password ||
+        url.port
+      ) {
+        return null;
+      }
+
+      emailDomain = url.hostname.replace(/^www\./, "");
+    } catch {
+      return null;
+    }
+  }
+
+  const blocked = [
+    "linkedin.com", "gmail.com", "googlemail.com",
+    "outlook.com", "hotmail.com", "yahoo.com", "icloud.com",
+    "example.com", "example.org", "example.net"
+  ];
+
+  const validDomain =
+    emailDomain.length <= 253 &&
+    /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/
+      .test(emailDomain) &&
+    emailDomain.split(".").every((label) => label.length <= 63);
+
+  if (
+    !validDomain ||
+    blocked.some((domain) =>
+      emailDomain === domain || emailDomain.endsWith(`.${domain}`)
+    )
+  ) {
+    return null;
+  }
+
+  return {
+    emailDomain,
+    confidence: ["high", "medium", "low"].includes(value.confidence)
+      ? value.confidence
+      : "low",
+    reasoning: normalizeText(value.reasoning).slice(0, 1000),
+    evidence: Array.isArray(value.evidence)
+      ? value.evidence.map(normalizeSource)
+          .filter((source) => source && source.url)
+          .slice(0, 8)
+      : []
+  };
+}
+
 function parseStructuredResearch(text = '') {
   const content = normalizeText(text);
 
@@ -104,7 +171,10 @@ function parseStructuredResearch(text = '') {
 
   return {
     summary: normalizeText(parsed.summary).slice(0, 800),
-    companyValues: normalizeCompanyValues(parsed.companyValues)
+    companyValues: normalizeCompanyValues(parsed.companyValues),
+    emailDomainResearch: normalizeEmailDomainResearch(
+      parsed.emailDomainResearch
+    )
   };
 }
 
@@ -136,9 +206,16 @@ export function createPerplexityCompanyResearchAdapter({
         'Do not infer values from generic marketing language.',
         'Return ONLY this tagged JSON block. Do not add prose before or after it.',
         '<organisation-research>',
-        '{"summary":"Maximum 70 factual words.","companyValues":["Up to 5 explicit values, each under 12 words."]}',
+        '{"summary":"Maximum 70 factual words.","companyValues":["Up to 5 explicit values, each under 12 words."],"emailDomainResearch":{"emailDomain":null,"confidence":"low","reasoning":"Explain the evidence or uncertainty.","evidence":[{"title":"Source title","url":"https://official-source"}]}}',
         '</organisation-research>',
         'Use an empty companyValues array if no explicit values can be verified.',
+        'Also research the organisation business email domain in this same response.',
+        'Prefer published business email addresses on official organisation sources.',
+        'A website hostname alone does not prove the organisation email domain.',
+        'Return only the domain, not an email address, in emailDomain.',
+        'Never use LinkedIn, generic email providers, or example domains.',
+        'Use null for emailDomain when there is no sufficient evidence; do not invent it.',
+        'Include source URLs and explain uncertainty in emailDomainResearch.',
         'Do not make claims about candidates or individuals.'
       ].filter(Boolean).join('\n');
 
@@ -224,7 +301,10 @@ export function createPerplexityCompanyResearchAdapter({
         summary: research.summary,
         sources,
         researchedAt: now(),
-        provider: 'perplexity'
+        provider: 'perplexity',
+        ...(research.emailDomainResearch
+          ? { emailDomainResearch: research.emailDomainResearch }
+          : {})
       };
     }
   };

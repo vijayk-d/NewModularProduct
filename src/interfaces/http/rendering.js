@@ -1,4 +1,4 @@
-﻿import crypto from 'node:crypto';
+import crypto from 'node:crypto';
 
 export function escapeHtml(value = '') {
   return String(value)
@@ -651,14 +651,21 @@ export function renderContactLinking(contactLinking = null) {
           style="max-width:28rem;white-space:normal;overflow-wrap:anywhere;">
         ${escapeHtml(contact.role || "")}
       </td>
-      <td class="contact-email-cell"
+       <td class="contact-email-cell"
           style="max-width:24rem;white-space:normal;overflow-wrap:anywhere;">
-        ${escapeHtml(
-          contact.selectedEmail
-            ? contact.selectedEmail +
-              (contact.emailSource === "inferred" ? " (inferred)" : "")
-            : "Not available"
-        )}
+        ${[...new Set([
+          contact.selectedEmail,
+          ...(Array.isArray(contact.emailCandidates)
+            ? contact.emailCandidates
+            : [])
+        ].filter((email) => typeof email === "string" && email.trim())
+          .map((email) => email.trim()))]
+          .map((email) => `
+            <div>
+              <a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a>
+            </div>
+          `)
+          .join("") || "Not available"}
       </td>
       <td>
         <a href="${escapeHtml(contact.linkedinUrl)}"
@@ -676,12 +683,19 @@ export function renderContactLinking(contactLinking = null) {
       </td>
       <td class="contact-email-cell"
           style="max-width:24rem;white-space:normal;overflow-wrap:anywhere;">
-        ${escapeHtml(
-          contact.selectedEmail
-            ? contact.selectedEmail +
-              (contact.emailSource === "inferred" ? " (inferred)" : "")
-            : "Not available"
-        )}
+        ${[...new Set([
+          contact.selectedEmail,
+          ...(Array.isArray(contact.emailCandidates)
+            ? contact.emailCandidates
+            : [])
+        ].filter((email) => typeof email === "string" && email.trim())
+          .map((email) => email.trim()))]
+          .map((email) => `
+            <div>
+              <a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a>
+            </div>
+          `)
+          .join("") || "Not available"}
       </td>
       <td>
         <a href="${escapeHtml(contact.linkedinUrl)}"
@@ -1498,6 +1512,12 @@ ${score}
 
     <p><a href="/">Prepare another application</a></p>
     <p class="notice">This local tool does not send email. Review and send manually.</p>
+${renderRecruiterContacts(contacts)}
+
+${renderContactLinking(contactLinking)}
+
+${renderEmailDomainResolution(reviewId, formData, research)}
+
   </main>
 
   <script nonce="__SCRIPT_NONCE__">
@@ -1693,33 +1713,72 @@ ${score}
 </body>
 </html>
 
-${renderRecruiterContacts(contacts)}
 
-${renderContactLinking(contactLinking)}
-
-${renderEmailDomainResolution(reviewId)}
 `;
 }
 
-export function renderEmailDomainResolution(reviewId) {
+export function renderEmailDomainResolution(
+  reviewId,
+  formData = {},
+  research = null
+) {
+  const savedDomain = String(formData.emailDomain || "").trim();
+  const domainResearch = research?.emailDomainResearch;
+  const researchedDomain = String(
+    domainResearch?.emailDomain || ""
+  ).trim();
+  const displayedDomain = savedDomain || researchedDomain;
+
   return `
     <section class="review-section" id="email-domain-resolution">
       <h2>Email domain</h2>
 
-      <p id="email-domain-status">Not resolved.</p>
+      <label for="email-domain-input">Organisation email domain</label>
+      <input
+        id="email-domain-input"
+        type="text"
+        value="${escapeHtml(displayedDomain)}"
+        placeholder="e.g. twinstream.com"
+        autocomplete="off"
+        spellcheck="false"
+        data-manual="${savedDomain ? "true" : "false"}"
+        style="display:block;width:min(100%,32rem);box-sizing:border-box;
+               padding:0.65rem;margin:0.5rem 0;border:1px solid #94a3b8;
+               border-radius:0.4rem;font:inherit;"
+      />
 
-      <button
-        type="button"
-        class="find-email-domain-button"
-        data-review-id="${escapeHtml(reviewId)}"
-      >
-        Find email domain
-      </button>
+      <p id="email-domain-status" role="status" aria-live="polite">
+        ${savedDomain
+          ? "Saved for this active review."
+          : researchedDomain
+            ? "Found during organisation research. Edit if needed, then save."
+            : "No domain found yet. Research the organisation or enter one manually."}
+      </p>
+
+      ${researchedDomain
+        ? `<p>Research suggestion: ${escapeHtml(researchedDomain)}
+             (${escapeHtml(domainResearch.confidence || "low")} confidence)</p>`
+        : ""}
+
+      <div class="actions">
+        <button
+          type="button"
+          class="save-email-domain-button"
+          data-review-id="${escapeHtml(reviewId)}"
+        >Save domain</button>
+
+        <button
+          type="button"
+          class="find-email-domain-button"
+          data-review-id="${escapeHtml(reviewId)}"
+        >Find email domain</button>
+      </div>
 
       <div id="email-domain-result"></div>
     </section>
   `;
 }
+
 
 export function renderRecruiterContacts(contacts = []) {
   if (!contacts.length) {

@@ -54,30 +54,40 @@ export function createRecruiterContactStore({ filePath }) {
     reviewId,
     contactIds
   }) {
+    if (
+      typeof organisationId !== "string" ||
+      !organisationId.trim()
+    ) {
+      throw new Error("An organisation ID is required for deletion.");
+    }
+
+    if (
+      contactIds !== undefined &&
+      !Array.isArray(contactIds)
+    ) {
+      throw new Error("Contact IDs must be an array.");
+    }
+
     const contacts = await load();
     const requestedIds = new Set(contactIds || []);
-    const clearAll = !Array.isArray(contactIds) || contactIds.length === 0;
+    const clearAll = contactIds === undefined || contactIds.length === 0;
     const deletedContacts = [];
 
     const remainingContacts = contacts.filter((contact) => {
-      const isLinkedToReview =
+      const belongsToOrganisation =
+        contact.organisationId === organisationId;
+
+      const isLinked =
         Array.isArray(contact.linkedApplicationReviewIds) &&
-        contact.linkedApplicationReviewIds.includes(reviewId);
+        contact.linkedApplicationReviewIds.length > 0;
 
       const isRequested =
         clearAll || requestedIds.has(contact.id);
 
-      const isLinkedInImported =
-        contact.source === "linkedin-visible" ||
-        contact.organisationId === "domain:linkedin.com" ||
-        contact.organisationId === "unknown:linkedin-import";
-
       const shouldDelete =
-        !isLinkedToReview &&
-        isRequested &&
-        (clearAll
-          ? isLinkedInImported
-          : true);
+        belongsToOrganisation &&
+        !isLinked &&
+        isRequested;
 
       if (shouldDelete) {
         deletedContacts.push(contact);
@@ -88,7 +98,6 @@ export function createRecruiterContactStore({ filePath }) {
     });
 
     await save(remainingContacts);
-
     return deletedContacts;
   },
 

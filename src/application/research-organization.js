@@ -1,4 +1,4 @@
-﻿const RESEARCH_STATUSES = new Set(['found', 'not-found', 'error']);
+const RESEARCH_STATUSES = new Set(['found', 'not-found', 'error']);
 
 function requireResearchPort(ports) {
   const port = ports?.companyResearchPort;
@@ -61,7 +61,31 @@ function normalizeResearchResult(result) {
     sources,
     researchedAt: String(normalized.researchedAt ?? '').trim(),
     provider: String(normalized.provider ?? '').trim(),
-    error: normalized.error === undefined ? undefined : String(normalized.error)
+    error: normalized.error === undefined ? undefined : String(normalized.error),
+    ...(normalized.emailDomainResearch &&
+        typeof normalized.emailDomainResearch === "object"
+      ? {
+          emailDomainResearch: {
+            emailDomain: String(
+              normalized.emailDomainResearch.emailDomain ?? ""
+            ).trim(),
+            confidence: String(
+              normalized.emailDomainResearch.confidence ?? "low"
+            ).trim(),
+            reasoning: String(
+              normalized.emailDomainResearch.reasoning ?? ""
+            ).trim(),
+            evidence: Array.isArray(
+              normalized.emailDomainResearch.evidence
+            )
+              ? normalized.emailDomainResearch.evidence.map((source) => ({
+                  title: String(source?.title ?? "").trim(),
+                  url: String(source?.url ?? "").trim()
+                }))
+              : []
+          }
+        }
+      : {})
   };
 }
 

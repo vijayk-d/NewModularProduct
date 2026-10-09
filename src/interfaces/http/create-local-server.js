@@ -1,4 +1,4 @@
-﻿import { createPerplexityClient } from "../../infrastructure/perplexity-client.js";
+import { createPerplexityClient } from "../../infrastructure/perplexity-client.js";
 import { createEmailDomainResolutionService } from "../../application/email-domain-resolution-service.js";
 import { renderApplicationReview, renderRefinementPanel, renderOrganisationResearch, renderField, renderAdvertLink, getSelectableCompanyValues, renderResearchSource, renderOptionalDetail , renderApplicationForm, escapeHtml} from './rendering.js';
 import { readFormBody } from './form-body.js';
@@ -99,17 +99,34 @@ function readJsonBody(request) {
 }
 
 function deriveReviewOrganisationId(formData) {
-  const organisationUrl = formData.organisationUrl || "";
+  const savedDomain = String(formData.emailDomain || "")
+    .trim()
+    .toLowerCase();
+
+  if (savedDomain) {
+    return `domain:${savedDomain}`;
+  }
 
   try {
-    const hostname = new URL(organisationUrl).hostname
-      .replace(/^www\./, "");
+    const url = new URL(formData.organisationUrl || "");
+    const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
 
-    return `domain:${hostname}`;
+    if (
+      hostname === "linkedin.com" ||
+      hostname.endsWith(".linkedin.com")
+    ) {
+      const company = url.pathname.match(/^\/company\/([^/]+)/i);
+      return company
+        ? `linkedin-company:${company[1].toLowerCase()}`
+        : "organisation:unknown";
+    }
+
+    return hostname ? `domain:${hostname}` : "organisation:unknown";
   } catch {
     return "organisation:unknown";
   }
 }
+
 
 export function createLocalServer({
   prepareApplication = async () => {
@@ -184,6 +201,27 @@ export function createLocalServer({
     .split(/\s+/)
     .filter(Boolean)
     .length;
+
+
+  async function renderCompleteReview(options) {
+    const stored = reviewStore.get(options.reviewId);
+    const base = stored ? {
+      formData: stored.formData,
+      prepared: stored.prepared,
+      research: stored.research,
+      currentDraftPlainText: stored.currentDraftPlainText,
+      refinementProposal: stored.refinementProposal,
+      selectedCvRoleCode: stored.selectedCvRoleCode,
+      cvSelectionMessage: stored.cvSelectionMessage
+    } : {};
+
+    return renderApplicationReview({
+      ...base,
+      ...options,
+      contacts: await loadReviewContacts(options.reviewId),
+      contactLinking: await loadContactLinking(options.reviewId)
+    });
+  }
 
   return createServer(async (request, response) => {
     const method = request.method || 'GET';
@@ -300,7 +338,7 @@ export function createLocalServer({
         sendHtml(
           response,
           200,
-          renderApplicationReview({
+          await renderCompleteReview({
             formData,
             prepared,
             reviewId,
@@ -388,7 +426,7 @@ export function createLocalServer({
         sendHtml(
           response,
           400,
-          renderApplicationReview({
+          await renderCompleteReview({
             formData: review.formData,
             prepared: review.prepared,
             reviewId,
@@ -424,7 +462,7 @@ export function createLocalServer({
       sendHtml(
         response,
         200,
-        renderApplicationReview({
+        await renderCompleteReview({
           formData: updatedReview.formData,
           prepared: updatedReview.prepared,
           reviewId,
@@ -436,6 +474,74 @@ export function createLocalServer({
           contacts: await loadOrganisationContacts(review.formData)
         })
       );
+      return;
+    }
+
+
+    if (method === "POST" && url.pathname === "/api/reviews/email-domain/save") {
+      try {
+        const body = await readJsonBody(request);
+        const reviewId = String(body.reviewId || "").trim();
+        const review = reviewStore.get(reviewId);
+
+        if (!review) {
+          sendJson(response, 404, {
+            ok: false,
+            error: "Application review not found."
+          });
+          return;
+        }
+
+        const emailDomain = String(body.emailDomain || "")
+          .trim()
+          .toLowerCase();
+
+        const labels = emailDomain.split(".");
+        const blocked = [
+          "linkedin.com", "gmail.com", "googlemail.com",
+          "outlook.com", "hotmail.com", "yahoo.com", "icloud.com",
+          "example.com", "example.org", "example.net"
+        ];
+
+        const valid =
+          emailDomain.length <= 253 &&
+          labels.length >= 2 &&
+          labels.every((label) =>
+            label.length <= 63 &&
+            /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label)
+          ) &&
+          /^[a-z]{2,63}$/.test(labels[labels.length - 1]) &&
+          !blocked.some((domain) =>
+            emailDomain === domain ||
+            emailDomain.endsWith(`.${domain}`)
+          );
+
+        if (!valid) {
+          sendJson(response, 400, {
+            ok: false,
+            error: "Enter a business domain only, such as twinstream.com. Do not enter a URL or full email address."
+          });
+          return;
+        }
+
+        reviewStore.set(reviewId, {
+          ...review,
+          formData: {
+            ...review.formData,
+            emailDomain
+          }
+        });
+
+        sendJson(response, 200, {
+          ok: true,
+          emailDomain
+        });
+      } catch {
+        sendJson(response, 400, {
+          ok: false,
+          error: "Unable to save the email domain."
+        });
+      }
       return;
     }
 
@@ -492,7 +598,7 @@ export function createLocalServer({
         sendHtml(
           response,
           400,
-          renderApplicationReview({
+          await renderCompleteReview({
             formData: review.formData,
             prepared: review.prepared,
             reviewId,
@@ -511,7 +617,7 @@ export function createLocalServer({
         sendHtml(
           response,
           503,
-          renderApplicationReview({
+          await renderCompleteReview({
             formData: review.formData,
             prepared: review.prepared,
             reviewId,
@@ -576,7 +682,7 @@ export function createLocalServer({
       sendHtml(
         response,
         200,
-        renderApplicationReview({
+        await renderCompleteReview({
           formData: review.formData,
           prepared: review.prepared,
           reviewId,
@@ -627,11 +733,16 @@ export function createLocalServer({
         return;
       }
 
-      const renderReview = (statusCode, refinementProposal = null) => {
+      const refinementReviewContacts =
+        await loadReviewContacts(reviewId);
+      const refinementContactLinking =
+        await loadContactLinking(reviewId);
+
+      const renderReview = async (statusCode, refinementProposal = null) => {
         sendHtml(
           response,
           statusCode,
-          renderApplicationReview({
+          await renderCompleteReview({
             formData: review.formData,
             prepared: review.prepared,
             reviewId,
@@ -639,13 +750,15 @@ export function createLocalServer({
             currentDraftPlainText: review.currentDraftPlainText,
             refinementProposal,
             selectedCvRoleCode: review.selectedCvRoleCode,
-            cvSelectionMessage: review.cvSelectionMessage
+            cvSelectionMessage: review.cvSelectionMessage,
+            contacts: refinementReviewContacts,
+            contactLinking: refinementContactLinking
           })
         );
       };
 
       if (typeof coverLetterRefinementPort?.refine !== 'function') {
-        renderReview(503, {
+        await renderReview(503, {
           proposedDraft: '',
           warnings: [
             'Cover-letter refinement is disabled. Enable ENABLE_COVER_LETTER_REFINEMENT and restart the local server.'
@@ -655,7 +768,7 @@ export function createLocalServer({
       }
 
       if (!review.research || review.research.status !== 'found') {
-        renderReview(400, {
+        await renderReview(400, {
           proposedDraft: '',
           warnings: [
             'Research the organisation successfully before requesting a refinement.'
@@ -729,7 +842,7 @@ export function createLocalServer({
         refinementProposal
       });
 
-      renderReview(200, refinementProposal);
+      await renderReview(200, refinementProposal);
       return;
     }
 
@@ -778,7 +891,7 @@ export function createLocalServer({
         sendHtml(
           response,
           400,
-          renderApplicationReview({
+          await renderCompleteReview({
             formData: review.formData,
             prepared: review.prepared,
             reviewId,
@@ -807,7 +920,7 @@ export function createLocalServer({
         sendHtml(
           response,
           400,
-          renderApplicationReview({
+          await renderCompleteReview({
             formData: review.formData,
             prepared: review.prepared,
             reviewId,
@@ -859,7 +972,7 @@ export function createLocalServer({
       sendHtml(
         response,
         200,
-        renderApplicationReview({
+        await renderCompleteReview({
           formData: updatedReview.formData,
           prepared: updatedReview.prepared,
           reviewId,

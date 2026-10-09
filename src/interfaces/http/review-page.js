@@ -51,6 +51,10 @@ function attachEmailDomainListener() {
         var job = jobData.job;
 
         if (job.status === "completed") {
+          var domainInput = document.getElementById("email-domain-input");
+          if (domainInput && domainInput.dataset.manual !== "true") {
+            domainInput.value = job.result.emailDomain || "";
+          }
           status.textContent =
             "Email domain resolved: " +
             job.result.emailDomain +
@@ -229,12 +233,19 @@ function renderRefreshableContactRows(contacts) {
       </td>
       <td class="contact-email-cell"
           style="max-width:24rem;white-space:normal;overflow-wrap:anywhere;">
-        ${escapeContactValue(
-          contact.selectedEmail
-            ? contact.selectedEmail +
-              (contact.emailSource === "inferred" ? " (inferred)" : "")
-            : "Not available"
-        )}
+        ${[...new Set([
+          contact.selectedEmail,
+          ...(Array.isArray(contact.emailCandidates)
+            ? contact.emailCandidates
+            : [])
+        ].filter((email) => typeof email === "string" && email.trim())
+          .map((email) => email.trim()))]
+          .map((email) => `
+            <div>
+              <a href="mailto:${escapeContactValue(email)}">${escapeContactValue(email)}</a>
+            </div>
+          `)
+          .join("") || "Not available"}
       </td>
       <td>
         <a href="${escapeContactValue(contact.linkedinUrl)}"
@@ -254,12 +265,19 @@ function renderRefreshableLinkedRows(contacts) {
       </td>
       <td class="contact-email-cell"
           style="max-width:24rem;white-space:normal;overflow-wrap:anywhere;">
-        ${escapeContactValue(
-          contact.selectedEmail
-            ? contact.selectedEmail +
-              (contact.emailSource === "inferred" ? " (inferred)" : "")
-            : "Not available"
-        )}
+        ${[...new Set([
+          contact.selectedEmail,
+          ...(Array.isArray(contact.emailCandidates)
+            ? contact.emailCandidates
+            : [])
+        ].filter((email) => typeof email === "string" && email.trim())
+          .map((email) => email.trim()))]
+          .map((email) => `
+            <div>
+              <a href="mailto:${escapeContactValue(email)}">${escapeContactValue(email)}</a>
+            </div>
+          `)
+          .join("") || "Not available"}
       </td>
       <td>
         <a href="${escapeContactValue(contact.linkedinUrl)}"
@@ -356,8 +374,52 @@ function attachRefreshImportedContactsListener() {
   );
 }
 
+
+function attachEditableEmailDomainListener() {
+  const input = document.getElementById("email-domain-input");
+  const button = document.querySelector(".save-email-domain-button");
+  const status = document.getElementById("email-domain-status");
+
+  if (!input || !button || !status) return;
+
+  input.addEventListener("input", () => {
+    input.dataset.manual = "true";
+    status.textContent = "Unsaved domain edit. Click Save domain.";
+  });
+
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+
+    try {
+      const response = await fetch("/api/reviews/email-domain/save", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          reviewId: button.dataset.reviewId,
+          emailDomain: input.value
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Unable to save domain.");
+      }
+
+      input.value = data.emailDomain;
+      input.dataset.manual = "true";
+      status.textContent = "Domain saved for this active review.";
+    } catch (error) {
+      status.textContent = error.message || "Unable to save domain.";
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
 if (typeof document !== "undefined") {
   attachReviewPageListeners();
   attachRefreshImportedContactsListener();
   attachEmailDomainListener();
+  attachEditableEmailDomainListener();
 }

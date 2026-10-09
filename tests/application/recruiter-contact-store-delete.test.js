@@ -90,3 +90,63 @@ test("clears all unlinked contacts but protects linked contacts", async () => {
     ["linked"]
   );
 });
+
+test("deletion protects other organisations and links to other reviews", async () => {
+  for (const contactIds of [
+    [],
+    ["unlinked", "other-organisation", "linked-elsewhere"]
+  ]) {
+    const { store, filePath } = await createStore();
+
+    await store.upsertMany({
+      organisationId: "domain:twinstream.com",
+      incomingContacts: [
+        contact("unlinked"),
+        {
+          ...contact("other-organisation"),
+          organisationId: "domain:another-company.test"
+        },
+        contact("linked-elsewhere", ["review-2"])
+      ]
+    });
+
+    const deleted = await store.deleteUnlinkedContacts({
+      organisationId: "domain:twinstream.com",
+      reviewId: "review-1",
+      contactIds
+    });
+
+    assert.deepEqual(
+      deleted.map((item) => item.id),
+      ["unlinked"]
+    );
+
+    const remaining = JSON.parse(await readFile(filePath, "utf8"));
+
+    assert.deepEqual(
+      remaining.map((item) => item.id),
+      ["other-organisation", "linked-elsewhere"]
+    );
+  }
+});
+
+test("deletion rejects missing organisation scope and invalid contact IDs", async () => {
+  const { store } = await createStore();
+
+  await assert.rejects(
+    store.deleteUnlinkedContacts({
+      reviewId: "review-1",
+      contactIds: []
+    }),
+    /organisation ID is required/
+  );
+
+  await assert.rejects(
+    store.deleteUnlinkedContacts({
+      organisationId: "domain:twinstream.com",
+      reviewId: "review-1",
+      contactIds: "invalid"
+    }),
+    /Contact IDs must be an array/
+  );
+});
