@@ -360,14 +360,58 @@ export function createRecruiterContactStore({ filePath }) {
   );
 
   async function load() {
-    if (cache) return cache;
+    if (cache !== null) return cache;
 
+    let content;
     try {
-      cache = JSON.parse(await fs.readFile(filePath, "utf8"));
-    } catch {
-      cache = [];
+      content = await fs.readFile(filePath, "utf8");
+    } catch (cause) {
+      if (cause.code === "ENOENT") {
+        cache = [];
+        return cache;
+      }
+
+      const error = new Error(
+        "The contact store could not be read. " +
+        "No contact data has been replaced.",
+        { cause }
+      );
+      error.code = "CONTACT_STORE_READ_FAILED";
+      throw error;
     }
 
+    let parsed;
+    try {
+      parsed = JSON.parse(content.replace(/^\uFEFF/, ""));
+    } catch (cause) {
+      const error = new Error(
+        "The contact store contains invalid JSON. " +
+        "Repair it or restore a backup before changing contacts.",
+        { cause }
+      );
+      error.code = "CONTACT_STORE_INVALID";
+      throw error;
+    }
+
+    if (
+      !Array.isArray(parsed) ||
+      parsed.some((contact) =>
+        !contact ||
+        typeof contact !== "object" ||
+        Array.isArray(contact) ||
+        typeof contact.id !== "string" ||
+        !contact.id.trim()
+      )
+    ) {
+      const error = new Error(
+        "The contact store must contain an array of contact records " +
+        "with non-empty IDs. No contact data has been replaced."
+      );
+      error.code = "CONTACT_STORE_INVALID";
+      throw error;
+    }
+
+    cache = parsed;
     return cache;
   }
 
