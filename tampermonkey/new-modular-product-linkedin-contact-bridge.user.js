@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         New Modular Product - Clean LinkedIn Contact Bridge
 // @namespace    local.new-modular-product
-// @version      0.4.0
+// @version      0.4.1
 // @description  Import clean visible LinkedIn People contacts.
 // @match        https://www.linkedin.com/company/*/people/*
 // @match        https://www.linkedin.com/search/results/people/*
@@ -17,7 +17,7 @@
 
   const API_URL = "http://127.0.0.1:3000/api/recruiters/import";
   const BUTTON_ID = "clean-linkedin-contact-import";
-  const EMAIL_DOMAIN = "twinstream.com";
+
 
   const roleKeywords = [
     "talent acquisition",
@@ -207,7 +207,32 @@
     ) || "";
   }
 
-  function extractProfiles() {
+  function requestImportDomain() {
+    const supplied = window.prompt(
+      "Enter the organisation email domain for THIS import.\n" +
+      "Use a domain only, not a URL or email address.\n" +
+      "This is not remembered between imports.",
+      ""
+    );
+    if (supplied === null) return null;
+    const domain = supplied.trim().toLowerCase();
+    const labels = domain.split(".");
+    const blocked = [
+      "linkedin.com", "gmail.com", "googlemail.com", "outlook.com",
+      "hotmail.com", "yahoo.com", "icloud.com",
+      "example.com", "example.org", "example.net"
+    ];
+    if (domain.length > 253 || labels.length < 2 ||
+        !labels.every((label) => label.length <= 63 &&
+          /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label)) ||
+        !/^[a-z]{2,63}$/.test(labels.at(-1)) ||
+        blocked.some((value) => domain === value || domain.endsWith(`.${value}`))) {
+      throw new Error("Enter a valid business domain. Nothing was imported.");
+    }
+    return domain;
+  }
+
+  function extractProfiles(emailDomain) {
     const contacts = [];
     const seen = new Set();
     const allAnchors = document.querySelectorAll('a[href*="/in/"]');
@@ -277,7 +302,7 @@
         role,
         location: "",
         linkedinUrl,
-        emailDomain: EMAIL_DOMAIN,
+        emailDomain,
         source: "linkedin-visible",
         verified: false
       });
@@ -302,7 +327,7 @@
     return contacts;
   }
 
-  function importContacts(contacts) {
+  function importContacts(contacts, emailDomain) {
     return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
         method: "POST",
@@ -312,7 +337,7 @@
         },
         data: JSON.stringify({
           sourceUrl: location.href,
-          emailDomain: EMAIL_DOMAIN,
+          emailDomain,
           recruiters: contacts
         }),
         timeout: 12000,
@@ -377,7 +402,12 @@
       button.disabled = true;
 
       try {
-        const contacts = extractProfiles();
+        const emailDomain = requestImportDomain();
+        if (emailDomain === null) {
+          button.textContent = "Import cancelled";
+          return;
+        }
+        const contacts = extractProfiles(emailDomain);
 
         if (!contacts.length) {
           throw new Error("No clean LinkedIn contacts found.");
@@ -402,7 +432,12 @@
           );
         }
 
-        const result = await importContacts(contacts);
+        console.log("[Clean LinkedIn Bridge] Import domain", {
+          emailDomain,
+          contactCount: contacts.length,
+          endpoint: API_URL
+        });
+        const result = await importContacts(contacts, emailDomain);
 
         button.textContent =
           `${result.imported} imported, ` +
