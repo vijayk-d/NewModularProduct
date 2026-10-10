@@ -1372,6 +1372,197 @@ export function createLocalServer({
       return;
     }
 
+
+    if (
+      method === "POST" &&
+      url.pathname === "/api/recruiter-contacts/unlink"
+    ) {
+      if (!recruiterContactStore) {
+        sendJson(response, 503, {
+          ok: false,
+          error: "Recruiter contact store is not configured."
+        });
+        return;
+      }
+
+      try {
+        const body = await readJsonBody(request);
+        const reviewId = typeof body.reviewId === "string"
+          ? body.reviewId.trim()
+          : "";
+
+        if (!reviewStore.has(reviewId)) {
+          sendJson(response, 404, {
+            ok: false,
+            error: "Application review not found."
+          });
+          return;
+        }
+
+        if (!["unlinkSelected", "clearDisplayed"].includes(body.action)) {
+          sendJson(response, 400, {
+            ok: false,
+            error: "Unsupported contact unlink action."
+          });
+          return;
+        }
+
+        if (
+          !Array.isArray(body.contactIds) ||
+          body.contactIds.some((id) =>
+            typeof id !== "string" || !id.trim()
+          )
+        ) {
+          sendJson(response, 400, {
+            ok: false,
+            error: "Contact IDs must be an array of non-empty strings."
+          });
+          return;
+        }
+
+        const contactIds = [...new Set(
+          body.contactIds.map((id) => id.trim())
+        )];
+
+        if (!contactIds.length && body.action === "unlinkSelected") {
+          sendJson(response, 400, {
+            ok: false,
+            error: "Select at least one linked contact to unlink."
+          });
+          return;
+        }
+
+        const unlinkedContacts = await recruiterContactStore.unlinkFromReview({
+          reviewId,
+          contactIds
+        });
+
+        sendJson(response, 200, {
+          ok: true,
+          unlinked: unlinkedContacts.length,
+          unlinkedContacts
+        });
+      } catch {
+        sendJson(response, 400, {
+          ok: false,
+          error: "Unable to unlink contacts from this application."
+        });
+      }
+      return;
+    }
+
+
+    if (
+      method === "POST" &&
+      url.pathname === "/api/recruiter-contacts/permanent-delete"
+    ) {
+      if (!recruiterContactStore) {
+        sendJson(response, 503, {
+          ok: false,
+          error: "Recruiter contact store is not configured."
+        });
+        return;
+      }
+
+      let body;
+      try {
+        body = await readJsonBody(request);
+      } catch {
+        sendJson(response, 400, {
+          ok: false,
+          error: "Request body must be valid JSON."
+        });
+        return;
+      }
+
+      if (!body || typeof body !== "object" || Array.isArray(body)) {
+        sendJson(response, 400, {
+          ok: false,
+          error: "Request body must be an object."
+        });
+        return;
+      }
+
+      const reviewId = typeof body.reviewId === "string"
+        ? body.reviewId.trim()
+        : "";
+
+      if (!reviewStore.has(reviewId)) {
+        sendJson(response, 404, {
+          ok: false,
+          error: "Application review not found."
+        });
+        return;
+      }
+
+      if (
+        body.confirmedPermanent !== true ||
+        !Array.isArray(body.contactIds) ||
+        !body.contactIds.length ||
+        body.contactIds.some((id) =>
+          typeof id !== "string" || !id.trim()
+        )
+      ) {
+        sendJson(response, 400, {
+          ok: false,
+          error: "Confirm permanent deletion and select explicit contact IDs."
+        });
+        return;
+      }
+
+      const contactIds = [...new Set(body.contactIds.map((id) => id.trim()))];
+
+      try {
+        const selectedIds = new Set(contactIds);
+        const contacts = await recruiterContactStore.listAll();
+
+        // This button is for available rows, not current linked rows.
+        const linkedToCurrentReview = contacts.some((contact) =>
+          selectedIds.has(contact.id) &&
+          Array.isArray(contact.linkedApplicationReviewIds) &&
+          contact.linkedApplicationReviewIds.includes(reviewId)
+        );
+
+        if (linkedToCurrentReview) {
+          sendJson(response, 409, {
+            ok: false,
+            error:
+              "A selected contact is now linked to this application. " +
+              "Refresh contacts, unlink it first, then select it in the available table."
+          });
+          return;
+        }
+
+        const result = await recruiterContactStore.permanentlyDeleteContacts({
+          contactIds,
+          reviewId
+        });
+
+        sendJson(response, 200, {
+          ok: true,
+          deleted: result.deletedContacts.length,
+          deletedContacts: result.deletedContacts,
+          backupCreated: result.backupCreated
+        });
+      } catch (error) {
+        if (error.code === "CONTACT_LINKED_TO_CURRENT_REVIEW") {
+          sendJson(response, 409, {
+            ok: false,
+            error: error.message
+          });
+          return;
+        }
+
+        sendJson(response, 500, {
+          ok: false,
+          error:
+            "Permanent deletion could not be completed. " +
+            "Check contact-store file permissions and the server terminal."
+        });
+      }
+      return;
+    }
+
     if (method === 'GET' && url.pathname === '/review-page.js') {
       try {
         const content = await readFile(

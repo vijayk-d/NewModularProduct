@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import {
   isDuplicateContact,
   mergeRecruiterContact
@@ -7,8 +8,9 @@ import {
 
 export function createRecruiterContactStore({ filePath }) {
   let cache = null;
+  let operationQueue = Promise.resolve();
 
-  return {
+  const store = {
   async listAll() {
     return load();
   },
@@ -116,6 +118,7 @@ export function createRecruiterContactStore({ filePath }) {
       const updatedContact = {
         ...contact,
         emailDomain: domain,
+        emailDomainSource: "manual",
         emailCandidates: [...new Set([
           ...(preserveSelected ? [existingSelected] : []),
           ...generated
@@ -135,6 +138,110 @@ export function createRecruiterContactStore({ filePath }) {
     }
 
     return changed;
+  },
+
+
+  async unlinkFromReview({ reviewId, contactIds }) {
+    if (typeof reviewId !== "string" || !reviewId.trim()) {
+      throw new Error("A review ID is required.");
+    }
+    if (
+      !Array.isArray(contactIds) ||
+      contactIds.some((id) => typeof id !== "string" || !id.trim())
+    ) {
+      throw new Error("Contact IDs must be an array of non-empty strings.");
+    }
+
+    const ids = new Set(contactIds.map((id) => id.trim()));
+    const contacts = await load();
+    const unlinked = [];
+
+    const next = contacts.map((contact) => {
+      if (
+        !ids.has(contact.id) ||
+        !Array.isArray(contact.linkedApplicationReviewIds) ||
+        !contact.linkedApplicationReviewIds.includes(reviewId)
+      ) {
+        return contact;
+      }
+
+      const updatedContact = {
+        ...contact,
+        linkedApplicationReviewIds:
+          contact.linkedApplicationReviewIds.filter((id) => id !== reviewId)
+      };
+      unlinked.push(updatedContact);
+      return updatedContact;
+    });
+
+    if (unlinked.length) {
+      try {
+        await save(next);
+      } catch (error) {
+        cache = contacts;
+        throw error;
+      }
+    }
+    return unlinked;
+  },
+
+
+  async permanentlyDeleteContacts({ contactIds, reviewId }) {
+    if (
+      !Array.isArray(contactIds) ||
+      !contactIds.length ||
+      contactIds.some((id) => typeof id !== "string" || !id.trim())
+    ) {
+      throw new Error("Select explicit contact IDs for permanent deletion.");
+    }
+
+    const ids = new Set(contactIds.map((id) => id.trim()));
+    const contacts = await load();
+    const deletedContacts = contacts.filter((contact) => ids.has(contact.id));
+
+    if (reviewId !== undefined) {
+      if (typeof reviewId !== "string" || !reviewId.trim()) {
+        throw new Error("A valid review ID is required.");
+      }
+
+      if (deletedContacts.some((contact) =>
+        Array.isArray(contact.linkedApplicationReviewIds) &&
+        contact.linkedApplicationReviewIds.includes(reviewId)
+      )) {
+        const error = new Error(
+          "A selected contact is linked to this application. Unlink it first."
+        );
+        error.code = "CONTACT_LINKED_TO_CURRENT_REVIEW";
+        throw error;
+      }
+    }
+
+    if (!deletedContacts.length) {
+      return { deletedContacts: [], backupCreated: false };
+    }
+
+    const remaining = contacts.filter((contact) => !ids.has(contact.id));
+    const suffix = `${Date.now()}-${randomUUID()}`;
+    const backupPath = `${filePath}.before-permanent-delete-${suffix}.bak`;
+    const temporaryPath = `${filePath}.permanent-delete-${suffix}.tmp`;
+
+    // Back up the current file before replacing it.
+    await fs.copyFile(filePath, backupPath);
+
+    try {
+      await fs.writeFile(
+        temporaryPath,
+        JSON.stringify(remaining, null, 2),
+        { encoding: "utf8", flag: "wx" }
+      );
+      await fs.rename(temporaryPath, filePath);
+      cache = remaining;
+    } catch (error) {
+      await fs.rm(temporaryPath, { force: true }).catch(() => {});
+      throw error;
+    }
+
+    return { deletedContacts, backupCreated: true };
   },
 
   async deleteUnlinkedContacts({
@@ -233,6 +340,25 @@ export function createRecruiterContactStore({ filePath }) {
     return result;
     }  };
 
+  return Object.fromEntries(
+    Object.entries(store).map(([name, operation]) => [
+      name,
+      (...args) => {
+        const result = operationQueue.then(async () => {
+          const previousCache = cache === null ? null : structuredClone(cache);
+          try {
+            return await operation(...args);
+          } catch (error) {
+            cache = previousCache;
+            throw error;
+          }
+        });
+        operationQueue = result.then(() => undefined, () => undefined);
+        return result;
+      }
+    ])
+  );
+
   async function load() {
     if (cache) return cache;
 
@@ -246,8 +372,20 @@ export function createRecruiterContactStore({ filePath }) {
   }
 
   async function save(contacts) {
-    cache = contacts;
     await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, JSON.stringify(contacts, null, 2), "utf8");
+    const temporaryPath = `${filePath}.save-${randomUUID()}.tmp`;
+
+    try {
+      await fs.writeFile(
+        temporaryPath,
+        JSON.stringify(contacts, null, 2),
+        { encoding: "utf8", flag: "wx" }
+      );
+      await fs.rename(temporaryPath, filePath);
+      cache = contacts;
+    } catch (error) {
+      await fs.rm(temporaryPath, { force: true }).catch(() => {});
+      throw error;
+    }
   }
 }
