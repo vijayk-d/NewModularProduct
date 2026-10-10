@@ -344,17 +344,23 @@ export function createRecruiterContactStore({ filePath }) {
     Object.entries(store).map(([name, operation]) => [
       name,
       (...args) => {
-        const result = operationQueue.then(async () => {
-          const previousCache = cache === null ? null : structuredClone(cache);
-          try {
-            return await operation(...args);
-          } catch (error) {
-            cache = previousCache;
-            throw error;
-          }
-        });
-        operationQueue = result.then(() => undefined, () => undefined);
-        return result;
+        try {
+          const argumentSnapshot = structuredClone(args);
+          const result = operationQueue.then(async () => {
+            const previousCache = cache === null ? null : structuredClone(cache);
+            try {
+              const value = await operation(...argumentSnapshot);
+              return structuredClone(value);
+            } catch (error) {
+              cache = previousCache;
+              throw error;
+            }
+          });
+          operationQueue = result.then(() => undefined, () => undefined);
+          return result;
+        } catch (error) {
+          return Promise.reject(error);
+        }
       }
     ])
   );

@@ -47,7 +47,7 @@ function prepared() {
   };
 }
 
-async function fixture(t, mode = "success") {
+async function fixture(t, mode = "success", linkedOverrides = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "contact-regression-"));
   const store = createRecruiterContactStore({
     filePath: path.join(directory, "contacts.json")
@@ -58,7 +58,7 @@ async function fixture(t, mode = "success") {
     incomingContacts: [
       contact("selected"),
       contact("unselected"),
-      contact("linked"),
+      contact("linked", linkedOverrides),
       contact("other", { organisationId: "domain:other-company.test" }),
       contact("protected", { linkedApplicationReviewIds: ["another-review"] })
     ]
@@ -441,10 +441,10 @@ test("explicit deletion protects linked and omitted contacts and rejects empty s
 
 
 test("saved domain replaces generated linked emails and leaves unlinked contacts unchanged", async (t) => {
-  const f = await fixture(t);
+  const f = await fixture(t, "success", {
+    emailSource: "inferred"
+  });
   const contacts = await f.store.listAll();
-  const linked = contacts.find((c) => c.id === "linked");
-  linked.emailSource = "inferred";
 
   const unlinkedBefore = JSON.stringify(
     contacts.filter((c) => c.id !== "linked")
@@ -486,11 +486,11 @@ test("saved domain replaces generated linked emails and leaves unlinked contacts
 
 test("saved domain preserves supplied and verified selected emails", async (t) => {
   for (const verified of [false, true]) {
-    const f = await fixture(t);
-    const linked = (await f.store.listAll()).find((c) => c.id === "linked");
-    linked.selectedEmail = "published@original-company.test";
-    linked.emailSource = verified ? "inferred" : "supplied";
-    linked.verified = verified;
+    const f = await fixture(t, "success", {
+      selectedEmail: "published@original-company.test",
+      emailSource: verified ? "inferred" : "supplied",
+      verified
+    });
 
     const result = await f.json("/api/reviews/email-domain/save", {
       reviewId: f.reviewId,
@@ -531,4 +531,79 @@ test("invalid saved domain changes neither contacts nor the saved review domain"
   });
   assert.equal(review.status, 200);
   assert.match(review.html, /value="valid-company\.test"/);
+});
+
+test("permanent deletion removes old-linked contacts but preserves ordinary protection", async (t) => {
+  const f = await fixture(t);
+
+  const ordinary = await f.json("/api/recruiter-contacts/delete", {
+    reviewId: f.reviewId,
+    action: "deleteSelected",
+    contactIds: ["protected"]
+  });
+  assert.equal(ordinary.status, 200);
+  assert.equal(ordinary.data.deleted, 0);
+
+  const permanent = await f.json("/api/recruiter-contacts/permanent-delete", {
+    reviewId: f.reviewId,
+    confirmedPermanent: true,
+    contactIds: ["protected", "protected"]
+  });
+  assert.equal(permanent.status, 200);
+  assert.equal(permanent.data.deleted, 1);
+  assert.equal(permanent.data.backupCreated, true);
+  assert.deepEqual(
+    permanent.data.deletedContacts.map((contact) => contact.id),
+    ["protected"]
+  );
+
+  assert.deepEqual(
+    (await f.store.listAll()).map((contact) => contact.id).sort(),
+    ["selected", "unselected", "linked", "other"].sort()
+  );
+  assert.equal((await f.store.listByReview("another-review")).length, 0);
+
+  const repeated = await f.json("/api/recruiter-contacts/permanent-delete", {
+    reviewId: f.reviewId,
+    confirmedPermanent: true,
+    contactIds: ["protected"]
+  });
+  assert.equal(repeated.status, 200);
+  assert.equal(repeated.data.deleted, 0);
+});
+
+test("permanent deletion rejects missing confirmation invalid IDs and current links", async (t) => {
+  const f = await fixture(t);
+  const before = JSON.stringify(await f.store.listAll());
+
+  for (const extra of [
+    { contactIds: ["protected"] },
+    { confirmedPermanent: false, contactIds: ["protected"] },
+    { confirmedPermanent: true, contactIds: [] },
+    { confirmedPermanent: true, contactIds: "protected" },
+    { confirmedPermanent: true, contactIds: [null] }
+  ]) {
+    const result = await f.json("/api/recruiter-contacts/permanent-delete", {
+      reviewId: f.reviewId,
+      ...extra
+    });
+    assert.equal(result.status, 400);
+    assert.equal(JSON.stringify(await f.store.listAll()), before);
+  }
+
+  const currentLinked = await f.json("/api/recruiter-contacts/permanent-delete", {
+    reviewId: f.reviewId,
+    confirmedPermanent: true,
+    contactIds: ["linked", "protected"]
+  });
+  assert.equal(currentLinked.status, 409);
+  assert.equal(JSON.stringify(await f.store.listAll()), before);
+
+  const expired = await f.json("/api/recruiter-contacts/permanent-delete", {
+    reviewId: "expired-review",
+    confirmedPermanent: true,
+    contactIds: ["protected"]
+  });
+  assert.equal(expired.status, 404);
+  assert.equal(JSON.stringify(await f.store.listAll()), before);
 });
