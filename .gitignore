@@ -45,3 +45,5 @@ output/
 *.backup
 *.before-recovery
 *.corrupted-backup
+
+/test-summary-artifacts/
