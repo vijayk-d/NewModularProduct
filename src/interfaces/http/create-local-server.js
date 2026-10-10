@@ -223,7 +223,71 @@ export function createLocalServer({
     });
   }
 
-  return createServer(async (request, response) => {
+
+  function isContactStoreLoadError(error) {
+    return [
+      "CONTACT_STORE_INVALID",
+      "CONTACT_STORE_READ_FAILED"
+    ].includes(error?.code);
+  }
+
+  function sendSafeRequestFailure(request, response, error) {
+    if (response.writableEnded || response.destroyed) return;
+    if (response.headersSent) {
+      response.destroy();
+      return;
+    }
+
+    const storageError = isContactStoreLoadError(error);
+    const statusCode = storageError ? 503 : 500;
+    const code = storageError ? error.code : "REQUEST_FAILED";
+    const message = storageError
+      ? "Contact data is unavailable. Check the contact-store file or restore " +
+        "a valid backup, then retry. Do not clear the file to bypass this error."
+      : "The local request could not be completed. Check the server terminal.";
+
+    try {
+      writeDiagnostic("request_failed_safely", {
+        errorCode: code,
+        statusCode
+      });
+    } catch {
+      // A diagnostic failure must not prevent the error response.
+    }
+
+    if (String(request.url || "").startsWith("/api/")) {
+      sendJson(response, statusCode, {
+        ok: false,
+        code,
+        error: message
+      });
+    } else {
+      sendHtml(response, statusCode, `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Request unavailable</title></head>
+<body>
+  <main>
+    <h1>${storageError ? "Contact data unavailable" : "Request unavailable"}</h1>
+    <p role="alert">${escapeHtml(message)}</p>
+    <p>Error code: ${escapeHtml(code)}</p>
+    <p>After resolving the issue, return to the previous page and retry.</p>
+  </main>
+</body>
+</html>`);
+    }
+  }
+
+  return createServer((request, response) => {
+    handleRequest(request, response).catch((error) => {
+      try {
+        sendSafeRequestFailure(request, response, error);
+      } catch {
+        response.destroy();
+      }
+    });
+  });
+
+  async function handleRequest(request, response) {
     const method = request.method || 'GET';
     const url = new URL(request.url || '/', 'http://localhost');
     const requestId = randomUUID();
@@ -348,6 +412,7 @@ export function createLocalServer({
           }),
         );
      } catch (error) {
+        if (isContactStoreLoadError(error)) throw error;
         const message = error instanceof Error
           ? error.message
           : 'Unknown application preparation error';
@@ -544,7 +609,8 @@ export function createLocalServer({
           emailDomain,
           updatedContacts: updatedContacts.length
         });
-      } catch {
+      } catch (error) {
+        if (isContactStoreLoadError(error)) throw error;
         sendJson(response, 400, {
           ok: false,
           error: "Unable to save the email domain."
@@ -629,7 +695,8 @@ export function createLocalServer({
           reviewId,
           contactIds
         });
-      } catch {
+      } catch (error) {
+        if (isContactStoreLoadError(error)) throw error;
         await respondWithLinkMessage(
           500,
           "Unable to link the selected contacts."
@@ -749,6 +816,7 @@ export function createLocalServer({
           forceRefresh: false
         });
       } catch (error) {
+        if (isContactStoreLoadError(error)) throw error;
         research = {
           status: 'error',
           provider: 'Perplexity',
@@ -917,7 +985,8 @@ export function createLocalServer({
         instructions: "",
         maxWords: 450
       });
-      } catch {
+      } catch (error) {
+        if (isContactStoreLoadError(error)) throw error;
         refinementProposal = {
           proposedDraft: '',
           warnings: [
@@ -1015,7 +1084,8 @@ export function createLocalServer({
           proposedDraftPlainText,
           accepted: true
         });
-      } catch {
+      } catch (error) {
+        if (isContactStoreLoadError(error)) throw error;
         sendHtml(
           response,
           400,
@@ -1116,6 +1186,7 @@ export function createLocalServer({
 
         sendJson(response, 200, result);
       } catch (error) {
+        if (isContactStoreLoadError(error)) throw error;
         sendJson(response, 400, {
           ok: false,
           error: error instanceof Error
@@ -1159,6 +1230,7 @@ export function createLocalServer({
           job
         });
       } catch (error) {
+        if (isContactStoreLoadError(error)) throw error;
         sendJson(response, 400, {
           ok: false,
           error: error instanceof Error
@@ -1249,6 +1321,7 @@ export function createLocalServer({
           unlinked: contactLinking.unlinked || []
         });
       } catch (error) {
+        if (isContactStoreLoadError(error)) throw error;
         sendJson(response, 400, {
           ok: false,
           error: error instanceof Error
@@ -1361,6 +1434,7 @@ export function createLocalServer({
           deletedContacts
         });
       } catch (error) {
+        if (isContactStoreLoadError(error)) throw error;
         sendJson(response, 400, {
           ok: false,
           error: error instanceof Error
@@ -1442,7 +1516,8 @@ export function createLocalServer({
           unlinked: unlinkedContacts.length,
           unlinkedContacts
         });
-      } catch {
+      } catch (error) {
+        if (isContactStoreLoadError(error)) throw error;
         sendJson(response, 400, {
           ok: false,
           error: "Unable to unlink contacts from this application."
@@ -1467,7 +1542,8 @@ export function createLocalServer({
       let body;
       try {
         body = await readJsonBody(request);
-      } catch {
+      } catch (error) {
+        if (isContactStoreLoadError(error)) throw error;
         sendJson(response, 400, {
           ok: false,
           error: "Request body must be valid JSON."
@@ -1545,6 +1621,7 @@ export function createLocalServer({
           backupCreated: result.backupCreated
         });
       } catch (error) {
+        if (isContactStoreLoadError(error)) throw error;
         if (error.code === "CONTACT_LINKED_TO_CURRENT_REVIEW") {
           sendJson(response, 409, {
             ok: false,
@@ -1573,7 +1650,8 @@ export function createLocalServer({
         sendText(response, 200, content, {
           'content-type': 'application/javascript'
         });
-      } catch {
+      } catch (error) {
+        if (isContactStoreLoadError(error)) throw error;
         sendText(response, 500, 'Unable to load review-page.js');
       }
 
@@ -1587,6 +1665,7 @@ export function createLocalServer({
       return;
     }
 
+
     sendText(response, 404, 'Not Found');
-  });
+  }
 }
