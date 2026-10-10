@@ -48,19 +48,39 @@ export function isDuplicateContact(existing, incoming) {
 }
 
 export function mergeRecruiterContact(existing, incoming) {
-  return {
-    ...existing,
-    role: incoming.role || existing.role,
+  const hasSelectedEmail = Boolean(clean(existing.selectedEmail));
+  const hasEmailState = hasSelectedEmail ||
+    (Array.isArray(existing.emailCandidates) &&
+      existing.emailCandidates.length > 0);
+
+  const isLinked =
+    Array.isArray(existing.linkedApplicationReviewIds) &&
+    existing.linkedApplicationReviewIds.length > 0;
+
+  const protectEmailState =
+    existing.emailDomainSource === "manual" ||
+    (hasSelectedEmail &&
+      (existing.verified === true || existing.emailSource !== "inferred")) ||
+    (isLinked && hasEmailState);
+
+  const refreshedEmailState = protectEmailState ? {} : {
     emailDomain: incoming.emailDomain || existing.emailDomain,
     emailCandidates: incoming.emailCandidates?.length
       ? incoming.emailCandidates
       : existing.emailCandidates,
     selectedEmail: incoming.selectedEmail || existing.selectedEmail,
-    emailSource: incoming.emailSource || existing.emailSource,
+    emailSource: incoming.emailSource || existing.emailSource
+  };
+
+  return {
+    ...existing,
+    ...refreshedEmailState,
+    role: incoming.role || existing.role,
     sourceUrl: incoming.sourceUrl || existing.sourceUrl,
     lastImportedAt: incoming.lastImportedAt
   };
 }
+
 
 function clean(value) {
   return typeof value === "string" ? value.trim() : "";

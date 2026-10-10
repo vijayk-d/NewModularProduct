@@ -633,172 +633,104 @@ export function renderRefinementPanel({
 }
 
 export function renderContactLinking(contactLinking = null) {
-  if (!contactLinking) {
-    return "";
-  }
+  if (!contactLinking) return "";
 
   const unlinkedContacts = contactLinking.unlinked || [];
   const linkedContacts = contactLinking.linked || [];
+  const reviewId = escapeHtml(contactLinking.reviewId);
 
-  const unlinkedRows = unlinkedContacts.map((contact) => `
-    <tr>
-      <td>
-        <input type="checkbox" class="contact-link-checkbox"
-          name="contactIds" value="${escapeHtml(contact.id)}" />
-      </td>
-      <td>${escapeHtml(contact.fullName)}</td>
-      <td class="contact-role-cell"
-          style="max-width:28rem;white-space:normal;overflow-wrap:anywhere;">
-        ${escapeHtml(contact.role || "")}
-      </td>
-       <td class="contact-email-cell"
-          style="max-width:24rem;white-space:normal;overflow-wrap:anywhere;">
-        ${[...new Set([
-          contact.selectedEmail,
-          ...(Array.isArray(contact.emailCandidates)
-            ? contact.emailCandidates
-            : [])
-        ].filter((email) => typeof email === "string" && email.trim())
-          .map((email) => email.trim()))]
-          .map((email) => `
-            <div>
-              <a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a>
-            </div>
-          `)
-          .join("") || "Not available"}
-      </td>
-      <td>
-        <a href="${escapeHtml(contact.linkedinUrl)}"
-           target="_blank" rel="noopener">LinkedIn profile</a>
-      </td>
-    </tr>
-  `).join("");
+  const rows = (contacts, linked) => contacts.map((contact) => {
+    const emails = [...new Set([
+      contact.selectedEmail,
+      ...(Array.isArray(contact.emailCandidates) ? contact.emailCandidates : [])
+    ].filter((email) => typeof email === "string" && email.trim())
+      .map((email) => email.trim()))];
 
-  const linkedRows = linkedContacts.map((contact) => `
-    <tr>
-      <td>${escapeHtml(contact.fullName)}</td>
-      <td class="contact-role-cell"
-          style="max-width:28rem;white-space:normal;overflow-wrap:anywhere;">
-        ${escapeHtml(contact.role || "")}
-      </td>
-      <td class="contact-email-cell"
-          style="max-width:24rem;white-space:normal;overflow-wrap:anywhere;">
-        ${[...new Set([
-          contact.selectedEmail,
-          ...(Array.isArray(contact.emailCandidates)
-            ? contact.emailCandidates
-            : [])
-        ].filter((email) => typeof email === "string" && email.trim())
-          .map((email) => email.trim()))]
-          .map((email) => `
-            <div>
-              <a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a>
-            </div>
-          `)
-          .join("") || "Not available"}
-      </td>
-      <td>
-        <a href="${escapeHtml(contact.linkedinUrl)}"
-           target="_blank" rel="noopener">LinkedIn profile</a>
-      </td>
-    </tr>
-  `).join("");
+    return `
+      <tr>
+        <td>
+          <input type="checkbox"
+            class="${linked ? "linked-contact-checkbox" : "contact-link-checkbox"}"
+            ${linked ? "" : 'name="contactIds"'}
+            value="${escapeHtml(contact.id)}"
+            aria-label="${linked ? "Select linked contact" : "Select available contact"} ${escapeHtml(contact.fullName)}" />
+        </td>
+        <td>${escapeHtml(contact.fullName)}</td>
+        <td class="contact-role-cell"
+            style="max-width:28rem;white-space:normal;overflow-wrap:anywhere;">
+          ${escapeHtml(contact.role || "")}
+        </td>
+        <td class="contact-email-cell"
+            style="max-width:24rem;white-space:normal;overflow-wrap:anywhere;">
+          ${emails.map((email) =>
+            `<div><a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a></div>`
+          ).join("") || "Not available"}
+        </td>
+        <td>
+          <a href="${escapeHtml(contact.linkedinUrl)}"
+             target="_blank" rel="noopener">LinkedIn profile</a>
+        </td>
+      </tr>`;
+  }).join("");
+
+  const header = (linked) => `
+    <thead><tr>
+      <th scope="col">
+        Select
+        <input type="checkbox"
+          id="${linked ? "select-all-linked-contacts" : "select-all-contact-links"}"
+          aria-label="${linked ? "Select all linked contacts" : "Select all available contacts"}" />
+      </th>
+      <th scope="col">Name</th>
+      <th scope="col">Role</th>
+      <th scope="col">Email</th>
+      <th scope="col">LinkedIn</th>
+    </tr></thead>`;
 
   return `
     <section class="review-section">
       <h2>Link imported contacts</h2>
-
       ${contactLinking.linkedMessage
-        ? `<p>${escapeHtml(contactLinking.linkedMessage)}</p>`
-        : ""}
+        ? `<p>${escapeHtml(contactLinking.linkedMessage)}</p>` : ""}
 
-      ${linkedContacts.length
-        ? `
-          <h3>Linked contacts</h3>
-          <table>
-            <thead>
-      <tr>
-        <th scope="col">Name</th>
-        <th scope="col">Role</th>
-        <th scope="col">Email</th>
-        <th scope="col">LinkedIn</th>
-      </tr>
-    </thead>
-            <tbody class="linked-imported-contacts-body">${linkedRows}</tbody>
-          </table>
-        `
-        : ""}
+      <h3>Linked contacts</h3>
+      <p>Unlinking removes contacts from this application only.
+         Contact records and links to other applications are kept.</p>
+      <table>
+        ${header(true)}
+        <tbody class="linked-imported-contacts-body">${rows(linkedContacts, true)}</tbody>
+      </table>
+      <div class="linked-contact-actions" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;">
+        <button type="button" class="unlink-selected-contacts-button"
+          data-review-id="${reviewId}">Unlink selected</button>
+        <button type="button" class="clear-linked-contacts-button"
+          data-review-id="${reviewId}">Clear linked contacts</button>
+      </div>
+      <p class="linked-contact-action-status" role="status" aria-live="polite"></p>
 
-      ${unlinkedContacts.length
-        ? `
-          <h3>Available imported contacts</h3>
-
-          <form method="post" action="/recruiter-contacts/link">
-            <input
-              type="hidden"
-              name="reviewId"
-              value="${escapeHtml(contactLinking.reviewId)}"
-            />
-
-            <table>
-              <thead>
-      <tr>
-        <th scope="col">
-          Select
-          <input type="checkbox" id="select-all-contact-links"
-                 aria-label="Select all available contacts" />
-        </th>
-        <th scope="col">Name</th>
-        <th scope="col">Role</th>
-        <th scope="col">Email</th>
-        <th scope="col">LinkedIn</th>
-      </tr>
-    </thead>
-              <tbody class="available-imported-contacts-body">${unlinkedRows}</tbody>
-            </table>
-
-            <button type="submit">Link selected contacts</button>
-          </form>
-
-          <div class="contact-linking-actions" style="display:flex;gap:8px;margin-top:12px;">
-            <button
-              type="button"
-              class="refresh-imported-contacts-button"
-              data-review-id="${escapeHtml(contactLinking.reviewId)}"
-            >
-              Refresh contacts
-            </button>
-            <button
-              type="button"
-              class="delete-selected-contacts-button"
-              data-review-id="${escapeHtml(contactLinking.reviewId)}"
-            >
-              Delete selected
-            </button>
-            <button
-              type="button"
-              class="clear-imported-contacts-button"
-              data-review-id="${escapeHtml(contactLinking.reviewId)}"
-            >
-              Clear imported contacts
-            </button>
-          </div>
-          <script nonce="__SCRIPT_NONCE__">
-            document
-              .getElementById("select-all-contact-links")
-              ?.addEventListener("change", (event) => {
-                document
-                  .querySelectorAll(".contact-link-checkbox")
-                  .forEach((checkbox) => {
-                    checkbox.checked = event.target.checked;
-                  });
-              });
-          </script>
-        `
-        : "<p>No unlinked imported contacts are available.</p>"}
-    </section>
-  `;
+      <h3>Available imported contacts</h3>
+      <form method="post" action="/recruiter-contacts/link">
+        <input type="hidden" name="reviewId" value="${reviewId}" />
+        <table>
+          ${header(false)}
+          <tbody class="available-imported-contacts-body">${rows(unlinkedContacts, false)}</tbody>
+        </table>
+        <button type="submit">Link selected contacts</button>
+      </form>
+      <div class="contact-linking-actions" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;">
+        <button type="button" class="refresh-imported-contacts-button"
+          data-review-id="${reviewId}">Refresh contacts</button>
+        <button type="button" class="delete-selected-contacts-button"
+          data-review-id="${reviewId}">Delete selected</button>
+        <button type="button" class="clear-imported-contacts-button"
+          data-review-id="${reviewId}">Clear imported contacts</button>
+        <button type="button" class="permanently-delete-selected-contacts-button"
+          data-review-id="${reviewId}"
+          style="background:#b91c1c;">Permanently delete selected</button>
+      </div>
+    </section>`;
 }
+
 export function renderApplicationReview({
   formData,
   prepared,
@@ -1781,36 +1713,33 @@ export function renderEmailDomainResolution(
 
 
 export function renderRecruiterContacts(contacts = []) {
-  if (!contacts.length) {
-    return "";
-  }
-
   const rows = contacts.map((contact) => `
     <tr>
       <td>${escapeHtml(contact.fullName)}</td>
       <td class="contact-role-cell">${escapeHtml(contact.role || "")}</td>
       <td>
-        <a href="${escapeHtml(contact.linkedinUrl)}" target="_blank" rel="noopener">
-          LinkedIn profile
-        </a>
+        <a href="${escapeHtml(contact.linkedinUrl)}"
+           target="_blank" rel="noopener">LinkedIn profile</a>
       </td>
       <td>${escapeHtml(contact.emailDomain || "Not resolved")}</td>
     </tr>
   `).join("");
 
   return `
-    <section class="review-section">
+    <section class="review-section organisation-contact-summary"
+             ${contacts.length ? "" : "hidden"}>
       <h2>Organisation contacts</h2>
+      <p>Contacts linked to this application.</p>
       <table>
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Role</th>
-            <th>LinkedIn</th>
-            <th>Email domain</th>
+            <th scope="col">Name</th>
+            <th scope="col">Role</th>
+            <th scope="col">LinkedIn</th>
+            <th scope="col">Email domain</th>
           </tr>
         </thead>
-        <tbody>${rows}</tbody>
+        <tbody class="organisation-contact-summary-body">${rows}</tbody>
       </table>
     </section>
   `;

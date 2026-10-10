@@ -92,124 +92,210 @@ function attachEmailDomainListener() {
 }
 
 export function attachReviewPageListeners() {
-  // Select-all behaviour
-  document.addEventListener(
-    "change",
-    function (event) {
-      if (event.target.id !== "select-all-contact-links") {
-        return;
-      }
+  // available-contact-actions-v2
+  if (document.__availableContactActionsAttached) return;
+  document.__availableContactActionsAttached = true;
 
-      document
-        .querySelectorAll(".contact-link-checkbox")
-        .forEach(function (checkbox) {
-          checkbox.checked = event.target.checked;
-        });
-    },
-    true
-  );
+  function getStatus(section) {
+    let status = section.querySelector(".available-contact-action-status");
+    if (!status) {
+      status = document.createElement("p");
+      status.className = "available-contact-action-status";
+      status.setAttribute("role", "status");
+      status.setAttribute("aria-live", "polite");
+      const actions = section.querySelector(".contact-linking-actions");
+      if (actions) actions.insertAdjacentElement("afterend", status);
+      else section.appendChild(status);
+    }
+    return status;
+  }
 
-  // Delete buttons
-  document.addEventListener(
-    "click",
-    async function (event) {
-      var button = event.target.closest(
-        ".delete-selected-contacts-button, " +
-          ".clear-imported-contacts-button"
-      );
+  document.addEventListener("change", (event) => {
+    const section = event.target.closest(".review-section");
+    if (!section) return;
 
-      if (!button) {
-        return;
-      }
+    const boxes = [...section.querySelectorAll(
+      ".available-imported-contacts-body .contact-link-checkbox"
+    )];
+    const master = section.querySelector("#select-all-contact-links");
 
-      event.preventDefault();
+    if (event.target.id === "select-all-contact-links") {
+      boxes.forEach((checkbox) => {
+        checkbox.checked = event.target.checked;
+      });
+      if (master) master.indeterminate = false;
+    } else if (event.target.matches(
+      ".available-imported-contacts-body .contact-link-checkbox"
+    ) && master) {
+      const count = boxes.filter((checkbox) => checkbox.checked).length;
+      master.checked = boxes.length > 0 && count === boxes.length;
+      master.indeterminate = count > 0 && count < boxes.length;
+    }
+  }, true);
 
-      var reviewId = button.dataset.reviewId;
+  document.addEventListener("click", async (event) => {
+    const button = event.target.closest(
+      ".delete-selected-contacts-button, .clear-imported-contacts-button, .permanently-delete-selected-contacts-button"
+    );
+    if (!button) return;
+    event.preventDefault();
 
-      if (!reviewId) {
-        window.alert("Missing review ID.");
-        return;
-      }
+    const section = button.closest(".review-section");
+    if (!section) return;
 
-      var deleteSelected = button.classList.contains(
-        "delete-selected-contacts-button"
-      );
+    const status = getStatus(section);
+    const buttons = [...section.querySelectorAll(
+      ".delete-selected-contacts-button, .clear-imported-contacts-button, .permanently-delete-selected-contacts-button"
+    )];
+    if (buttons.some((item) => item.disabled)) return;
 
-      var contactSection = button.closest(".review-section");
-      var selector = deleteSelected
-        ? ".available-imported-contacts-body .contact-link-checkbox:checked"
-        : ".available-imported-contacts-body .contact-link-checkbox";
+    const reviewId = String(button.dataset.reviewId || "").trim();
+    if (!reviewId) {
+      status.textContent = "Missing review ID. Prepare the application again.";
+      return;
+    }
 
-      var contactIds = Array.from(
-        contactSection.querySelectorAll(selector)
-      ).map(function (checkbox) {
-        return checkbox.value;
+    const permanent = button.classList.contains(
+      "permanently-delete-selected-contacts-button"
+    );
+    const selectedOnly = permanent || button.classList.contains(
+      "delete-selected-contacts-button"
+    );
+    const body = section.querySelector(".available-imported-contacts-body");
+    if (!body) {
+      status.textContent = "Available-contact table not found.";
+      return;
+    }
+
+    const contactIds = [...new Set(
+      [...body.querySelectorAll(
+        ".contact-link-checkbox" + (selectedOnly ? ":checked" : "")
+      )].map((checkbox) => checkbox.value.trim()).filter(Boolean)
+    )];
+
+    if (!contactIds.length) {
+      status.textContent = selectedOnly
+        ? "Select at least one imported contact to delete."
+        : "No available imported contacts to clear.";
+      if (selectedOnly) window.alert(status.textContent);
+      return;
+    }
+
+    if (!selectedOnly && !window.confirm(
+      "Delete all available imported contacts displayed in this section? " +
+      "Contacts linked to any application will be kept. This cannot be undone."
+    )) return;
+
+    if (permanent) {
+      const names = [...body.querySelectorAll(".contact-link-checkbox:checked")]
+        .map((checkbox) =>
+          checkbox.closest("tr")?.querySelectorAll("td")[1]?.textContent.trim()
+          || checkbox.value
+        );
+
+      if (!window.confirm(
+        "Permanently delete these selected contact records, including their " +
+        "links to ALL applications? Saved email addresses and contact details " +
+        "will be removed. This cannot be undone through the UI.\n\n" +
+        names.join("\n")
+      )) return;
+    }
+
+    buttons.forEach((item) => { item.disabled = true; });
+    status.textContent = permanent
+      ? "Permanently deleting selected contacts..."
+      : "Deleting available contacts...";
+    let confirmedDeletion = false;
+    let resultMessage = "";
+
+    try {
+      const response = await fetch(
+        permanent
+          ? "/api/recruiter-contacts/permanent-delete"
+          : "/api/recruiter-contacts/delete",
+        {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          reviewId,
+          action: selectedOnly ? "deleteSelected" : "clearDisplayed",
+          ...(permanent ? { confirmedPermanent: true } : {}),
+          contactIds
+        })
       });
 
-      if (deleteSelected && !contactIds.length) {
-        alert("Select at least one imported contact to delete.");
-        return;
-      }
-
-      if (!deleteSelected) {
-        var confirmed = window.confirm(
-          "Delete all available imported contacts displayed in this section? " +
-            "Contacts linked to an application will be kept. This cannot be undone."
-        );
-
-        if (!confirmed) {
-          return;
-        }
-      }
-
-      button.disabled = true;
-
+      const text = await response.text();
+      let payload;
       try {
-        var response = await fetch(
-          "/api/recruiter-contacts/delete",
-          {
-            method: "POST",
-            headers: {
-              "content-type": "application/json"
-            },
-            body: JSON.stringify({
-              reviewId: reviewId,
-              action: deleteSelected ? "deleteSelected" : "clearDisplayed",
-              contactIds: contactIds
-            })
-          }
+        payload = JSON.parse(text);
+      } catch {
+        throw new Error(
+          `Deletion returned an invalid response (HTTP ${response.status}).`
         );
-
-        var payload = await response.json();
-
-        if (!response.ok || !payload.ok) {
-          throw new Error(
-            payload.error ||
-              "Unable to delete imported contacts."
-          );
-        }
-
-        await refreshImportedContacts(reviewId);
-        button.disabled = false;
-      } catch (error) {
-        alert(
-          error instanceof Error
-            ? error.message
-            : "Unable to delete imported contacts."
-        );
-
-        document
-          .querySelectorAll(
-            ".delete-selected-contacts-button, " +
-              ".clear-imported-contacts-button"
-          )
-          .forEach(function (item) {
-            item.disabled = false;
-          });
       }
-    },
-    true
-  );
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          payload.error || `Deletion failed (HTTP ${response.status}).`
+        );
+      }
+
+      if (
+        !Number.isInteger(payload.deleted) ||
+        payload.deleted < 0 ||
+        !Array.isArray(payload.deletedContacts)
+      ) {
+        throw new Error("Deletion returned an unexpected result.");
+      }
+
+      confirmedDeletion = true;
+
+      const deletedIds = new Set(
+        payload.deletedContacts.map((contact) => contact.id)
+      );
+      body.querySelectorAll(".contact-link-checkbox").forEach((checkbox) => {
+        if (deletedIds.has(checkbox.value)) {
+          checkbox.closest("tr")?.remove();
+        }
+      });
+
+      const remaining = Math.max(0, contactIds.length - deletedIds.size);
+      resultMessage = permanent
+        ? `${payload.deleted} contact(s) permanently deleted from all application contact lists.`
+        : `${payload.deleted} contact(s) deleted.`;
+
+      if (permanent && payload.backupCreated) {
+        resultMessage += " A contact-data backup was created.";
+      }
+      if (permanent && remaining) {
+        resultMessage += ` ${remaining} requested record(s) were already missing.`;
+      }
+      if (!permanent && remaining) {
+        resultMessage +=
+          ` ${remaining} requested contact(s) were not deleted. ` +
+          "Contacts linked to any application are protected; " +
+          "already missing records may also be skipped.";
+      }
+
+      await refreshImportedContacts(reviewId);
+      status.textContent = resultMessage;
+    } catch (error) {
+      status.textContent = confirmedDeletion
+        ? resultMessage +
+          " Tables could not refresh. Click Refresh contacts."
+        : error.message || "Unable to delete available contacts.";
+    } finally {
+      buttons.forEach((item) => { item.disabled = false; });
+      const master = section.querySelector("#select-all-contact-links");
+      if (master) {
+        master.checked = false;
+        master.indeterminate = false;
+      }
+      body.querySelectorAll(".contact-link-checkbox").forEach((checkbox) => {
+        checkbox.checked = false;
+      });
+    }
+  }, true);
 }
 
 function escapeContactValue(value) {
@@ -260,6 +346,11 @@ function renderRefreshableContactRows(contacts) {
 function renderRefreshableLinkedRows(contacts) {
   return contacts.map((contact) => `
     <tr>
+      <td>
+        <input type="checkbox" class="linked-contact-checkbox"
+          value="${escapeContactValue(contact.id)}"
+          aria-label="Select linked contact ${escapeContactValue(contact.fullName)}" />
+      </td>
       <td>${escapeContactValue(contact.fullName)}</td>
       <td class="contact-role-cell"
           style="max-width:28rem;white-space:normal;overflow-wrap:anywhere;">
@@ -339,6 +430,16 @@ async function refreshImportedContacts(reviewId) {
   if (linkedBody) {
     linkedBody.innerHTML = renderRefreshableLinkedRows(linkedContacts);
   }
+
+  refreshOrganisationContactSummary(linkedContacts);
+
+  ["select-all-contact-links", "select-all-linked-contacts"].forEach((id) => {
+    const checkbox = document.getElementById(id);
+    if (checkbox) {
+      checkbox.checked = false;
+      checkbox.indeterminate = false;
+    }
+  });
 }
 
 function attachRefreshImportedContactsListener() {
@@ -433,4 +534,113 @@ if (typeof document !== "undefined") {
   attachRefreshImportedContactsListener();
   attachEmailDomainListener();
   attachEditableEmailDomainListener();
+}
+
+function attachLinkedContactActions() {
+  document.addEventListener("change", (event) => {
+    const section = event.target.closest(".review-section");
+    if (!section) return;
+
+    if (event.target.id === "select-all-linked-contacts") {
+      section.querySelectorAll(".linked-contact-checkbox").forEach((checkbox) => {
+        checkbox.checked = event.target.checked;
+      });
+    }
+
+    if (event.target.matches(".linked-contact-checkbox")) {
+      const boxes = [...section.querySelectorAll(".linked-contact-checkbox")];
+      const master = section.querySelector("#select-all-linked-contacts");
+      if (master) {
+        const selected = boxes.filter((checkbox) => checkbox.checked).length;
+        master.checked = boxes.length > 0 && selected === boxes.length;
+        master.indeterminate = selected > 0 && selected < boxes.length;
+      }
+    }
+  });
+
+  document.addEventListener("click", async (event) => {
+    const button = event.target.closest(
+      ".unlink-selected-contacts-button, .clear-linked-contacts-button"
+    );
+    if (!button) return;
+    event.preventDefault();
+
+    const section = button.closest(".review-section");
+    const status = section.querySelector(".linked-contact-action-status");
+    const clear = button.classList.contains("clear-linked-contacts-button");
+    const ids = [...section.querySelectorAll(
+      ".linked-imported-contacts-body .linked-contact-checkbox" +
+      (clear ? "" : ":checked")
+    )].map((checkbox) => checkbox.value);
+
+    if (!ids.length) {
+      status.textContent = clear
+        ? "No linked contacts to clear."
+        : "Select at least one linked contact to unlink.";
+      return;
+    }
+
+    if (clear && !window.confirm(
+      "Unlink all displayed linked contacts from this application? " +
+      "Contact records and links to other applications will be kept."
+    )) return;
+
+    const buttons = [...section.querySelectorAll(
+      ".unlink-selected-contacts-button, .clear-linked-contacts-button"
+    )];
+    if (buttons.some((item) => item.disabled)) return;
+    buttons.forEach((item) => { item.disabled = true; });
+    let saved = false;
+
+    try {
+      const response = await fetch("/api/recruiter-contacts/unlink", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          reviewId: button.dataset.reviewId,
+          action: clear ? "clearDisplayed" : "unlinkSelected",
+          contactIds: ids
+        })
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "Unable to unlink contacts.");
+      }
+      saved = true;
+      await refreshImportedContacts(button.dataset.reviewId);
+      status.textContent =
+        payload.unlinked + " contact(s) unlinked from this application.";
+    } catch (error) {
+      status.textContent = saved
+        ? "Contacts unlinked, but tables could not refresh. Click Refresh contacts."
+        : error.message || "Unable to unlink contacts.";
+    } finally {
+      buttons.forEach((item) => { item.disabled = false; });
+    }
+  });
+}
+
+if (typeof document !== "undefined") {
+  attachLinkedContactActions();
+}
+
+
+function refreshOrganisationContactSummary(contacts) {
+  const section = document.querySelector(".organisation-contact-summary");
+  const body = section?.querySelector(".organisation-contact-summary-body");
+  if (!section || !body) return;
+
+  body.innerHTML = contacts.map((contact) => `
+    <tr>
+      <td>${escapeContactValue(contact.fullName)}</td>
+      <td class="contact-role-cell">${escapeContactValue(contact.role || "")}</td>
+      <td>
+        <a href="${escapeContactValue(contact.linkedinUrl)}"
+           target="_blank" rel="noopener">LinkedIn profile</a>
+      </td>
+      <td>${escapeContactValue(contact.emailDomain || "Not resolved")}</td>
+    </tr>
+  `).join("");
+
+  section.hidden = contacts.length === 0;
 }
