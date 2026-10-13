@@ -1,5 +1,6 @@
 import { snapshotMessage, prepareDraftSnapshot } from './outreach-message-snapshot.js';
 import { createHash } from 'node:crypto';
+import { queueSnapshotSubject } from './review-subject.js';
 
 export function createOutreachQueueService({ repository, contactStore, getReview }) {
   function invalid(message, statusCode = 400) {
@@ -9,7 +10,7 @@ export function createOutreachQueueService({ repository, contactStore, getReview
   }
   return {
     list() { return repository.list(); },
-    async add({ reviewId, recipients, bodyPlainText, bodyHtml } = {}) {
+    async add({ reviewId, recipients, bodyPlainText, bodyHtml, subject: submittedSubject } = {}) {
       if (typeof reviewId !== 'string' || !reviewId.trim()) invalid('Review ID is required.');
       const review = getReview(reviewId);
       if (!review) invalid('This review has expired. Prepare the application again.', 410);
@@ -34,7 +35,7 @@ export function createOutreachQueueService({ repository, contactStore, getReview
     const selectedCv = (review.prepared?.rankedCvs || []).map(item=>item.cv).find(cv=>cv?.role_code===selectedCode)
       || (review.prepared?.recommendation?.bestCv?.role_code===selectedCode ? review.prepared.recommendation.bestCv : null);
     const attachment = selectedCv?.local_path ? {relativePath:String(selectedCv.local_path),name:String(selectedCv.local_path).split(/[\\/]/).at(-1)} : null;
-    const subject = String(review.prepared?.coverLetter?.subject || '').trim();
+    const subject = queueSnapshotSubject(review, submittedSubject);
       if (!subject || /[\r\n]/.test(subject)) invalid('The application needs a valid single-line subject.');
       const items = recipients.map(recipient => {
         if (!recipient || typeof recipient.contactId !== 'string' || typeof recipient.email !== 'string') {

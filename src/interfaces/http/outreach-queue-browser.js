@@ -108,7 +108,9 @@ function startOutreachQueue() {
         const editor = document.getElementById('cover-letter-draft');
         const bodyPlainText = editor?.innerText || '';
         const bodyHtml = editor?.innerHTML || '';
-        const result = await request('/api/outreach-queue/add', { reviewId, recipients, bodyPlainText, bodyHtml });
+        const subject = document.getElementById('current-cover-letter-subject')?.value;
+        const result = await request('/api/outreach-queue/add', { reviewId, recipients, bodyPlainText, bodyHtml,
+          ...(subject === undefined ? {} : {subject}) });
         saved = true;
         selected.forEach(box => { box.checked = false; });
         await refresh();

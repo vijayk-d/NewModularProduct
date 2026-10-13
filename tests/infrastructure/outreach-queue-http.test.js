@@ -32,11 +32,11 @@ async function fixture(t) {
   return { request, repository, expire() { active = false; }, base };
 }
 const payload = () => ({ reviewId: 'r1', recipients: [{ contactId: 'c1', email: 'test@company.test' }], bodyPlainText: 'Local edited draft.' });
-test('queue API captures draft and server-owned subject, deduplicates, and lists after review expiry', async t => {
+test('queue API captures submitted subject and draft, deduplicates, and lists after review expiry', async t => {
   const f = await fixture(t);
   const added = await f.request('/api/outreach-queue/add', { ...payload(), subject: 'Untrusted subject' });
   assert.equal(added.status, 200); assert.equal(added.data.added, 1);
-  assert.equal(added.data.items[0].subject, 'Application for delivery lead');
+  assert.equal(added.data.items[0].subject, 'Untrusted subject');
   assert.equal(added.data.items[0].bodyPlainText, 'Local edited draft.');
   const duplicate = await f.request('/api/outreach-queue/add', { ...payload(), bodyPlainText: 'Changed' });
   assert.equal(duplicate.data.duplicates, 1);

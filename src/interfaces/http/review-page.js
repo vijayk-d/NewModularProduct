@@ -1,3 +1,4 @@
+import { attachSubjectEditors } from './subject-editors.js';
 import { attachPolishingCostControls } from './polishing-cost-controls.js';
 function attachEmailDomainListener() {
   var button = document.querySelector(
@@ -655,4 +656,9 @@ if (typeof document !== "undefined") {
 if (typeof document !== 'undefined') {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded',()=>attachPolishingCostControls(),{once:true});
   else attachPolishingCostControls();
+}
+
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded',()=>attachSubjectEditors(),{once:true});
+  else attachSubjectEditors();
 }

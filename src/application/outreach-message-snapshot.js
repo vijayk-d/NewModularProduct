@@ -62,7 +62,7 @@ export function snapshotMessage(bodyPlainText,bodyHtml,advertUrl='') {
   let text=bodyPlainText.trim();
   let canonicalAdvert='';
   if(advertUrl){try{canonicalAdvert=new URL(advertUrl).href;}catch{invalid('The application advert URL is invalid.');}}
-  if(canonicalAdvert && clean.links.some(link=>link.href===canonicalAdvert)) text=text.replace(/^Job advert:\s*Job advert\s*$/mi,()=>`Job advert: ${advertUrl}`);
+  if(canonicalAdvert && clean.links.some(link=>link.href===canonicalAdvert)) text=text.replace(/^Job advert:[ \t]*Job advert[ \t]*$/mi,()=>`Job advert: ${advertUrl}`);
   return {bodyPlainText:text,bodyHtml:clean.html};
 }
 function valuesFor(item) {

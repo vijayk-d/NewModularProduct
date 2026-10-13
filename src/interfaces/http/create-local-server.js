@@ -6,6 +6,7 @@ import { DEFAULT_POLISHING_MODEL, normalizePolishingModel, buildPolishingAttempt
 import { extractOutreachExperienceBody } from '../../application/compose-outreach-letter.js';
 import { describeRefinementFailure, formatRefinementFailure } from '../../application/refinement-error-details.js';
 import { createOutreachHttpHandler } from './outreach-queue-http.js';
+import { currentReviewSubject, normalizeSubject, reviewWithSavedSubject } from '../../application/review-subject.js';
 import { createPerplexityClient } from "../../infrastructure/perplexity-client.js";
 import { createEmailDomainResolutionService } from "../../application/email-domain-resolution-service.js";
 import { renderApplicationReview, renderRefinementPanel, renderOrganisationResearch, renderField, renderAdvertLink, getSelectableCompanyValues, renderResearchSource, renderOptionalDetail , renderApplicationForm, escapeHtml} from './rendering.js';
@@ -220,6 +221,7 @@ export function createLocalServer({
       prepared: stored.prepared,
       research: stored.research,
       currentDraftPlainText: stored.currentDraftPlainText,
+      currentDraftSubject: currentReviewSubject(stored),
       currentHighlightPhrases: stored.currentHighlightPhrases || [],
       letterTone: stored.letterTone || 'professional',
       polishingModel: stored.polishingModel || DEFAULT_POLISHING_MODEL,
@@ -1098,7 +1100,7 @@ export function createLocalServer({
       });
 
       reviewStore.set(reviewId, {
-        ...review,
+        ...(reviewStore.get(reviewId) || review),
         letterTone,
         polishingModel,
         refinementLastAttempt,
@@ -1106,6 +1108,25 @@ export function createLocalServer({
       });
 
       await renderReview(200, refinementProposal);
+      return;
+    }
+
+    if (method === 'GET' && url.pathname === '/subject-editors.js') {
+      try {const code=await readFile(join(__dirname,'subject-editors.js'),'utf8');sendText(response,200,code,{'content-type':'application/javascript'});}
+      catch {sendText(response,500,'Local subject controls unavailable.');}
+      return;
+    }
+    if (method === 'POST' && url.pathname === '/review-subject-save') {
+      const formBody=await readFormBody(request);
+      if(formBody.error){sendJson(response,formBody.error.statusCode,{ok:false,error:formBody.error.message});return;}
+      const reviewId=String(formBody.values.get('reviewId')||'').trim();
+      const review=reviewStore.get(reviewId);
+      if(!review){sendJson(response,410,{ok:false,error:'This review expired. Prepare the application again.'});return;}
+      try {
+        const updated=reviewWithSavedSubject(review,formBody.values.get('subject'));
+        reviewStore.set(reviewId,updated);
+        sendJson(response,200,{ok:true,subject:updated.currentDraftSubject});
+      }catch(error){sendJson(response,error.statusCode||400,{ok:false,error:'The application needs a valid single-line subject of at most 300 characters.'});}
       return;
     }
 
@@ -1171,6 +1192,22 @@ export function createLocalServer({
         return;
       }
 
+      let acceptedSubject;
+      try {
+        acceptedSubject=normalizeSubject(formBody.values.has('proposedSubject')
+          ? formBody.values.get('proposedSubject')
+          : review.refinementProposal?.proposedSubject ?? currentReviewSubject(review));
+      }catch(error){
+        await renderReviewSubjectFailure();
+        return;
+      }
+      async function renderReviewSubjectFailure() {
+        sendHtml(response,400,await renderCompleteReview({reviewId,
+          refinementProposal:{...review.refinementProposal,
+            proposedSubject:formBody.values.get('proposedSubject')??'',
+            warnings:[...(review.refinementProposal?.warnings||[]),'The application needs a valid single-line subject of at most 300 characters.']}}));
+      }
+
       let acceptance;
 
       try {
@@ -1207,6 +1244,7 @@ export function createLocalServer({
       const updatedReview = {
         ...review,
         currentDraftPlainText: acceptance.finalDraftPlainText,
+        currentDraftSubject: acceptedSubject,
         currentHighlightPhrases: review.refinementProposal.highlightPhrases || [],
         refinementProposal: {
           appliedMessage:
@@ -1218,6 +1256,8 @@ export function createLocalServer({
             : []),
           {
             appliedAt,
+            previousSubject: currentReviewSubject(review),
+            appliedSubject: acceptedSubject,
             previousDraft: review.currentDraftPlainText,
             appliedDraft: acceptance.finalDraftPlainText
           }

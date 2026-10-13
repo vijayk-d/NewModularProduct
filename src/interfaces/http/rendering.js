@@ -1,5 +1,6 @@
 import { LETTER_TONES, normalizeLetterTone } from '../../application/cover-letter-controls.js';
 import crypto from 'node:crypto';
+import { currentReviewSubject, MAX_SUBJECT_LENGTH } from '../../application/review-subject.js';
 import { POLISHING_MODELS, DEFAULT_POLISHING_MODEL, PRICING_CHECKED_AT, normalizePolishingModel } from '../../application/polishing-model-catalog.js';
 import { renderCoverLetterHtml } from './cover-letter-html.js';
 
@@ -635,7 +636,8 @@ export function renderRefinementPanel({
   letterTone = 'professional',
   polishingModel = DEFAULT_POLISHING_MODEL,
   refinementLastAttempt = null,
-  polishingModelExplicit = false
+  polishingModelExplicit = false,
+  currentSubject = ''
 }) {
   const values = getSelectableCompanyValues(research);
   const selectedTone = normalizeLetterTone(letterTone);
@@ -693,6 +695,11 @@ export function renderRefinementPanel({
         <h2>Proposed cover-letter refinement</h2>
         <p>This proposal has not changed the current draft.</p>
         ${refinementProposal.attemptMetadata ? `<p class="rich-editor-notice">This proposal's requested model: ${escapeHtml(refinementProposal.attemptMetadata.requestedModel || 'Unreported')}; returned model: ${escapeHtml(refinementProposal.attemptMetadata.returnedModel || 'Unreported')}.</p>` : '<p class="rich-editor-notice">Model not recorded for this proposal.</p>'}
+        <label for="proposed-cover-letter-subject">Proposed subject</label>
+        <input id="proposed-cover-letter-subject" class="subject-editor-input" type="text"
+          name="proposedSubject" form="apply-refinement-form" required maxlength="${MAX_SUBJECT_LENGTH}"
+          value="${escapeHtml(refinementProposal.proposedSubject ?? currentSubject)}">
+        <p class="rich-editor-notice">Subject edits are included when you accept this proposal. They do not change the current subject before acceptance.</p>
         <label for="proposed-cover-letter">Proposed cover letter</label>
         <div class="rich-editor-toolbar" role="toolbar" aria-label="Proposed cover letter formatting" data-editor-target="proposed-cover-letter">
           <button type="button" data-editor-command="bold" title="Bold selected text"><strong>B</strong></button>
@@ -731,7 +738,7 @@ export function renderRefinementPanel({
             ? `<h3>Warnings</h3><ul>${refinementProposal.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul>`
             : ''
         }
-        <form method="post" action="/cover-letter-refinement/apply">
+        <form id="apply-refinement-form" method="post" action="/cover-letter-refinement/apply">
           <input type="hidden" name="reviewId" value="${escapeHtml(reviewId)}">
           <button type="submit">Use proposal as current draft</button>
         </form>
@@ -863,6 +870,7 @@ export function renderApplicationReview({
   reviewId = '',
   research = null,
   currentDraftPlainText = '',
+  currentDraftSubject,
   currentHighlightPhrases = [],
   polishingModel = DEFAULT_POLISHING_MODEL,
   refinementLastAttempt = null,
@@ -890,6 +898,7 @@ export function renderApplicationReview({
     research,
     formData.organisationUrl
   );
+  const subject = currentReviewSubject({prepared,formData,currentDraftSubject});
   const refinementMarkup = renderRefinementPanel({
     reviewId,
     research,
@@ -897,9 +906,10 @@ export function renderApplicationReview({
     letterTone,
     polishingModel,
     refinementLastAttempt,
-    polishingModelExplicit
+    polishingModelExplicit,
+    currentSubject: subject
   });
-  const subject = prepared.coverLetter?.subject || '';
+
   const role = prepared.jobDescription?.role || formData.jobTitle;
   const location = String(prepared.jobDescription?.location || '').trim() || 'Not specified';
 
@@ -1597,7 +1607,7 @@ export function renderApplicationReview({
       <p><strong>Recommended CV:</strong> ${escapeHtml(bestCv.role_name || bestCv.role_code || 'Not available')}</p>
 ${alternative}
 ${score}
-      <p><strong>Subject:</strong> ${escapeHtml(subject)}</p>
+      <p data-subject-summary><strong>Subject:</strong> ${escapeHtml(subject)}</p>
       ${cvSelectionStatus}
       ${cvSelectionMarkup}
       <p class="notice">Changing the selected CV does not alter the current cover letter. A future explicit generation or refinement action can use the selected CV.</p>
@@ -1626,6 +1636,11 @@ ${score}
           ? `<p class="status--success" role="status">${escapeHtml(refinementProposal.appliedMessage)}</p>`
           : ''
       }
+      <label for="current-cover-letter-subject">Current subject</label>
+      <input id="current-cover-letter-subject" class="subject-editor-input" type="text"
+        required maxlength="${MAX_SUBJECT_LENGTH}" value="${escapeHtml(subject)}">
+      <button id="save-current-subject" type="button" data-review-id="${escapeHtml(reviewId)}">Save subject</button>
+      <p id="current-subject-status" role="status" aria-live="polite">Save preserves this subject in the active review. Adding to the queue snapshots the visible subject, even before saving. Existing queue items are unchanged.</p>
       <label for="cover-letter-draft">Editable cover letter draft</label>
       <div class="rich-editor-toolbar" role="toolbar" aria-label="Cover letter formatting" data-editor-target="cover-letter-draft">
         <button type="button" data-editor-command="bold" title="Bold selected text"><strong>B</strong></button>
