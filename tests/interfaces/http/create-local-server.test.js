@@ -797,6 +797,9 @@ test('returns a refinement proposal without changing the current draft', async (
 
   assert.equal(refined.status, 200);
   assert.deepEqual(refinementCalls, [{
+  letterTone: 'professional',
+  excludedEmployers: ['micro1'],
+  jobDescriptionText: 'Delivery leadership',
   draftPlainText: "Dear Hiring Manager,\nI am applying for the Project Manager role.", jobDescriptionSummary: "Project Manager",
   selectedCvHighlights: [],
   companyValues: ["Delivery excellence"],

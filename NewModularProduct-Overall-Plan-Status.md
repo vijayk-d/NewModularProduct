@@ -73,3 +73,51 @@ JSON stdin
 ## Recommended immediate next action
 
 Implement **Activity 11: JSON CLI interface**, then run its command tests and a synthetic stdin/stdout smoke test. This makes the completed pure workflow usable without widening the trust boundary.
+
+## Milestone reconciliation - 10 October 2026
+
+This section supersedes the earlier current-baseline, executive-status,
+and immediate-next-action statements. The original capability plan and
+implementation order remain in effect.
+
+### Delivered since the original baseline
+
+- JSON application-preparation CLI and command tests.
+- Controlled template and JSON CV inventory adapters.
+- Local PDF text extraction; full indexing/cache is not confirmed complete.
+- Local HTTP application preparation and interactive review interface.
+- Organisation research through an explicit Perplexity adapter.
+- Cover-letter refinement proposals with explicit user acceptance.
+- Contact import, persistence, linking, unlinking, and deletion workflows.
+- Per-import business-domain selection in LinkedIn userscript version 0.4.1.
+
+### Latest completed checkpoint
+
+- Commit: 4f45966 - Move LinkedIn userscript and replace hardcoded import domain.
+- Live validation: version 0.4.1, entered ageas.co.uk, generated candidate
+  nico.detullio@ageas.co.uk, no reported error.
+- This validates candidate-domain handling, not mailbox verification.
+- Agreed repository cleanup checkpoint is closed.
+- Last reported test baseline: 239 Node tests and 14 browser tests passing.
+  These tests were not rerun for this documentation update.
+
+### Outstanding and deferred scope
+
+- Automated recruiter discovery/ranking is not established as delivered.
+- Recruiter TSV/export and reviewable outreach preparation remain the next
+  planned delivery area, subject to checking existing implementation.
+- Older-duplicate review-domain projection remains deferred unless it blocks
+  the next delivery.
+- Full CV indexing/cache, CV rebuilding, and persistent application output
+  are not established as complete.
+- Gmail OAuth, draft creation, and sending remain deferred behind Phase D gates.
+
+### Delivery focus
+
+Follow the existing roadmap. Deliver the smallest useful vertical slice,
+use focused validation, and record status/evidence at each milestone.
+Do not reopen cleanup or add speculative refactoring as prerequisites.
+
+Next delivery slice: persistent local outreach queue from selected linked
+contacts, with explicit recipient selection and message review. Gmail draft
+creation follows, then explicitly approved sending. TSV export is optional.

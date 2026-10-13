@@ -1,3 +1,4 @@
+import { attachPolishingCostControls } from './polishing-cost-controls.js';
 function attachEmailDomainListener() {
   var button = document.querySelector(
     ".find-email-domain-button"
@@ -568,10 +569,10 @@ function attachLinkedContactActions() {
     const section = button.closest(".review-section");
     const status = section.querySelector(".linked-contact-action-status");
     const clear = button.classList.contains("clear-linked-contacts-button");
-    const ids = [...section.querySelectorAll(
+    const ids = [...new Set([...section.querySelectorAll(
       ".linked-imported-contacts-body .linked-contact-checkbox" +
       (clear ? "" : ":checked")
-    )].map((checkbox) => checkbox.value);
+    )].map((checkbox) => checkbox.value))];
 
     if (!ids.length) {
       status.textContent = clear
@@ -643,4 +644,15 @@ function refreshOrganisationContactSummary(contacts) {
   `).join("");
 
   section.hidden = contacts.length === 0;
+}
+
+if (typeof document !== "undefined") {
+  import("/outreach-queue.js").catch(() => {
+    console.error("Outreach queue UI could not load. Open /outreach-queue directly.");
+  });
+}
+
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded',()=>attachPolishingCostControls(),{once:true});
+  else attachPolishingCostControls();
 }

@@ -1,4 +1,7 @@
+import { LETTER_TONES, normalizeLetterTone } from '../../application/cover-letter-controls.js';
 import crypto from 'node:crypto';
+import { POLISHING_MODELS, DEFAULT_POLISHING_MODEL, PRICING_CHECKED_AT, normalizePolishingModel } from '../../application/polishing-model-catalog.js';
+import { renderCoverLetterHtml } from './cover-letter-html.js';
 
 export function escapeHtml(value = '') {
   return String(value)
@@ -162,7 +165,87 @@ export function renderApplicationForm({
       border-radius: 0.4rem;
       background: #f8fafc;
     }
-  </style>
+
+/* research-result-style-v1: scoped presentation only */
+.research-panel > details {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 1.25rem;
+  border: 1px solid #dbe3ec;
+  border-radius: .75rem;
+  background: #fff;
+  color: #172033;
+  box-shadow: 0 2px 8px rgb(15 23 42 / 4%);
+}
+.research-panel > details > summary {
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  margin-bottom: .75rem;
+}
+.research-panel > details > p {
+  display: inline-block;
+  margin: .25rem .5rem .5rem 0;
+  padding: .35rem .6rem;
+  border-radius: .4rem;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: .875rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.research-panel > details h3 {
+  margin: 1.2rem 0 .5rem;
+  font-size: 1rem;
+  color: #26364b;
+}
+.research-panel > details .research-summary {
+  box-sizing: border-box;
+  max-width: 100%;
+  margin: .5rem 0;
+  padding: .9rem 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: .5rem;
+  background: #f8fafc;
+  font-family: inherit;
+  font-size: .95rem;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.research-panel > details ul {
+  padding-left: 1.25rem;
+  line-height: 1.65;
+  margin: .5rem 0;
+}
+.research-panel > details li { margin: .35rem 0; }
+.research-panel > details a {
+  color: #2455be;
+  overflow-wrap: anywhere;
+  text-underline-offset: .15em;
+}
+.research-panel > details > details {
+  margin-top: 1rem;
+  padding-top: .75rem;
+  border-top: 1px solid #e2e8f0;
+}
+.research-panel > details > details > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #475569;
+}
+.research-panel > details summary:focus-visible,
+.research-panel > details a:focus-visible {
+  outline: 3px solid #93b4ef;
+  outline-offset: 3px;
+}
+@media (max-width: 640px) {
+  .research-panel > details { padding: .9rem; }
+  .research-panel > details > p { display: block; margin-right: 0; }
+}
+
+</style>
 </head>
 <body>
   <main>
@@ -529,12 +612,34 @@ export function renderOrganisationResearch(research, organisationUrl = '') {
   `;
 }
 
+function renderPolishingAttempt(attempt) {
+  if (!attempt) return '';
+  const count = value => typeof value === 'number' && Number.isFinite(value) ? String(value) : 'Unreported';
+  const cost = typeof attempt.providerReportedCostUsd === 'number' && Number.isFinite(attempt.providerReportedCostUsd)
+    ? `$${attempt.providerReportedCostUsd.toFixed(6)} (provider-reported)` : 'Unavailable—not zero';
+  return `<section class="polishing-attempt-summary"><h3>Latest polishing attempt</h3><dl>
+    <dt>Requested model</dt><dd>${escapeHtml(attempt.requestedModel || 'Unreported')}</dd>
+    <dt>Returned model</dt><dd>${escapeHtml(attempt.returnedModel || 'Unreported')}</dd>
+    <dt>Result</dt><dd>${escapeHtml(attempt.outcome === 'passed' ? 'Passed local letter checks' : 'Failed — ' + (attempt.errorCode || 'Unreported category'))}</dd>
+    <dt>Duration</dt><dd>${typeof attempt.durationMs === 'number' ? escapeHtml((attempt.durationMs/1000).toFixed(1)+' seconds') : 'Unreported'}</dd>
+    <dt>Tone / web-search tool</dt><dd>${escapeHtml(attempt.tone || 'Unreported')} / ${attempt.webSearchEnabled === true ? 'Allowed' : attempt.webSearchEnabled === false ? 'Disabled' : 'Unreported'}</dd>
+    <dt>Input / output / reasoning tokens</dt><dd>${escapeHtml(count(attempt.inputTokens)+' / '+count(attempt.outputTokens)+' / '+count(attempt.reasoningTokens))}</dd>
+    <dt>Reported request cost (USD)</dt><dd>${escapeHtml(cost)}</dd>
+  </dl></section>`;
+}
+
 export function renderRefinementPanel({
   reviewId,
   research,
-  refinementProposal
+  refinementProposal,
+  letterTone = 'professional',
+  polishingModel = DEFAULT_POLISHING_MODEL,
+  refinementLastAttempt = null,
+  polishingModelExplicit = false
 }) {
   const values = getSelectableCompanyValues(research);
+  const selectedTone = normalizeLetterTone(letterTone);
+  const selectedModel = normalizePolishingModel(polishingModel);
 
   const selectorMarkup = research?.status === 'found'
     ? `
@@ -558,7 +663,26 @@ export function renderRefinementPanel({
             `
             : '<p class="rich-editor-notice">`No verified organisation values were returned. You can still polish the cover letter using the organisation details and available research sources.`</p>'
         }
+        <label for="polishing-model">Polishing model</label>
+        <input type="hidden" name="polishingCostGuard" value="required">
+        <select id="polishing-model" name="polishingModel" data-selection-explicit="${polishingModelExplicit ? 'true' : 'false'}">
+          ${POLISHING_MODELS.map(item=>`<option value="${item.id}"${item.id===selectedModel?' selected':''}>${escapeHtml(item.label)} (${escapeHtml(item.provider)}) — ${item.tierThreshold ? 'from ' : ''}$${item.inputUsdPerMillion.toFixed(2)} input / $${item.outputUsdPerMillion.toFixed(2)} output per 1M tokens${item.tierThreshold ? `; above ${item.tierThreshold.toLocaleString('en-US')} input tokens: $${item.highInputUsdPerMillion.toFixed(2)} / $${item.highOutputUsdPerMillion.toFixed(2)}` : ''}</option>`).join('')}
+        </select>
+        <p data-polishing-cost-status role="status" aria-live="polite">Local request-cost estimate loading. No provider call is made for estimation.</p>
+        <button type="button" data-polishing-estimate>Refresh cost estimate</button>
+        <button type="button" data-polishing-cheapest>Choose lowest estimated cost</button>
+        <p class="rich-editor-notice">Lowest reference token cost first: 5,000 input + 1,500 output tokens. USD, uncached token rates; tool charges excluded. Pricing checked ${PRICING_CHECKED_AT}. Prices do not rank speed or quality. CV evidence is processed by the selected model provider through Perplexity. Changing selection makes no paid provider request; local estimates can refresh.</p>
+        <label for="cover-letter-tone">Letter tone</label>
+        <select id="cover-letter-tone" name="letterTone">
+          ${LETTER_TONES.map(tone => `<option value="${tone.value}"${tone.value === selectedTone ? ' selected' : ''}>${escapeHtml(tone.label)}</option>`).join('')}
+        </select>
+        <input type="hidden" name="webSearchEnabled" value="false">
+        <label>
+          <input type="checkbox" name="webSearchEnabled" value="true">
+          Allow web search during polishing
+        </label>
         <button type="submit">Polish cover letter</button>
+        <p class="rich-editor-notice">micro1 is excluded from application claims. Sources remain unchanged. Tone applies only when you polish.</p>
       </form>
     `
     : '<p>Research the organisation successfully before requesting a refinement.</p>';
@@ -568,6 +692,7 @@ export function renderRefinementPanel({
       <section class="refinement-proposal panel--proposal">
         <h2>Proposed cover-letter refinement</h2>
         <p>This proposal has not changed the current draft.</p>
+        ${refinementProposal.attemptMetadata ? `<p class="rich-editor-notice">This proposal's requested model: ${escapeHtml(refinementProposal.attemptMetadata.requestedModel || 'Unreported')}; returned model: ${escapeHtml(refinementProposal.attemptMetadata.returnedModel || 'Unreported')}.</p>` : '<p class="rich-editor-notice">Model not recorded for this proposal.</p>'}
         <label for="proposed-cover-letter">Proposed cover letter</label>
         <div class="rich-editor-toolbar" role="toolbar" aria-label="Proposed cover letter formatting" data-editor-target="proposed-cover-letter">
           <button type="button" data-editor-command="bold" title="Bold selected text"><strong>B</strong></button>
@@ -588,7 +713,7 @@ export function renderRefinementPanel({
           role="textbox"
           aria-multiline="true"
           aria-label="Editable proposed cover letter"
-          data-editor-name="Proposed cover letter">${escapeHtml(refinementProposal.proposedDraft).replace(/\n/g, '<br>')}</div>
+          data-editor-name="Proposed cover letter">${renderCoverLetterHtml(refinementProposal.proposedDraft, refinementProposal.highlightPhrases)}</div>
         <div class="rich-editor-actions">
           <button
             type="button"
@@ -626,6 +751,7 @@ export function renderRefinementPanel({
       <h2>Polish cover letter</h2>
       <p>Research is reviewed manually first. Any refinement is a proposal and will not alter the current draft automatically.</p>
       ${selectorMarkup}
+      ${renderPolishingAttempt(refinementLastAttempt)}
       ${warningMarkup}
     </section>
     ${proposalMarkup}
@@ -737,6 +863,11 @@ export function renderApplicationReview({
   reviewId = '',
   research = null,
   currentDraftPlainText = '',
+  currentHighlightPhrases = [],
+  polishingModel = DEFAULT_POLISHING_MODEL,
+  refinementLastAttempt = null,
+  polishingModelExplicit = false,
+  letterTone = 'professional',
   refinementProposal = null,
   selectedCvRoleCode = '',
   cvSelectionMessage = '',
@@ -762,7 +893,11 @@ export function renderApplicationReview({
   const refinementMarkup = renderRefinementPanel({
     reviewId,
     research,
-    refinementProposal
+    refinementProposal,
+    letterTone,
+    polishingModel,
+    refinementLastAttempt,
+    polishingModelExplicit
   });
   const subject = prepared.coverLetter?.subject || '';
   const role = prepared.jobDescription?.role || formData.jobTitle;
@@ -1363,7 +1498,87 @@ export function renderApplicationReview({
       font-size: 0.9rem;
     }
 
-  </style>
+
+/* research-result-style-v1: scoped presentation only */
+.research-panel > details {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 1.25rem;
+  border: 1px solid #dbe3ec;
+  border-radius: .75rem;
+  background: #fff;
+  color: #172033;
+  box-shadow: 0 2px 8px rgb(15 23 42 / 4%);
+}
+.research-panel > details > summary {
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  margin-bottom: .75rem;
+}
+.research-panel > details > p {
+  display: inline-block;
+  margin: .25rem .5rem .5rem 0;
+  padding: .35rem .6rem;
+  border-radius: .4rem;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: .875rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.research-panel > details h3 {
+  margin: 1.2rem 0 .5rem;
+  font-size: 1rem;
+  color: #26364b;
+}
+.research-panel > details .research-summary {
+  box-sizing: border-box;
+  max-width: 100%;
+  margin: .5rem 0;
+  padding: .9rem 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: .5rem;
+  background: #f8fafc;
+  font-family: inherit;
+  font-size: .95rem;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.research-panel > details ul {
+  padding-left: 1.25rem;
+  line-height: 1.65;
+  margin: .5rem 0;
+}
+.research-panel > details li { margin: .35rem 0; }
+.research-panel > details a {
+  color: #2455be;
+  overflow-wrap: anywhere;
+  text-underline-offset: .15em;
+}
+.research-panel > details > details {
+  margin-top: 1rem;
+  padding-top: .75rem;
+  border-top: 1px solid #e2e8f0;
+}
+.research-panel > details > details > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #475569;
+}
+.research-panel > details summary:focus-visible,
+.research-panel > details a:focus-visible {
+  outline: 3px solid #93b4ef;
+  outline-offset: 3px;
+}
+@media (max-width: 640px) {
+  .research-panel > details { padding: .9rem; }
+  .research-panel > details > p { display: block; margin-right: 0; }
+}
+
+</style>
 </head>
 <body>
   <main>
@@ -1431,7 +1646,7 @@ ${score}
         role="textbox"
         aria-multiline="true"
         aria-label="Editable current cover letter draft"
-        data-editor-name="Current cover letter">${escapeHtml(plainText).replace(/\n/g, '<br>')}</div>
+        data-editor-name="Current cover letter">${renderCoverLetterHtml(plainText, currentHighlightPhrases)}</div>
       <p class="rich-editor-notice">
         Formatting and text edits remain in this browser until a later explicit save action is added.
       </p>

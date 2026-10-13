@@ -1,3 +1,6 @@
+import { normalizeLetterTone, normalizeExcludedEmployers } from './cover-letter-controls.js';
+import { normalizePolishingModel, normalizeAttemptMetadata } from './polishing-model-catalog.js';
+import { describeRefinementFailure, formatRefinementFailure } from './refinement-error-details.js';
 function requireRefinementPort(ports) {
   const port = ports?.coverLetterRefinementPort;
 
@@ -77,6 +80,20 @@ function normalizeMaxWords(value) {
 function normalizeRefinementRequest({
   draftPlainText,
   jobDescriptionSummary = '',
+  applicationJobTitle = '',
+  organisationName = '',
+  jobAdvertLink = '',
+  protectOutreachStructure = false,
+  researchSources = [],
+  webSearchEnabled,
+  polishingModel,
+  letterTone = 'professional',
+  excludedEmployers = ['micro1'],
+  jobDescriptionText = '',
+  selectedCvText = '',
+  candidateLinkedInText = '',
+  candidateLinkedInUrl = '',
+  candidateDisplayName = '',
   selectedCvHighlights = [],
   companyValues = [],
   selectedResearchPoints = [],
@@ -92,7 +109,21 @@ function normalizeRefinementRequest({
 
   return {
     draftPlainText: draft,
+    applicationJobTitle: normalizeString(applicationJobTitle),
+    organisationName: normalizeString(organisationName),
+    jobAdvertLink: normalizeUrl(jobAdvertLink),
+    protectOutreachStructure: protectOutreachStructure === true,
+    researchSources: Array.isArray(researchSources) ? researchSources : [],
+    ...(polishingModel !== undefined ? {polishingModel:normalizePolishingModel(polishingModel)} : {}),
+    ...(typeof webSearchEnabled === 'boolean' ? { webSearchEnabled } : {}),
+    letterTone: normalizeLetterTone(letterTone),
+    excludedEmployers: normalizeExcludedEmployers(excludedEmployers),
     jobDescriptionSummary: normalizeString(jobDescriptionSummary),
+    ...(normalizeString(jobDescriptionText) ? { jobDescriptionText: normalizeString(jobDescriptionText) } : {}),
+    ...(normalizeString(selectedCvText) ? { selectedCvText: normalizeString(selectedCvText) } : {}),
+    ...(normalizeString(candidateLinkedInText) ? { candidateLinkedInText: normalizeString(candidateLinkedInText) } : {}),
+    ...(normalizeUrl(candidateLinkedInUrl) ? { candidateLinkedInUrl: normalizeUrl(candidateLinkedInUrl) } : {}),
+    ...(normalizeString(candidateDisplayName) ? { candidateDisplayName: normalizeString(candidateDisplayName) } : {}),
     selectedCvHighlights: normalizeStringArray(selectedCvHighlights),
     companyValues: normalizeStringArray(companyValues),
     selectedResearchPoints: normalizeResearchPoints(selectedResearchPoints),
@@ -121,6 +152,8 @@ function normalizeRefinementResult(result) {
   return {
     review: normalizeReview(normalized.review),
     proposedDraft: normalizeString(normalized.proposedDraft),
+    highlightPhrases: normalizeStringArray(normalized.highlightPhrases).filter(phrase => normalizeString(normalized.proposedDraft).toLowerCase().includes(phrase.toLowerCase())).slice(0, 8),
+    warnings: normalizeStringArray(normalized.warnings),
     appliedResearchPointIds: normalizeStringArray(
       normalized.appliedResearchPointIds
     ),
@@ -134,6 +167,7 @@ function normalizeRefinementResult(result) {
       ? normalized.citations
       : [],
     provider: normalizeString(normalized.provider),
+    ...(normalized.attemptMetadata ? {attemptMetadata:normalizeAttemptMetadata(normalized.attemptMetadata)} : {}),
     model: normalizeString(normalized.model)
   };
 }
@@ -145,7 +179,7 @@ export async function refineCoverLetter(request = {}, ports = {}) {
   try {
     const result = await port.refine(normalizedRequest);
     return normalizeRefinementResult(result);
-  } catch {
+  } catch (error) {
     return {
       review: normalizeReview(),
       proposedDraft: '',
@@ -155,7 +189,10 @@ export async function refineCoverLetter(request = {}, ports = {}) {
       citations: [],
       provider: '',
       model: '',
-      error: 'Cover-letter refinement is currently unavailable.'
+      ...(error.attemptMetadata ? {attemptMetadata:normalizeAttemptMetadata(error.attemptMetadata)} : {}),
+      errorCode: describeRefinementFailure(error).errorCode,
+      failureDetails: describeRefinementFailure(error),
+      error: formatRefinementFailure(error)
     };
   }
 }

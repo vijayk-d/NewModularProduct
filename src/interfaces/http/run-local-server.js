@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createOutreachRepository } from '../../infrastructure/outreach/sqlite-outreach-repository.js';
 
 import { createRecruiterContactStore } from "../../application/recruiter-contact-store.js";
 import { createRecruiterContactImportService } from "../../application/import-recruiter-contacts.js";
@@ -21,6 +22,8 @@ import {
 import {
   createPerplexityCoverLetterRefinementAdapter
 } from '../../infrastructure/refinement/perplexity-cover-letter-refinement-adapter.js';
+import { createPdfTextExtractor } from '../../infrastructure/documents/pdf-text-extractor.js';
+import { createSelectedCvEvidenceLoader } from '../../application/selected-cv-evidence-loader.js';
 import { createLocalServer } from './create-local-server.js';
 
 const DEFAULT_TEMPLATE_ID = 'standard-cover-letter';
@@ -82,7 +85,19 @@ const recruiterContactImportService = createRecruiterContactImportService({
   contactStore: recruiterContactStore
 });
 
+const outreachRepository = createOutreachRepository({
+  filePath: path.join(projectRoot, "output", "outreach.db")
+});
+
+const cvEvidenceLoader = createSelectedCvEvidenceLoader({
+  inventoryRepository: cvInventoryRepository,
+  linkedinRelativePath: String(process.env.CANDIDATE_LINKEDIN_PDF || '').trim(),
+  documentExtractor: createPdfTextExtractor({ cvFolder: process.env.CV_FOLDER })
+});
+
 const server = createLocalServer({
+  cvEvidenceLoader,
+  outreachRepository,
   recruiterContactImportService,
   recruiterContactStore,
   researchOrganization: companyResearchPort
@@ -129,3 +144,5 @@ server.listen(config.server.port, config.server.host, () => {
     `Application UI available at http://${config.server.host}:${config.server.port}\n`
   );
 });
+
+server.on("close", () => outreachRepository.close());

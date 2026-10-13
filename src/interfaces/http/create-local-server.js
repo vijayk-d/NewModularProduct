@@ -1,3 +1,11 @@
+import { refinementAttemptLogFields } from '../../application/refinement-attempt-log.js';
+import { buildPolishingApiRequest } from '../../infrastructure/refinement/perplexity-cover-letter-refinement-adapter.js';
+import { estimatePolishingApiRequest } from '../../application/polishing-cost-estimator.js';
+import { normalizeLetterTone } from '../../application/cover-letter-controls.js';
+import { DEFAULT_POLISHING_MODEL, normalizePolishingModel, buildPolishingAttempt, retainSuccessfulProposal } from '../../application/polishing-model-catalog.js';
+import { extractOutreachExperienceBody } from '../../application/compose-outreach-letter.js';
+import { describeRefinementFailure, formatRefinementFailure } from '../../application/refinement-error-details.js';
+import { createOutreachHttpHandler } from './outreach-queue-http.js';
 import { createPerplexityClient } from "../../infrastructure/perplexity-client.js";
 import { createEmailDomainResolutionService } from "../../application/email-domain-resolution-service.js";
 import { renderApplicationReview, renderRefinementPanel, renderOrganisationResearch, renderField, renderAdvertLink, getSelectableCompanyValues, renderResearchSource, renderOptionalDetail , renderApplicationForm, escapeHtml} from './rendering.js';
@@ -134,8 +142,10 @@ export function createLocalServer({
   },
   recruiterContactImportService = null,
   recruiterContactStore = null,
+  outreachRepository = null,
   researchOrganization = null,
   coverLetterRefinementPort = null,
+  cvEvidenceLoader = null,
   localDiagnosticsEnabled = false,
   diagnosticsWriter = process.stdout,
 } = {}) {
@@ -210,6 +220,11 @@ export function createLocalServer({
       prepared: stored.prepared,
       research: stored.research,
       currentDraftPlainText: stored.currentDraftPlainText,
+      currentHighlightPhrases: stored.currentHighlightPhrases || [],
+      letterTone: stored.letterTone || 'professional',
+      polishingModel: stored.polishingModel || DEFAULT_POLISHING_MODEL,
+      polishingModelExplicit: Boolean(stored.polishingModel),
+      refinementLastAttempt: stored.refinementLastAttempt || null,
       refinementProposal: stored.refinementProposal,
       selectedCvRoleCode: stored.selectedCvRoleCode,
       cvSelectionMessage: stored.cvSelectionMessage
@@ -277,6 +292,11 @@ export function createLocalServer({
     }
   }
 
+  const handleOutreach = createOutreachHttpHandler({
+    repository: outreachRepository, contactStore: recruiterContactStore,
+    getReview: (id) => reviewStore.get(id)
+  });
+
   return createServer((request, response) => {
     handleRequest(request, response).catch((error) => {
       try {
@@ -290,6 +310,7 @@ export function createLocalServer({
   async function handleRequest(request, response) {
     const method = request.method || 'GET';
     const url = new URL(request.url || '/', 'http://localhost');
+    if (await handleOutreach(request, response, url)) return;
     const requestId = randomUUID();
     const scriptNonce = randomBytes(16).toString("base64");
     const requestStartedAt = Date.now();
@@ -863,6 +884,39 @@ export function createLocalServer({
       return;
     }
 
+    if (method === 'POST' && url.pathname === '/cover-letter-refinement/estimate') {
+      const formBody = await readFormBody(request);
+      if (formBody.error) {sendJson(response, formBody.error.statusCode, {ok:false,error:formBody.error.message});return;}
+      const reviewId = String(formBody.values.get('reviewId') || '').trim();
+      const review = reviewStore.get(reviewId);
+      if (!review) {sendJson(response,410,{ok:false,error:'This review expired. Prepare it again; no provider call was made.'});return;}
+      try {
+        const selectedModel = normalizePolishingModel(formBody.values.get('polishingModel') || review.polishingModel || DEFAULT_POLISHING_MODEL);
+        const cvEvidence = cvEvidenceLoader ? await cvEvidenceLoader(review) : {};
+        const ids = formBody.values.getAll('selectedResearchPointIds').map(value=>String(value).trim());
+        const selectedResearchPoints = getSelectableCompanyValues(review.research).filter(point=>ids.includes(point.id));
+        const requestForEstimate = {...cvEvidence,draftPlainText:review.currentDraftPlainText,
+          jobDescriptionSummary:review.formData.jobTitle,jobDescriptionText:review.formData.jobDescriptionText,
+          selectedCvHighlights:Array.isArray(review.formData.cvHighlights)?review.formData.cvHighlights.map(value=>String(value||'').trim()).filter(value=>value&&value.toLowerCase()!=='null'):[],
+          companyValues:selectedResearchPoints.map(point=>point.text),selectedResearchPoints,
+          organisationName:review.formData.organisationName,organisationUrl:review.formData.organisationUrl,
+          researchSources:Array.isArray(review.research?.sources)?review.research.sources:[],instructions:'',maxWords:450,
+          letterTone:normalizeLetterTone(formBody.values.get('letterTone')||review.letterTone||'professional'),excludedEmployers:['micro1'],
+          webSearchEnabled:formBody.values.getAll('webSearchEnabled').includes('true')};
+        const apiBody = buildPolishingApiRequest(requestForEstimate,selectedModel);
+        sendJson(response,200,{ok:true,...estimatePolishingApiRequest(apiBody)});
+      } catch(error) {
+        const known=['REFINEMENT_MODEL_INVALID','REFINEMENT_TONE_INVALID','CV_EVIDENCE_UNAVAILABLE','LINKEDIN_EVIDENCE_UNAVAILABLE'].includes(error.code);
+        sendJson(response,known?400:503,{ok:false,error:known?error.message:'Local cost estimation failed. No provider call was made.'});
+      }
+      return;
+    }
+    if (method === 'GET' && url.pathname === '/polishing-cost-controls.js') {
+      try {const code=await readFile(join(__dirname,'polishing-cost-controls.js'),'utf8');sendText(response,200,code,{'content-type':'application/javascript'});}
+      catch {sendText(response,500,'Local polishing cost controls unavailable.');}
+      return;
+    }
+
     if (method === 'POST' && url.pathname === '/cover-letter-refinement') {
       const actionStartedAt = Date.now();
 
@@ -944,6 +998,14 @@ export function createLocalServer({
         return;
       }
 
+      if (formBody.values.get('polishingCostGuard') === 'required' &&
+          (formBody.values.get('polishingCostConfirmed') !== 'true' ||
+           formBody.values.get('polishingConfirmedModel') !== formBody.values.get('polishingModel'))) {
+        await renderReview(409,retainSuccessfulProposal(review.refinementProposal,{proposedDraft:'',
+          warnings:['Review and confirm the local cost estimate before polishing. No provider call was made.']}));
+        return;
+      }
+
       const selectedIds = formBody.values
         .getAll('selectedResearchPointIds')
         .map((value) => String(value).trim())
@@ -954,6 +1016,9 @@ export function createLocalServer({
       ).filter((point) => selectedIds.includes(point.id));
 
       let refinementProposal;
+      let letterTone = review.letterTone || 'professional';
+      let polishingModel = review.polishingModel || DEFAULT_POLISHING_MODEL;
+      let refinementLastAttempt = null;
 
       writeDiagnostic('refinement_provider_requested', {
         requestId,
@@ -965,7 +1030,20 @@ export function createLocalServer({
       });
 
       try {
+      letterTone = normalizeLetterTone(formBody.values.get('letterTone') || letterTone);
+      review.letterTone = letterTone;
+      polishingModel = normalizePolishingModel(formBody.values.get('polishingModel') || polishingModel);
+      review.polishingModel = polishingModel;
+      const cvEvidence = cvEvidenceLoader ? await cvEvidenceLoader(review) : {};
       refinementProposal = await coverLetterRefinementPort.refine({
+        ...cvEvidence,
+        ...(formBody.values.has('polishingModel') || review.polishingModel !== DEFAULT_POLISHING_MODEL ? {polishingModel} : {}),
+        letterTone,
+        excludedEmployers: ['micro1'],
+        ...(formBody.values.has('webSearchEnabled') ? {
+          webSearchEnabled: formBody.values.getAll('webSearchEnabled').includes('true')
+        } : {}),
+        jobDescriptionText: review.formData.jobDescriptionText,
         draftPlainText: review.currentDraftPlainText,
         jobDescriptionSummary: review.formData.jobTitle,
         selectedCvHighlights: Array.isArray(review.formData.cvHighlights)
@@ -985,16 +1063,30 @@ export function createLocalServer({
         instructions: "",
         maxWords: 450
       });
+      if (refinementProposal.error) {
+        const error = new Error(refinementProposal.error);
+        error.code = refinementProposal.errorCode || 'REFINEMENT_FAILED';
+        error.attemptMetadata = refinementProposal.attemptMetadata;
+        error.refinementDetails = refinementProposal.failureDetails || {};
+        throw error;
+      }
       } catch (error) {
         if (isContactStoreLoadError(error)) throw error;
-        refinementProposal = {
-          proposedDraft: '',
-          warnings: [
-            'Cover-letter refinement is currently unavailable.'
-          ]
-        };
+        writeDiagnostic('refinement_failed', { requestId, reviewId,
+          ...describeRefinementFailure(error) });
+        refinementLastAttempt = error.attemptMetadata || buildPolishingAttempt({requestModel:error.code === 'REFINEMENT_MODEL_INVALID' ? null : polishingModel,
+          durationMs:Date.now()-actionStartedAt,tone:letterTone,
+          webSearchEnabled:formBody.values.has('webSearchEnabled') ? formBody.values.getAll('webSearchEnabled').includes('true') : true,
+          outcome:'failed',errorCode:describeRefinementFailure(error).errorCode});
+        const failedProposal = {proposedDraft:'',warnings:[formatRefinementFailure(error)]};
+        refinementProposal = retainSuccessfulProposal(reviewStore.get(reviewId)?.refinementProposal, failedProposal);
       }
 
+      refinementLastAttempt = refinementLastAttempt || refinementProposal.attemptMetadata || null;
+      writeDiagnostic('refinement_attempt_metrics', {
+        requestId, reviewId,
+        ...refinementAttemptLogFields(refinementLastAttempt)
+      });
       writeDiagnostic('refinement_completed', {
         requestId,
         reviewId,
@@ -1007,6 +1099,9 @@ export function createLocalServer({
 
       reviewStore.set(reviewId, {
         ...review,
+        letterTone,
+        polishingModel,
+        refinementLastAttempt,
         refinementProposal
       });
 
@@ -1079,6 +1174,7 @@ export function createLocalServer({
       let acceptance;
 
       try {
+        extractOutreachExperienceBody(proposedDraftPlainText, ['micro1']);
         acceptance = acceptRefinedCoverLetter({
           originalDraftPlainText: review.currentDraftPlainText,
           proposedDraftPlainText,
@@ -1098,7 +1194,7 @@ export function createLocalServer({
             refinementProposal: {
               proposedDraft: '',
               warnings: [
-                'The refinement proposal could not be applied.'
+                formatRefinementFailure(error)
               ]
             }
           })
@@ -1111,6 +1207,7 @@ export function createLocalServer({
       const updatedReview = {
         ...review,
         currentDraftPlainText: acceptance.finalDraftPlainText,
+        currentHighlightPhrases: review.refinementProposal.highlightPhrases || [],
         refinementProposal: {
           appliedMessage:
             'Current draft updated from your approved refinement proposal.'

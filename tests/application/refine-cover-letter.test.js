@@ -69,6 +69,13 @@ test('normalizes manual research selections and returns a proposal without chang
   });
 
   assert.deepEqual(calls, [{
+    applicationJobTitle: '',
+    organisationName: '',
+    jobAdvertLink: '',
+    protectOutreachStructure: false,
+    researchSources: [],
+    letterTone: 'professional',
+    excludedEmployers: ['micro1'],
     draftPlainText: 'Original draft',
     jobDescriptionSummary: 'Delivery role',
     selectedCvHighlights: ['Delivery'],
@@ -124,6 +131,7 @@ test('converts an adapter failure into a controlled refinement error', async () 
   assert.equal(result.model, '');
   assert.equal(
     result.error,
-    'Cover-letter refinement is currently unavailable.'
+    '[REFINEMENT_FAILED] Cover-letter refinement is currently unavailable. See the server diagnostic with the matching request ID.'
   );
+  assert.equal(result.errorCode, 'REFINEMENT_FAILED');
 });
