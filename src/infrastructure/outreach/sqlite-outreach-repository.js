@@ -1,3 +1,4 @@
+import { createDraftAttemptLedger, draftSnapshotFingerprint } from '../../application/gmail-draft-state-ledger.js';
 import { sanitizeSnapshotHtml } from '../../application/outreach-message-snapshot.js';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
@@ -27,6 +28,20 @@ export function createOutreachRepository({ filePath }) {
       UNIQUE(sending_account, message_id)
     );
   `);
+  const draftLedger = createDraftAttemptLedger(db, (operation) => {
+    const row = db.prepare('SELECT payload FROM outreach_queue WHERE id = ?').get(operation.queueId);
+    if (!row) return;
+    const item = JSON.parse(row.payload);
+    if (draftSnapshotFingerprint(item) !== operation.snapshotFingerprint) return;
+    const statuses = {reserved:'draft_creating',drafted:'drafted',failed:'draft_failed',unknown:'draft_unknown'};
+    const updated = {...item,status:statuses[operation.status],updatedAt:operation.updatedAt,
+      draftOperationId:operation.id,sendingAccount:operation.sendingAccount,
+      draftId:operation.draftId,messageId:operation.messageId,
+      lastOutcome:operation.status==='drafted'?`draftId: ${operation.draftId}`:
+        operation.status==='unknown'?'Draft outcome uncertain. Check Gmail before retrying.':
+        operation.status==='failed'?'Draft creation failed; no automatic retry.':'Draft creation reserved; do not duplicate.'};
+    db.prepare('UPDATE outreach_queue SET payload = ? WHERE id = ?').run(JSON.stringify(updated),operation.queueId);
+  });
   const decode = (row) => row ? JSON.parse(row.payload) : null;
   const required = (value, label) => {
     if (typeof value !== 'string' || !value.trim()) throw new Error(`${label} is required.`);
@@ -106,6 +121,15 @@ export function createOutreachRepository({ filePath }) {
     clearQueue() {
       return Number(db.prepare('DELETE FROM outreach_queue').run().changes);
     },
+    claimDraftOperation({queueId,sendingAccount,retryFailed=false}={}) {
+      const item=get(required(queueId,'Queue ID'));
+      if(!item)throw new Error('Queue item not found.');
+      return draftLedger.claim(item,sendingAccount,{retryFailed});
+    },
+    recordDraftOutcome: draftLedger.recordOutcome,
+    getDraftOperationById: draftLedger.getById,
+    findDraftOperation: draftLedger.find,
+    listDraftOperations: draftLedger.list,
     recordConfirmedSend({ queueId, sendingAccount, messageId, threadId = '', sentAt }) {
       const item = get(required(queueId, 'Queue ID'));
       if (!item) throw new Error('Queue item not found.');
