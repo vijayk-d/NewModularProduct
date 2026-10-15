@@ -1,16 +1,20 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 export async function runGmailDraftWorker({ payload, pythonExecutable = process.env.PYTHON || (process.platform==='win32'?'python':'python3'),
-  spawnImpl = spawn, timeoutMs = 240000 } = {}) {
+  spawnImpl = spawn, timeoutMs = 240000, workerMode = 'standard' } = {}) {
   if(payload?.action!=='draft' || !Array.isArray(payload.drafts) || !payload.drafts.length || payload.drafts.length>100) throw new Error('Only explicit draft payloads are supported. Sending is disabled.');
   const ids=payload.drafts.map(item=>item.queueId);
   if(ids.some(id=>typeof id!=='string' || !id) || new Set(ids).size!==ids.length) throw new Error('Draft payloads require distinct string queue IDs.');
-  const worker=fileURLToPath(new URL('../../python-worker/gmail_draft_worker.py',import.meta.url));
+  if (!['standard','confirmed'].includes(workerMode)) throw new Error('Unsupported draft worker mode.');
+  const worker=fileURLToPath(new URL(workerMode === 'confirmed' ? '../../python-worker/gmail_confirmed_draft_worker.py' : '../../python-worker/gmail_draft_worker.py',import.meta.url));
   const input=JSON.stringify(payload);if(Buffer.byteLength(input)>16*1024*1024)throw new Error('Draft payload is too large.');
   return new Promise((resolve,reject)=>{
     let child, done=false, stdout='', timer;
     const finish=(error,result)=>{if(done)return;done=true;clearTimeout(timer);error?reject(error):resolve(result);};
-    try {child=spawnImpl(pythonExecutable,[worker],{stdio:['pipe','pipe','pipe']});}
+    try {child=spawnImpl(pythonExecutable,[worker],{
+      stdio:['pipe','pipe','pipe'],
+      env:{...process.env,PYTHONIOENCODING:'utf-8:strict'}
+    });}
     catch {finish(new Error('Draft worker could not start. No success was recorded.'));return;}
     timer=setTimeout(()=>{child.kill();finish(new Error('Draft worker timed out. Draft creation may be uncertain; check Gmail before retrying. No success was recorded.'));},timeoutMs);
     child.on('error',()=>finish(new Error('Draft worker could not start. No success was recorded.')));
@@ -30,6 +34,6 @@ export async function runGmailDraftWorker({ payload, pythonExecutable = process.
       finish(null,{...result,processed:details.length,drafted:details.filter(item=>item.status==='drafted').length,
         failed:details.filter(item=>item.status==='failed').length,unknown:details.filter(item=>item.status==='unknown').length});
     });
-    child.stdin.end(input);
+    child.stdin.end(input, 'utf8');
   });
 }

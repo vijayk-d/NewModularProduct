@@ -17,9 +17,12 @@ export function normalizeExcludedEmployers(value) {
 }
 export function assertLetterBodySafe(body, excludedEmployers = ['micro1']) {
   const text = String(body || '');
-  const fail = (message, code) => { const error = new Error(message); error.code = code; throw error; };
+  const fail = (message, code, diagnostics) => { const error = new Error(message); error.code = code; error.statusCode = 400; if(diagnostics)error.safeDiagnostics=diagnostics; throw error; }; // outreach-content-diagnostics-v1
   if (/<\/?[a-z][^>]*>/i.test(text)) {
-    fail('The proposal contains unresolved placeholders or raw HTML.', 'REFINEMENT_BODY_REJECTED');
+    const known=new Set(['a','p','br','div','span','strong','b','em','i','u','mark','ul','ol','li','table','tr','td','th','html','body','font','h1','h2','h3','http','https']);
+    const matches=[...text.matchAll(/<\/?([a-z][a-z0-9-]*)[^>]*>/gi)];
+    const tagCategories=[...new Set(matches.map(m=>known.has(m[1].toLowerCase())?m[1].toLowerCase():'other'))].slice(0,10);
+    fail('The proposal contains unresolved placeholders or raw HTML. The plain-text experience contains literal HTML-like markup; use rendered text, not pasted HTML source.', 'REFINEMENT_BODY_REJECTED', {htmlLikeCount:matches.length,tagCategories});
   }
   if (/https?:\/\/|www\.|\[[^\]\n]+\]\([^\n)]*\)|\[(?:(?:cite|web|file):)?\d+(?:[ ,\u2013-]+\d+)*\]|\[\^[^\]]+\]|【[^】]*(?:\d|cite|source)[^】]*】|\b[\w.-]+\.(?:co\.uk|org\.uk|com|org|net)(?:[\/\s]|$)/i.test(text)) {
     fail('Research links, citations or Markdown links appeared in the experience body. The proposal was not accepted.', 'REFINEMENT_BODY_LINK_REJECTED');

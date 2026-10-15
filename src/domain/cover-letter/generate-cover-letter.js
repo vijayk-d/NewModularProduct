@@ -1,3 +1,4 @@
+import {normalizeLegacyAdvertPlain,embedCanonicalAdvertHtml} from '../shared/legacy-advert-normalization.js';
 import { fillTemplate } from './fill-template.js';
 import { validateCoverLetter } from './validate-cover-letter.js';
 import { normalize } from '../shared/text-normalization.js';
@@ -386,9 +387,9 @@ export function generateCoverLetter({
     referenceSuffix
   });
 
-  const plainText = ensureAtsRedirectionParagraph(
+  const plainText = normalizeLegacyAdvertPlain(ensureAtsRedirectionParagraph(
     refinedCoverLetterText || templateBody
-  );
+  ),jobAdvertLink).text;
 
   const subject = `Application for ${parsedJobDescription.role}` +
     `${jobAdvertLink ? ' | LinkedIn' : ''}` +
@@ -401,7 +402,7 @@ export function generateCoverLetter({
   );
 
   const richText = highlightTermsInHtml(
-    plainText.replace(/\n\n/g, '<p>').replace(/\n/g, '<br>'),
+    embedCanonicalAdvertHtml(plainText,jobAdvertLink).replace(/\n\n/g, '<p>').replace(/\n/g, '<br>'),
     selectedHighlights
   );
 
@@ -420,3 +421,4 @@ export function generateCoverLetter({
     highlightPhrases: selectedHighlights
   };
 }
+

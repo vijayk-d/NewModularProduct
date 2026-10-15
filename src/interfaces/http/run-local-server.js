@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { gmailLoadedEnvironment } from '../../application/gmail-runtime-diagnostics.js';
+import {createSqliteReviewStore} from '../../infrastructure/applications/sqlite-review-store.js';
 import { createOutreachRepository } from '../../infrastructure/outreach/sqlite-outreach-repository.js';
 
 import { createRecruiterContactStore } from "../../application/recruiter-contact-store.js";
@@ -31,6 +33,8 @@ const DEFAULT_TEMPLATE_ID = 'standard-cover-letter';
 const config = loadRuntimeConfig({
   env: process.env
 });
+
+process.stdout.write('[GMAIL_CONFIGURATION] '+JSON.stringify({environment:gmailLoadedEnvironment(process.env)},null,2)+'\n');
 
 const localDiagnosticsEnabled =
   config.features.localDebugLogging === true;
@@ -95,7 +99,9 @@ const cvEvidenceLoader = createSelectedCvEvidenceLoader({
   documentExtractor: createPdfTextExtractor({ cvFolder: process.env.CV_FOLDER })
 });
 
+const applicationReviewStore=createSqliteReviewStore({filePath:path.join(projectRoot,'output','application-reviews-v1.db')});
 const server = createLocalServer({
+  applicationReviewStore,
   cvEvidenceLoader,
   outreachRepository,
   recruiterContactImportService,
@@ -145,4 +151,5 @@ server.listen(config.server.port, config.server.host, () => {
   );
 });
 
-server.on("close", () => outreachRepository.close());
+server.on("close", () => {outreachRepository.close();applicationReviewStore.close();});
+

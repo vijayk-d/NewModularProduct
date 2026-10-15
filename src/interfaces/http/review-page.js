@@ -1,3 +1,4 @@
+import './application-review-controls.js';
 import { attachSubjectEditors } from './subject-editors.js';
 import { attachPolishingCostControls } from './polishing-cost-controls.js';
 function attachEmailDomainListener() {
@@ -191,7 +192,8 @@ export function attachReviewPageListeners() {
     if (permanent) {
       const names = [...body.querySelectorAll(".contact-link-checkbox:checked")]
         .map((checkbox) =>
-          checkbox.closest("tr")?.querySelectorAll("td")[1]?.textContent.trim()
+          [checkbox.closest("tr")?.querySelector('.candidate-first')?.value,checkbox.closest("tr")?.querySelector('.candidate-last')?.value].filter(Boolean).join(' ')
+          || checkbox.closest("tr")?.querySelectorAll("td")[1]?.textContent.trim()
           || checkbox.value
         );
 
@@ -382,7 +384,7 @@ function renderRefreshableLinkedRows(contacts) {
   `).join("");
 }
 
-async function refreshImportedContacts(reviewId) {
+export async function refreshImportedContacts(reviewId) {
   const response = await fetch(
     `/api/recruiter-contacts/linking?reviewId=${encodeURIComponent(reviewId)}`
   );
@@ -434,6 +436,7 @@ async function refreshImportedContacts(reviewId) {
   }
 
   refreshOrganisationContactSummary(linkedContacts);
+  document.dispatchEvent(new CustomEvent('outreach-contacts-refreshed',{detail:{unlinkedContacts,linkedContacts}}));
 
   ["select-all-contact-links", "select-all-linked-contacts"].forEach((id) => {
     const checkbox = document.getElementById(id);
@@ -662,3 +665,5 @@ if (typeof document !== 'undefined') {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded',()=>attachSubjectEditors(),{once:true});
   else attachSubjectEditors();
 }
+
+

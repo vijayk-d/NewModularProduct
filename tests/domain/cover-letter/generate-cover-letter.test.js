@@ -45,7 +45,7 @@ test('uses recruiter greeting, grounded CV evidence, and rich-text highlights', 
   assert.match(letter.plainText, /Dear James,/);
   assert.match(
     letter.plainText,
-    /LinkedIn: <a href="https:\/\/www\.linkedin\.com\/jobs\/view\/123"/
+    /Job advert: https:\/\/www\.linkedin\.com\/jobs\/view\/123/
   );
   assert.match(letter.plainText, /Scrum facilitation, PMO operations/);
   assert.match(letter.richText, /data-highlight="true"[^>]*>kanban<\/span>/i);
@@ -206,3 +206,4 @@ test('uses ASCII punctuation in the ATS redirection paragraph', () => {
   assert.doesNotMatch(letter.plainText, /align withthe/i);
   assert.doesNotMatch(letter.plainText, /client(?:ΓÇÖ|â€™|’)/);
 });
+

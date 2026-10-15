@@ -1,3 +1,4 @@
+import {normalizeLegacyAdvertSnapshot} from '../domain/shared/legacy-advert-normalization.js';
 function invalid(message) { const error = new Error(message); error.statusCode = 400; throw error; }
 export function escapeHtml(value) {
   return String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
@@ -56,6 +57,8 @@ export function sanitizeSnapshotHtml(value) {
 }
 export function snapshotMessage(bodyPlainText,bodyHtml,advertUrl='') {
   if(typeof bodyPlainText!=='string' || !bodyPlainText.trim() || bodyPlainText.length>100000) invalid('A non-empty message of at most 100000 characters is required.');
+  const advertFix=normalizeLegacyAdvertSnapshot({bodyPlainText,bodyHtml},advertUrl);
+  bodyPlainText=advertFix.bodyPlainText;bodyHtml=advertFix.bodyHtml;
   if(bodyHtml===undefined || bodyHtml==='') return {bodyPlainText:bodyPlainText.trim()};
   const clean=sanitizeSnapshotHtml(bodyHtml);
   if(normalize(clean.text)!==normalize(bodyPlainText)) invalid('Plain-text and formatted message disagree. Refresh the editor and queue again.');
@@ -89,3 +92,4 @@ export function prepareDraftSnapshot(item) {
   return {queueId:item.id,recipient:{email:item.email,firstname:values.firstname,lastname:values.lastname},
     subject:personalize(item.subject,values),bodyPlainText:body,bodyHtml:html,attachment};
 }
+

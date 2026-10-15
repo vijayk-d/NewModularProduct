@@ -1,4 +1,5 @@
 import { snapshotMessage, prepareDraftSnapshot } from './outreach-message-snapshot.js';
+import { finalizeOutreachIdentity } from './outreach-final-identity.js';
 import { createHash } from 'node:crypto';
 import { queueSnapshotSubject } from './review-subject.js';
 
@@ -10,7 +11,7 @@ export function createOutreachQueueService({ repository, contactStore, getReview
   }
   return {
     list() { return repository.list(); },
-    async add({ reviewId, recipients, bodyPlainText, bodyHtml, subject: submittedSubject } = {}) {
+    async add({ reviewId, recipients, bodyPlainText, bodyHtml, subject: submittedSubject, finalizeIdentity = false } = {}) {
       if (typeof reviewId !== 'string' || !reviewId.trim()) invalid('Review ID is required.');
       const review = getReview(reviewId);
       if (!review) invalid('This review has expired. Prepare the application again.', 410);
@@ -50,24 +51,28 @@ export function createOutreachQueueService({ repository, contactStore, getReview
           invalid('Choose an email displayed for the linked contact.');
         }
         if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) invalid('Recipient email is invalid.');
+        const finalSnapshot=finalizeIdentity===true?finalizeOutreachIdentity(snapshot,{
+          firstName:contact.firstName||contact.fullName?.trim().split(/\s+/)[0],
+          candidateName:process.env.CANDIDATE_DISPLAY_NAME||'Vijay DAFAL',advertUrl:advert
+        }):snapshot;
         return {
           applicationKey, reviewId, contactId: contact.id, email,
           fullName: contact.fullName || '', role: contact.role || '',
           linkedinUrl: contact.linkedinUrl || '',
           verified: contact.verified === true && email.toLowerCase() === String(contact.selectedEmail || '').toLowerCase(),
-          emailSource: email.toLowerCase() === String(contact.selectedEmail || '').toLowerCase()
-            ? contact.emailSource || 'unknown' : 'inferred',
+          emailSource: contact.emailSources?.[email.toLowerCase()] || (email.toLowerCase() === String(contact.selectedEmail || '').toLowerCase()
+            ? contact.emailSource || 'unknown' : 'inferred'),
           application: {
             jobTitle: form.jobTitle || '', organisationName: form.organisationName || '',
             organisationUrl: form.organisationUrl || '', jobAdvertLink: advert,
             jobReference: form.jobReference || '', selectedCvRoleCode: review.selectedCvRoleCode || ''
           },
-          subject, ...snapshot,
-        ...(snapshot.bodyHtml ? {firstname:String(contact.firstName || contact.fullName?.trim().split(/\s+/)[0] || ''),
+          subject, ...finalSnapshot,
+        ...(finalSnapshot.bodyHtml ? {firstname:String(contact.firstName || contact.fullName?.trim().split(/\s+/)[0] || ''),
           lastname:String(contact.lastName || ''),attachment} : {})
         };
       });
-      return repository.addMany(items);
+      return repository.addMany(items,{refreshPending:finalizeIdentity===true});
     },
     prepareDrafts({ ids } = {}) {
       if (!Array.isArray(ids) || !ids.length || ids.length>100 || ids.some(id=>typeof id!=='string' || !id)) invalid('Select between 1 and 100 explicit queue IDs.');
@@ -87,3 +92,4 @@ export function createOutreachQueueService({ repository, contactStore, getReview
     }
   };
 }
+

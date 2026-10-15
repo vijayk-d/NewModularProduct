@@ -1,3 +1,5 @@
+import {createSendLedger} from '../../application/gmail-send-ledger.js';
+import { messageEditVersion } from '../../application/queue-message-editor.js';
 import { createDraftAttemptLedger, draftSnapshotFingerprint } from '../../application/gmail-draft-state-ledger.js';
 import { sanitizeSnapshotHtml } from '../../application/outreach-message-snapshot.js';
 import { DatabaseSync } from 'node:sqlite';
@@ -28,6 +30,7 @@ export function createOutreachRepository({ filePath }) {
       UNIQUE(sending_account, message_id)
     );
   `);
+  const sendLedger=createSendLedger(db);
   const draftLedger = createDraftAttemptLedger(db, (operation) => {
     const row = db.prepare('SELECT payload FROM outreach_queue WHERE id = ?').get(operation.queueId);
     if (!row) return;
@@ -49,7 +52,7 @@ export function createOutreachRepository({ filePath }) {
   };
   const get = (id) => decode(db.prepare('SELECT payload FROM outreach_queue WHERE id = ?').get(id));
   return {
-    addMany(items) {
+    addMany(items,{refreshPending=false}={}) {
       if (!Array.isArray(items) || !items.length) throw new Error('Select at least one recipient.');
       const prepared = items.map((item) => {
         const applicationKey = required(item.applicationKey, 'Application key');
@@ -75,7 +78,7 @@ export function createOutreachRepository({ filePath }) {
           createdAt: now, updatedAt: now, lastOutcome: ''
         };
       });
-      const result = { added: 0, duplicates: 0, items: [] };
+      const result = { added: 0, duplicates: 0, updated: 0, items: [] };
       db.exec('BEGIN IMMEDIATE');
       try {
         const insert = db.prepare(`INSERT INTO outreach_queue
@@ -86,7 +89,17 @@ export function createOutreachRepository({ filePath }) {
           const key = item.email.toLowerCase();
           const inserted = insert.run(item.id, item.applicationKey, item.contactId, key, JSON.stringify(item));
           if (Number(inserted.changes)) result.added++;
-          else result.duplicates++;
+          else {
+            const previous=decode(db.prepare(`SELECT payload FROM outreach_queue
+              WHERE application_key = ? AND contact_id = ? AND recipient_key = ?`).get(item.applicationKey,item.contactId,key));
+            const attempted=db.prepare(`SELECT id FROM outreach_gmail_draft_operations
+              WHERE application_key = ? AND recipient_key = ? LIMIT 1`).get(item.applicationKey,key);
+            const sendAttempted=db.prepare('SELECT id FROM outreach_gmail_send_attempts WHERE application_key=? AND recipient_key=? LIMIT 1').get(item.applicationKey,key);
+            if(refreshPending===true&&previous?.status==='new'&&!attempted&&!sendAttempted){
+              const updated={...item,id:previous.id,createdAt:previous.createdAt};
+              db.prepare('UPDATE outreach_queue SET payload = ? WHERE id = ?').run(JSON.stringify(updated),previous.id);result.updated++;
+            }else result.duplicates++;
+          }
           result.items.push(decode(db.prepare(`SELECT payload FROM outreach_queue
             WHERE application_key = ? AND contact_id = ? AND recipient_key = ?`)
             .get(item.applicationKey, item.contactId, key)));
@@ -97,6 +110,23 @@ export function createOutreachRepository({ filePath }) {
         db.exec('ROLLBACK');
         throw error;
       }
+    },
+    // queue-single-editor-v1: compare-and-save inside the existing SQLite transaction.
+    updatePendingMessage({queueId,expectedVersion,bodyPlainText,bodyHtml}) {
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const item=get(required(queueId,'Queue ID'));
+        const fail=message=>{const e=new Error(message);e.statusCode=409;throw e;};
+        if(!item)fail('Queue item no longer exists.');
+        if(item.status!=='new')fail('This message has already been used for an operation.');
+        if(messageEditVersion(item)!==expectedVersion)fail('Message changed elsewhere. Refresh and review before saving.');
+        const attempted=db.prepare('SELECT id FROM outreach_gmail_draft_operations WHERE application_key = ? AND recipient_key = ? LIMIT 1').get(item.applicationKey,item.email.toLowerCase());
+        const sentAttempt=db.prepare('SELECT id FROM outreach_gmail_send_attempts WHERE application_key=? AND recipient_key=? LIMIT 1').get(item.applicationKey,item.email.toLowerCase());
+        if(attempted||sentAttempt)fail('An operation already exists; the saved message cannot be overwritten.');
+        const updated={...item,bodyPlainText,bodyHtml:sanitizeSnapshotHtml(bodyHtml).html,updatedAt:new Date().toISOString()};
+        db.prepare('UPDATE outreach_queue SET payload = ? WHERE id = ?').run(JSON.stringify(updated),item.id);
+        db.exec('COMMIT');return updated;
+      }catch(error){db.exec('ROLLBACK');throw error;}
     },
     list() {
       return db.prepare('SELECT payload FROM outreach_queue ORDER BY rowid').all().map(decode);
@@ -159,9 +189,15 @@ export function createOutreachRepository({ filePath }) {
         throw error;
       }
     },
+    getSendState:sendLedger.state,
+    listSendAttempts:sendLedger.list,
+    claimSendAttempt:sendLedger.claim,
+    finishSendAttempt:sendLedger.finish,
     listSentEmails() {
       return db.prepare('SELECT payload FROM outreach_sent_emails ORDER BY rowid DESC').all().map(decode);
     },
     close() { db.close(); }
   };
 }
+
+

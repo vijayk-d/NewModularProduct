@@ -11,6 +11,36 @@ export function createRecruiterContactStore({ filePath }) {
   let operationQueue = Promise.resolve();
 
   const store = {
+  async saveOutreachCandidates({reviewId,organisationId,rows}) {
+    const bad=message=>{const e=new Error(message);e.statusCode=400;throw e;};
+    if(typeof reviewId!=='string'||!reviewId.trim()||!Array.isArray(rows)||!rows.length||rows.length>100)bad('Select between 1 and 100 contact-address rows.');
+    const contacts=structuredClone(await load()),recipients=[],seen=new Map();
+    const field=(v,label,required=false)=>{const s=String(v||'').trim();if((required&&!s)||s.length>300||/[\r\n<>]/.test(s))bad(`${label} is invalid.`);return s;};
+    for(const row of rows){
+      const firstName=field(row.firstName,'First name',true),lastName=field(row.lastName,'Last name'),role=field(row.role,'Role'),email=field(row.email,'Email',true);
+      if(/[\/@{}\[\]:]/.test(firstName+lastName))bad('Enter names, not URLs or placeholders.');
+      if(!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email))bad('A selected email address is invalid.');
+      let contact=row.contactId?contacts.find(c=>c.id===row.contactId):null;
+      if(row.contactId&&!contact)bad('A selected contact no longer exists. Refresh contacts.');
+      if(!contact){
+        const key=String(row.clientKey||'');if(!/^[a-zA-Z0-9-]{8,100}$/.test(key))bad('Manual row identifier is missing.');
+        const id=`outreach-manual-${key}`;contact=contacts.find(c=>c.id===id);
+        if(!contact){contact={id,organisationId,source:'manual',verified:false,emailCandidates:[],linkedApplicationReviewIds:[]};contacts.push(contact);}
+      }
+      const identity=JSON.stringify([firstName,lastName,role]);
+      if(seen.has(contact.id)&&seen.get(contact.id)!==identity)bad('Rows for the same contact must have consistent names and role.');seen.set(contact.id,identity);
+      const oldEmails=[contact.selectedEmail,...(contact.emailCandidates||[])].filter(Boolean),known=oldEmails.some(v=>v.toLowerCase()===email.toLowerCase());
+      const origin=known?(contact.emailSources?.[email.toLowerCase()]||(email.toLowerCase()===String(contact.selectedEmail||'').toLowerCase()?contact.emailSource:'inferred')||'unknown'):(row.emailSource==='inferred'?'inferred':'manual');
+      Object.assign(contact,{verified:contact.verified===true&&contact.firstName===firstName&&contact.lastName===lastName,
+        firstName,lastName,fullName:[firstName,lastName].filter(Boolean).join(' '),role,
+        emailCandidates:[...new Set([...oldEmails,email])],emailSources:{...(contact.emailSources||{}),[email.toLowerCase()]:origin},
+        selectedEmail:contact.selectedEmail||email,emailSource:contact.emailSource||'manual',
+        linkedApplicationReviewIds:[...new Set([...(contact.linkedApplicationReviewIds||[]),reviewId])]});
+      recipients.push({contactId:contact.id,email});
+    }
+    await save(contacts);return recipients;
+  },
+
   async listAll() {
     return load();
   },

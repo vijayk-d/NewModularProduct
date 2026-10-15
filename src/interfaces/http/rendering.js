@@ -1,3 +1,4 @@
+import {sanitizeSnapshotHtml} from '../../application/outreach-message-snapshot.js';
 import { LETTER_TONES, normalizeLetterTone } from '../../application/cover-letter-controls.js';
 import crypto from 'node:crypto';
 import { currentReviewSubject, MAX_SUBJECT_LENGTH } from '../../application/review-subject.js';
@@ -250,7 +251,7 @@ export function renderApplicationForm({
 </head>
 <body>
   <main>
-    <h1>Application preparation</h1>
+    <h1>Application preparation</h1><p><a href="/applications">Saved applications</a> · <a href="/outreach-queue">Outreach queue</a></p>
     <p class="intro">Prepare and review a local application draft before manually sending it.</p>
 ${errorSummary}    <form id="application-form" method="post" action="/applications" autocomplete="on">
 ${renderField('jobTitle', 'Job title', values.jobTitle, { required: true })}
@@ -870,6 +871,7 @@ export function renderApplicationReview({
   reviewId = '',
   research = null,
   currentDraftPlainText = '',
+  currentDraftHtml,
   currentDraftSubject,
   currentHighlightPhrases = [],
   polishingModel = DEFAULT_POLISHING_MODEL,
@@ -1661,9 +1663,9 @@ ${score}
         role="textbox"
         aria-multiline="true"
         aria-label="Editable current cover letter draft"
-        data-editor-name="Current cover letter">${renderCoverLetterHtml(plainText, currentHighlightPhrases)}</div>
+        data-editor-name="Current cover letter">${typeof currentDraftHtml==='string'&&currentDraftHtml.trim()?sanitizeSnapshotHtml(currentDraftHtml).html:renderCoverLetterHtml(plainText, currentHighlightPhrases)}</div>
       <p class="rich-editor-notice">
-        Formatting and text edits remain in this browser until a later explicit save action is added.
+        Application text/formatting can be saved and resumed. Queue messages remain independent snapshots.
       </p>
 
       <div class="actions">
@@ -1772,7 +1774,7 @@ ${renderEmailDomainResolution(reviewId, formData, research)}
 
       document.execCommand(command, false, value);
       status.textContent =
-        'Formatting updated locally; it is not saved yet.';
+        'Formatting updated locally; current-draft application autosave is separate.';
     }
 
     document.querySelectorAll('.rich-editor-toolbar').forEach((toolbar) => {
@@ -1833,7 +1835,7 @@ ${renderEmailDomainResolution(reviewId, formData, research)}
 
         if (status) {
           status.textContent =
-            'Local edits are not saved until an explicit save action is added.';
+            editor.id==='cover-letter-draft'?'Current-draft edit pending application autosave.':'Proposal edits stay local; copy them into the current draft to save.';
         }
       });
     });
@@ -1852,7 +1854,7 @@ ${renderEmailDomainResolution(reviewId, formData, research)}
         }
 
         const copied = await Promise.race([
-          navigator.clipboard.writeText(draft.value).then(() => true),
+          navigator.clipboard.writeText(editorPlainText(draft)).then(() => true),
           new Promise((resolve) => {
             window.setTimeout(() => resolve(false), 500);
           })
@@ -1974,3 +1976,4 @@ export function renderRecruiterContacts(contacts = []) {
     </section>
   `;
 }
+

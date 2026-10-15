@@ -5,6 +5,7 @@ import { normalizeLetterTone } from '../../application/cover-letter-controls.js'
 import { DEFAULT_POLISHING_MODEL, normalizePolishingModel, buildPolishingAttempt, retainSuccessfulProposal } from '../../application/polishing-model-catalog.js';
 import { extractOutreachExperienceBody } from '../../application/compose-outreach-letter.js';
 import { describeRefinementFailure, formatRefinementFailure } from '../../application/refinement-error-details.js';
+import {createApplicationReviewHandler} from './application-review-http.js';
 import { createOutreachHttpHandler } from './outreach-queue-http.js';
 import { currentReviewSubject, normalizeSubject, reviewWithSavedSubject } from '../../application/review-subject.js';
 import { createPerplexityClient } from "../../infrastructure/perplexity-client.js";
@@ -21,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const reviewStore = new Map();
+// Application review storage is injected per server; no module-global review cache.
 
 import { createDiagnosticWriter } from './diagnostics.js';
 
@@ -144,12 +145,14 @@ export function createLocalServer({
   recruiterContactImportService = null,
   recruiterContactStore = null,
   outreachRepository = null,
+  applicationReviewStore = null,
   researchOrganization = null,
   coverLetterRefinementPort = null,
   cvEvidenceLoader = null,
   localDiagnosticsEnabled = false,
   diagnosticsWriter = process.stdout,
 } = {}) {
+  const reviewStore=applicationReviewStore||new Map();
   async function loadOrganisationContacts(formData) {
     if (!recruiterContactStore) {
       return [];
@@ -221,6 +224,7 @@ export function createLocalServer({
       prepared: stored.prepared,
       research: stored.research,
       currentDraftPlainText: stored.currentDraftPlainText,
+      currentDraftHtml: stored.currentDraftHtml,
       currentDraftSubject: currentReviewSubject(stored),
       currentHighlightPhrases: stored.currentHighlightPhrases || [],
       letterTone: stored.letterTone || 'professional',
@@ -235,6 +239,7 @@ export function createLocalServer({
     return renderApplicationReview({
       ...base,
       ...options,
+      ...(stored?{currentDraftPlainText:stored.currentDraftPlainText,currentDraftHtml:stored.currentDraftHtml,currentDraftSubject:currentReviewSubject(stored),currentHighlightPhrases:stored.currentHighlightPhrases||[],selectedCvRoleCode:stored.selectedCvRoleCode}:{}),
       contacts: await loadReviewContacts(options.reviewId),
       contactLinking: await loadContactLinking(options.reviewId)
     });
@@ -244,7 +249,8 @@ export function createLocalServer({
   function isContactStoreLoadError(error) {
     return [
       "CONTACT_STORE_INVALID",
-      "CONTACT_STORE_READ_FAILED"
+      "CONTACT_STORE_READ_FAILED",
+      "REVIEW_STORE_INVALID", "REVIEW_STORE_READ_FAILED", "REVIEW_STORE_WRITE_FAILED", "REVIEW_STORE_CONFLICT"
     ].includes(error?.code);
   }
 
@@ -255,6 +261,9 @@ export function createLocalServer({
       return;
     }
 
+    if(String(error?.code||'').startsWith('REVIEW_STORE_')){
+      sendJson(response,error.statusCode||503,{ok:false,code:error.code,error:error.statusCode===409?'Saved application changed elsewhere. Keep your local edits and reload before saving.':'Saved application storage is unavailable. Check disk/database; do not clear data to bypass the error.'});return;
+    }
     const storageError = isContactStoreLoadError(error);
     const statusCode = storageError ? 503 : 500;
     const code = storageError ? error.code : "REQUEST_FAILED";
@@ -294,6 +303,7 @@ export function createLocalServer({
     }
   }
 
+  const handleApplications=createApplicationReviewHandler({store:reviewStore,renderReview:renderCompleteReview,sendJson,sendHtml,sendText});
   const handleOutreach = createOutreachHttpHandler({
     repository: outreachRepository, contactStore: recruiterContactStore,
     getReview: (id) => reviewStore.get(id)
@@ -310,8 +320,10 @@ export function createLocalServer({
   });
 
   async function handleRequest(request, response) {
+    if(!/^(?:localhost|127\.0\.0\.1|\[::1\])(?::[0-9]{1,5})?$/i.test(String(request.headers.host||''))){sendJson(response,403,{ok:false,error:'This local application accepts loopback Host names only.'});return;}
     const method = request.method || 'GET';
     const url = new URL(request.url || '/', 'http://localhost');
+    if (await handleApplications(request,response,url)) return;
     if (await handleOutreach(request, response, url)) return;
     const requestId = randomUUID();
     const scriptNonce = randomBytes(16).toString("base64");
@@ -1126,7 +1138,7 @@ export function createLocalServer({
         const updated=reviewWithSavedSubject(review,formBody.values.get('subject'));
         reviewStore.set(reviewId,updated);
         sendJson(response,200,{ok:true,subject:updated.currentDraftSubject});
-      }catch(error){sendJson(response,error.statusCode||400,{ok:false,error:'The application needs a valid single-line subject of at most 300 characters.'});}
+      }catch(error){if(String(error.code||'').startsWith('REVIEW_STORE_'))throw error;sendJson(response,error.statusCode||400,{ok:false,error:'The application needs a valid single-line subject of at most 300 characters.'});}
       return;
     }
 
@@ -1244,6 +1256,7 @@ export function createLocalServer({
       const updatedReview = {
         ...review,
         currentDraftPlainText: acceptance.finalDraftPlainText,
+        currentDraftHtml: undefined,
         currentDraftSubject: acceptedSubject,
         currentHighlightPhrases: review.refinementProposal.highlightPhrases || [],
         refinementProposal: {
@@ -1806,3 +1819,4 @@ export function createLocalServer({
     sendText(response, 404, 'Not Found');
   }
 }
+

@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createLocalServer } from '../../../src/interfaces/http/create-local-server.js';
@@ -413,7 +413,7 @@ test('renders review details, a safe advert link, and local copy controls', asyn
   );
   assert.match(
     response.text,
-    /navigator\.clipboard\.writeText\(draft\.value\)/
+    /navigator\.clipboard\.writeText\(editorPlainText\(draft\)\)/
   );
   assert.match(
   response.text,
@@ -1195,7 +1195,7 @@ test('renders ranked CV candidates and preserves the cover letter after selectio
 
   assert.match(
     response.text,
-    /Formatting and text edits remain in this browser until a later explicit save action is added\./
+    /Application text\/formatting can be saved and resumed\. Queue messages remain independent snapshots\./
   );
 });
 
@@ -1263,6 +1263,7 @@ test('returns 410 when selecting a CV for an expired review', async (t) => {
     /This application review is no longer available\. Please prepare the application again\./
   );
 });
+
 
 
 

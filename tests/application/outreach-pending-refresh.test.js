@@ -1,0 +1,7 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+let createOutreachRepository;try{({createOutreachRepository}=await import('../../src/infrastructure/outreach/sqlite-outreach-repository.js'));}catch(e){if(e.code!=='ERR_UNKNOWN_BUILTIN_MODULE')throw e;}
+const option={skip:!createOutreachRepository?'node:sqlite unavailable':false};
+const item={applicationKey:'app',contactId:'c',email:'zoe@business.test',subject:'Application',bodyPlainText:'Original'};
+test('pending snapshot refresh preserves row ID',option,()=>{const r=createOutreachRepository({filePath:':memory:'});try{const a=r.addMany([item]);const b=r.addMany([{...item,bodyPlainText:'Changed'}],{refreshPending:true});assert.equal(b.updated,1);assert.equal(b.items[0].id,a.items[0].id);assert.equal(b.items[0].bodyPlainText,'Changed');}finally{r.close();}});
+test('default duplicate additions preserve original body',option,()=>{const r=createOutreachRepository({filePath:':memory:'});try{r.addMany([item]);assert.equal(r.addMany([{...item,bodyPlainText:'Changed'}]).items[0].bodyPlainText,'Original');}finally{r.close();}});
+test('attempted snapshots never refresh',option,()=>{const r=createOutreachRepository({filePath:':memory:'});try{const a=r.addMany([item]).items[0];r.claimDraftOperation({queueId:a.id,sendingAccount:'sender@business.test'});const b=r.addMany([{...item,bodyPlainText:'Changed'}],{refreshPending:true});assert.equal(b.updated,0);assert.equal(b.items[0].bodyPlainText,'Original');}finally{r.close();}});

@@ -95,6 +95,8 @@ export function validateRuntimeConfig({
     'ENABLE_GMAIL'
   );
 
+  const modernGmail=enableGmail&&readBoolean(env.ENABLE_GMAIL_SENDING,'ENABLE_GMAIL_SENDING');
+  if(modernGmail){requiredWhenEnabled(env.GMAIL_OAUTH_REFRESH_TOKEN,'GMAIL_OAUTH_REFRESH_TOKEN',true);requiredWhenEnabled(env.GMAIL_FROM_ADDRESS,'GMAIL_FROM_ADDRESS',true);}
   const perplexityEnabled =
     enablePerplexityResearch || enableCoverLetterRefinement;
 
@@ -154,26 +156,27 @@ export function validateRuntimeConfig({
       gmail: {
         enabled: enableGmail,
         clientId: requiredWhenEnabled(
-          env.GMAIL_CLIENT_ID,
-          'GMAIL_CLIENT_ID',
+          modernGmail?env.GMAIL_OAUTH_CLIENT_ID:env.GMAIL_CLIENT_ID,
+          modernGmail?'GMAIL_OAUTH_CLIENT_ID':'GMAIL_CLIENT_ID',
           enableGmail
         ),
         clientSecret: requiredWhenEnabled(
-          env.GMAIL_CLIENT_SECRET,
-          'GMAIL_CLIENT_SECRET',
+          modernGmail?env.GMAIL_OAUTH_CLIENT_SECRET:env.GMAIL_CLIENT_SECRET,
+          modernGmail?'GMAIL_OAUTH_CLIENT_SECRET':'GMAIL_CLIENT_SECRET',
           enableGmail
         ),
         redirectUri: requiredWhenEnabled(
           env.GMAIL_REDIRECT_URI,
           'GMAIL_REDIRECT_URI',
-          enableGmail
+          enableGmail&&!modernGmail
         ),
         tokenStorePath: requiredWhenEnabled(
           env.GMAIL_TOKEN_STORE_PATH,
           'GMAIL_TOKEN_STORE_PATH',
-          enableGmail
+          enableGmail&&!modernGmail
         )
       }
     }
   };
 }
+
