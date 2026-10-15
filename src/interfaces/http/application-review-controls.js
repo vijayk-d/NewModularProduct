@@ -1,3 +1,4 @@
+import {attachApplicationExportControls} from './application-export-controls.js';
 export function attachApplicationSaveControls(doc=document,fetchImpl=fetch){
  const editor=doc.getElementById('cover-letter-draft'),subject=doc.getElementById('current-cover-letter-subject'),id=doc.querySelector('input[name="reviewId"]')?.value;
  if(!editor||!subject||!id||editor.dataset.applicationSaveAttached)return;editor.dataset.applicationSaveAttached='true';
@@ -34,8 +35,10 @@ export function attachApplicationSaveControls(doc=document,fetchImpl=fetch){
   catch{status.textContent+=' Action paused; no research/polishing/queue action was triggered.';}
  },true);
  doc.defaultView?.addEventListener('beforeunload',event=>{if(bodyDirty||subjectDirty||pending){event.preventDefault();event.returnValue='';}});
+ attachApplicationExportControls({doc,bar,save,getVersions:()=>versions,isDirty:()=>bodyDirty||subjectDirty||Boolean(pending),reviewId:id,fetchImpl});
  load().catch(e=>{status.textContent=e.message;});
 }
 if(typeof document!=='undefined'){
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>attachApplicationSaveControls(),{once:true});else attachApplicationSaveControls();
 }
+

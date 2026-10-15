@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {createApplicationPackExporter} from '../../infrastructure/applications/application-pack-exporter.js';
 import { gmailLoadedEnvironment } from '../../application/gmail-runtime-diagnostics.js';
 import {createSqliteReviewStore} from '../../infrastructure/applications/sqlite-review-store.js';
 import { createOutreachRepository } from '../../infrastructure/outreach/sqlite-outreach-repository.js';
@@ -102,6 +103,7 @@ const cvEvidenceLoader = createSelectedCvEvidenceLoader({
 const applicationReviewStore=createSqliteReviewStore({filePath:path.join(projectRoot,'output','application-reviews-v1.db')});
 const server = createLocalServer({
   applicationReviewStore,
+  applicationPackExporter:createApplicationPackExporter({cvFolder:config.storage.cvFolder}),
   cvEvidenceLoader,
   outreachRepository,
   recruiterContactImportService,
@@ -152,4 +154,5 @@ server.listen(config.server.port, config.server.host, () => {
 });
 
 server.on("close", () => {outreachRepository.close();applicationReviewStore.close();});
+
 

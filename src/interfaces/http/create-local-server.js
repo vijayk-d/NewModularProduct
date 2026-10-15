@@ -146,6 +146,7 @@ export function createLocalServer({
   recruiterContactStore = null,
   outreachRepository = null,
   applicationReviewStore = null,
+  applicationPackExporter = null,
   researchOrganization = null,
   coverLetterRefinementPort = null,
   cvEvidenceLoader = null,
@@ -303,7 +304,7 @@ export function createLocalServer({
     }
   }
 
-  const handleApplications=createApplicationReviewHandler({store:reviewStore,renderReview:renderCompleteReview,sendJson,sendHtml,sendText});
+  const handleApplications=createApplicationReviewHandler({store:reviewStore,renderReview:renderCompleteReview,sendJson,sendHtml,sendText,applicationPackExporter});
   const handleOutreach = createOutreachHttpHandler({
     repository: outreachRepository, contactStore: recruiterContactStore,
     getReview: (id) => reviewStore.get(id)
@@ -1819,4 +1820,5 @@ export function createLocalServer({
     sendText(response, 404, 'Not Found');
   }
 }
+
 
