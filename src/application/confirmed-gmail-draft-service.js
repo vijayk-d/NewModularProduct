@@ -1,3 +1,4 @@
+import { applyGmailSignature,readGmailSignature } from './gmail-message-presentation.js';
 import { gmailDraftConfigurationDiagnostics } from './gmail-runtime-diagnostics.js';
 import { randomUUID,createHash } from 'node:crypto';
 import { readFile,realpath,stat } from 'node:fs/promises';
@@ -9,7 +10,7 @@ import { draftSnapshotFingerprint } from './gmail-draft-state-ledger.js';
 import { runGmailDraftWorker } from './gmail-draft-worker-runner.js';
 const hash=value=>createHash('sha256').update(value).digest('hex');
 function fail(message,code,statusCode=409){const error=new Error(message);error.code=code;error.statusCode=statusCode;throw error;}
-export function createConfirmedGmailDraftService({repository,mailboxPort,env=process.env,runner=runGmailDraftWorker,clock=()=>Date.now()}={}) {
+export function createConfirmedGmailDraftService({repository,mailboxPort,env=process.env,runner=runGmailDraftWorker,clock=()=>Date.now(),signatureReader=readGmailSignature}={}) {
   const tickets=new Map();
   function getStatus(){const mailbox=mailboxPort.getStatus();const diagnostics=gmailDraftConfigurationDiagnostics({env,mailbox,repository});return {
     draftCreationEnabled:diagnostics.checks.find(check=>check.name==='draftCreationFlag').ok,
@@ -57,7 +58,8 @@ export function createConfirmedGmailDraftService({repository,mailboxPort,env=pro
     if(!within||within==='..'||within.startsWith('..'+path.sep)||path.isAbsolute(within)||path.extname(file).toLowerCase()!=='.pdf')fail('Selected CV is outside CV_FOLDER or is not a PDF.','GMAIL_DRAFT_ATTACHMENT');
     const info=await stat(file);if(!info.isFile()||info.size>20*1024*1024)fail('Selected CV is missing or exceeds 20 MiB.','GMAIL_DRAFT_ATTACHMENT');
     const bytes=await readFile(file);if(bytes.length>20*1024*1024)fail('Selected CV exceeds 20 MiB.','GMAIL_DRAFT_ATTACHMENT');draft.attachment={...draft.attachment,sha256:hash(bytes),sizeBytes:bytes.length};
-    return {item,draft,fingerprint:hash(JSON.stringify(draft))};
+    const signed=await applyGmailSignature(draft,{account:getStatus().configuredMailbox,env,signatureReader});
+    return {item,draft:signed,fingerprint:hash(JSON.stringify(signed))};
     } catch(error){if(error?.statusCode)throw error;fail('Selected CV could not be read or verified. Check CV_FOLDER and requeue if needed.','GMAIL_DRAFT_ATTACHMENT',400);}
   }
   function existing(item,account){return repository.findDraftOperation({applicationKey:item.applicationKey,email:item.email,sendingAccount:account});}

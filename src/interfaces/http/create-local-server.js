@@ -1,3 +1,9 @@
+import {createJobImportHandler} from './job-import-http.js';
+import {importJobPosters} from '../../application/import-job-posters.js';
+import {usesCandidateValues,contextMode} from '../../domain/cover-letter/advertiser-context.js';
+import {createSavedApplicationDeleteHandler} from './saved-application-delete-http.js';
+import {createOrganisationContactHandler} from './organisation-contact-http.js';
+import {newlyImportedForReview} from '../../application/review-contact-freshness.js';
 import { refinementAttemptLogFields } from '../../application/refinement-attempt-log.js';
 import { buildPolishingApiRequest } from '../../infrastructure/refinement/perplexity-cover-letter-refinement-adapter.js';
 import { estimatePolishingApiRequest } from '../../application/polishing-cost-estimator.js';
@@ -43,6 +49,12 @@ function splitValues(value = '', separator) {
 
 function normalizeFormData(values) {
 return {
+  jobImportId:String(values.get('jobImportId')||'').trim(),
+  jobImportRevision:Number(values.get('jobImportRevision')||0),
+  importJobPosters:values.get('importJobPosters')==='true',
+  jobLocation:String(values.get('jobLocation')||'').trim(),
+  recruiterName:String(values.get('recruiterName')||'').trim(),
+  advertiserRelationship:String(values.get('advertiserRelationship')||'').trim(),
   jobTitle: String(values.get('jobTitle') || '').trim(),
   organisationName: String(values.get('organisationName') || '').trim(),
   organisationUrl: String(values.get('organisationUrl') || '').trim(),
@@ -55,6 +67,7 @@ return {
     values.get('preferredRoleCodes'),
     ','
   ),
+  professionalValues:String(values.get('professionalValues')||'').trim(),
   jobDescriptionText: String(
     values.get('jobDescriptionText') || ''
   ).trim(),
@@ -77,6 +90,9 @@ function formValues(formData = {}) {
 function validationErrors(formData) {
   const errors = [];
 
+  if(formData.recruiterName&&(formData.recruiterName.length>160||/[\r\n<>@{}\/:]/.test(formData.recruiterName)))errors.push('Recipient name must be a person name, not a URL or header.');
+  if(formData.advertiserRelationship&&!['direct-employer','recruitment-intermediary','unknown'].includes(formData.advertiserRelationship))errors.push('Choose a valid advertiser relationship.');
+  if((formData.professionalValues||'').length>2000)errors.push('Professional values must not exceed 2000 characters.');
   if (!formData.jobTitle) {
     errors.push('Job title is required.');
   }
@@ -146,6 +162,7 @@ export function createLocalServer({
   recruiterContactStore = null,
   outreachRepository = null,
   applicationReviewStore = null,
+  jobImportService = null,
   applicationPackExporter = null,
   researchOrganization = null,
   coverLetterRefinementPort = null,
@@ -195,8 +212,8 @@ export function createLocalServer({
     return {
       reviewId,
       unlinked: contacts.filter((contact) =>
-        !Array.isArray(contact.linkedApplicationReviewIds) ||
-        !contact.linkedApplicationReviewIds.includes(reviewId)
+        (!Array.isArray(contact.linkedApplicationReviewIds) ||
+        !contact.linkedApplicationReviewIds.includes(reviewId))&&newlyImportedForReview(contact,reviewStore.get(reviewId))
       ),
       linked: contacts.filter((contact) =>
         Array.isArray(contact.linkedApplicationReviewIds) &&
@@ -304,6 +321,9 @@ export function createLocalServer({
     }
   }
 
+  const handleJobs=createJobImportHandler({service:jobImportService,getReview:id=>reviewStore.get(id),contactStore:recruiterContactStore,sendJson,sendText});
+  const handleSavedDelete=createSavedApplicationDeleteHandler({store:reviewStore,contactStore:recruiterContactStore,outreachRepository,sendJson,sendText});
+  const handleOrganisationContacts=createOrganisationContactHandler({contactStore:recruiterContactStore,outreachRepository,getReview:id=>reviewStore.get(id),sendJson});
   const handleApplications=createApplicationReviewHandler({store:reviewStore,renderReview:renderCompleteReview,sendJson,sendHtml,sendText,applicationPackExporter});
   const handleOutreach = createOutreachHttpHandler({
     repository: outreachRepository, contactStore: recruiterContactStore,
@@ -324,7 +344,11 @@ export function createLocalServer({
     if(!/^(?:localhost|127\.0\.0\.1|\[::1\])(?::[0-9]{1,5})?$/i.test(String(request.headers.host||''))){sendJson(response,403,{ok:false,error:'This local application accepts loopback Host names only.'});return;}
     const method = request.method || 'GET';
     const url = new URL(request.url || '/', 'http://localhost');
+    if(method==='GET'&&url.pathname==='/healthz'){sendJson(response,200,{ok:true,service:'NewModularProduct',environment:process.env.NMP_ENV||'development',release:process.env.NMP_RELEASE_COMMIT||'development'});return;}
+    if (await handleJobs(request,response,url)) return;
+    if (await handleSavedDelete(request,response,url)) return;
     if (await handleApplications(request,response,url)) return;
+    if (await handleOrganisationContacts(request,response,url)) return;
     if (await handleOutreach(request, response, url)) return;
     const requestId = randomUUID();
     const scriptNonce = randomBytes(16).toString("base64");
@@ -353,7 +377,7 @@ export function createLocalServer({
     if (method === 'POST' && url.pathname === '/applications') {
       const actionStartedAt = Date.now();
 
-      const formBody = await readFormBody(request);
+      const formBody = await readFormBody(request,{maxBytes:jobImportService?256*1024:64*1024});
 
       if (formBody.error) {
         sendText(
@@ -399,12 +423,15 @@ export function createLocalServer({
             : 0
         });
 
+        let importedJob=null;
+        if(formData.jobImportId){importedJob=jobImportService?.get(formData.jobImportId,formData.jobImportRevision);if(!importedJob||formData.jobAdvertLink!==importedJob.jobAdvertLink){sendHtml(response,409,renderApplicationForm({formData,errors:['Import revision/advert mismatch. Reload the intended import before generating.']}));return;}}
         const prepared = await prepareApplication({
         jobDescriptionText: formData.jobDescriptionText,
         jobDescriptionOverrides: {
-          role: formData.jobTitle
+          role: formData.jobTitle,
+          ...(formData.jobLocation?{location:formData.jobLocation}:{})
         },
-        recruiterName: formData.stakeholderSource,
+        recruiterName: formData.recruiterName||(/^(?:https?:\/\/|www\.|linkedin\.com)/i.test(formData.stakeholderSource)?'':formData.stakeholderSource),
         jobAdvertLink: formData.jobAdvertLink,
         jobReference: formData.jobReference,
         preferredRoleCodes: formData.preferredRoleCodes,
@@ -434,6 +461,7 @@ export function createLocalServer({
         cvSelectionMessage: '',
         createdAt: Date.now()
       });
+      if(importedJob&&formData.importJobPosters){try{await importJobPosters({record:importedJob,contactStore:recruiterContactStore,reviewId});}catch{const r=reviewStore.get(reviewId);reviewStore.set(reviewId,{...r,jobPosterImportError:'Application saved, but optional poster import was not fully completed. Review/retry explicitly; no email was inferred or sent.'});}}
 
         sendHtml(
           response,
@@ -909,13 +937,13 @@ export function createLocalServer({
         const selectedModel = normalizePolishingModel(formBody.values.get('polishingModel') || review.polishingModel || DEFAULT_POLISHING_MODEL);
         const cvEvidence = cvEvidenceLoader ? await cvEvidenceLoader(review) : {};
         const ids = formBody.values.getAll('selectedResearchPointIds').map(value=>String(value).trim());
-        const selectedResearchPoints = getSelectableCompanyValues(review.research).filter(point=>ids.includes(point.id));
+        const selectedResearchPoints = usesCandidateValues(review.formData)?[]:getSelectableCompanyValues(review.research).filter(point=>ids.includes(point.id));
         const requestForEstimate = {...cvEvidence,draftPlainText:review.currentDraftPlainText,
           jobDescriptionSummary:review.formData.jobTitle,jobDescriptionText:review.formData.jobDescriptionText,
           selectedCvHighlights:Array.isArray(review.formData.cvHighlights)?review.formData.cvHighlights.map(value=>String(value||'').trim()).filter(value=>value&&value.toLowerCase()!=='null'):[],
           companyValues:selectedResearchPoints.map(point=>point.text),selectedResearchPoints,
-          organisationName:review.formData.organisationName,organisationUrl:review.formData.organisationUrl,
-          researchSources:Array.isArray(review.research?.sources)?review.research.sources:[],instructions:'',maxWords:450,
+          organisationName:review.formData.organisationName,advertiserRelationship:contextMode(review.formData),...(review.formData.professionalValues?{candidateProfessionalValues:review.formData.professionalValues}:{}),organisationUrl:review.formData.organisationUrl,
+          researchSources:!usesCandidateValues(review.formData)&&Array.isArray(review.research?.sources)?review.research.sources:[],instructions:'',maxWords:450,
           letterTone:normalizeLetterTone(formBody.values.get('letterTone')||review.letterTone||'professional'),excludedEmployers:['micro1'],
           webSearchEnabled:formBody.values.getAll('webSearchEnabled').includes('true')};
         const apiBody = buildPolishingApiRequest(requestForEstimate,selectedModel);
@@ -1003,7 +1031,7 @@ export function createLocalServer({
         return;
       }
 
-      if (!review.research || review.research.status !== 'found') {
+      if ((!review.research || review.research.status !== 'found')&&!(usesCandidateValues(review.formData))) {
         await renderReview(400, {
           proposedDraft: '',
           warnings: [
@@ -1026,7 +1054,7 @@ export function createLocalServer({
         .map((value) => String(value).trim())
         .filter(Boolean);
 
-      const selectedResearchPoints = getSelectableCompanyValues(
+      const selectedResearchPoints = usesCandidateValues(review.formData)?[]:getSelectableCompanyValues(
         review.research
       ).filter((point) => selectedIds.includes(point.id));
 
@@ -1071,8 +1099,11 @@ export function createLocalServer({
         companyValues: selectedResearchPoints.map((point) => point.text),
         selectedResearchPoints,
         organisationName: review.formData.organisationName,
+        ...(review.formData.advertiserRelationship||review.formData.jobImportId?{advertiserRelationship:contextMode(review.formData)}:{}),
+        ...(review.formData.professionalValues?{candidateProfessionalValues:review.formData.professionalValues}:{}),
+        ...(usesCandidateValues(review.formData)?{allowUnknownOrganisation:true}:{}),
         organisationUrl: review.formData.organisationUrl,
-        researchSources: Array.isArray(review.research.sources)
+        researchSources: !usesCandidateValues(review.formData)&&Array.isArray(review.research?.sources)
           ? review.research.sources
           : [],
         instructions: "",

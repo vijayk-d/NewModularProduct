@@ -1,3 +1,4 @@
+import {usesCandidateValues,contextMode} from '../../domain/cover-letter/advertiser-context.js';
 import {sanitizeSnapshotHtml} from '../../application/outreach-message-snapshot.js';
 import { LETTER_TONES, normalizeLetterTone } from '../../application/cover-letter-controls.js';
 import crypto from 'node:crypto';
@@ -54,7 +55,7 @@ export function renderApplicationForm({
     : '';
 
   return `<!doctype html>
-<html lang="en">
+<html lang="en" class="review-workspace">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -248,26 +249,39 @@ export function renderApplicationForm({
 }
 
 </style>
+<link rel="stylesheet" href="/review-workspace.css"><script type="module" src="/review-workspace.js" nonce="__SCRIPT_NONCE__"></script>
+<script type="module" src="/job-import-controls.js" nonce="__SCRIPT_NONCE__"></script>
+<script type="module" src="/saved-application-delete.js" nonce="__SCRIPT_NONCE__"></script>
 </head>
 <body>
   <main>
     <h1>Application preparation</h1><p><a href="/applications">Saved applications</a> · <a href="/outreach-queue">Outreach queue</a></p>
     <p class="intro">Prepare and review a local application draft before manually sending it.</p>
 ${errorSummary}    <form id="application-form" method="post" action="/applications" autocomplete="on">
+<div class="form-draft-tools"><button id="clear-saved-form" type="button" class="secondary-button">Clear saved test data</button></div>
+${renderField('jobAdvertLink', 'Job advert URL', values.jobAdvertLink, { type: 'url' })}
+<div id="job-import-tools" class="notice"></div>
+<input type="hidden" id="jobImportId" name="jobImportId" value="${escapeHtml(values.jobImportId||'')}">
+<input type="hidden" id="jobImportRevision" name="jobImportRevision" value="${escapeHtml(values.jobImportRevision||'')}">
 ${renderField('jobTitle', 'Job title', values.jobTitle, { required: true })}
 ${renderField('organisationUrl', 'Organisation website or LinkedIn page', values.organisationUrl, { type: 'url' })}
-${renderField('organisationName', 'Organisation name', values.organisationName)}
+${renderField('organisationName', 'Organisation / advertiser name', values.organisationName)}
+<label>Advertiser relationship<select id="advertiserRelationship" name="advertiserRelationship"><option value="unknown"${(!values.advertiserRelationship||values.advertiserRelationship==='unknown')?' selected':''}>Unknown — neutral wording and my professional values</option><option value="direct-employer"${values.advertiserRelationship==='direct-employer'?' selected':''}>Direct employer — reviewed employer values may be used</option><option value="recruitment-intermediary"${values.advertiserRelationship==='recruitment-intermediary'?' selected':''}>Recruitment agency / intermediary — use my professional values</option></select></label>
 ${renderField('stakeholderSource', 'Stakeholder source or recruiter page', values.stakeholderSource, {
-  placeholder: 'Recruiter name or relevant source URL'
+  placeholder: 'Company People page or recruiter/source URL; recipient name is separate'
 })}
-${renderField('jobAdvertLink', 'Job advert URL', values.jobAdvertLink, { type: 'url' })}
+
+${renderField('jobLocation', 'Job location', values.jobLocation)}
+${renderField('recruiterName', 'Recipient name (optional; never a URL)', values.recruiterName)}
+${renderField('professionalValues', 'My professional values (optional, review before using)', values.professionalValues, {textarea:true,placeholder:'Your own approved values; leave blank rather than invent claims'})}
 ${renderField('jobReference', 'Vacancy reference', values.jobReference)}
 ${renderField('preferredRoleCodes', 'Preferred CV role codes', values.preferredRoleCodes, { placeholder: 'SM, ADL' })}
 ${renderField('jobDescriptionText', 'Job description', values.jobDescriptionText, { required: true, textarea: true })}
 ${renderField('cvHighlights', 'CV highlights', values.cvHighlights, { placeholder: 'One truthful, role-relevant item per line', textarea: true })}
+      <label><input id="import-job-posters" type="checkbox" name="importJobPosters" value="true"> Import/link explicit job poster(s) as unverified contacts when generating. No email inferred.</label>
       <div class="form-actions">
         <button type="submit">Generate application</button>
-        <button id="clear-saved-form" type="button" class="secondary-button">Clear saved test data</button>
+        
       </div>
     </form>
 
@@ -279,6 +293,12 @@ ${renderField('cvHighlights', 'CV highlights', values.cvHighlights, { placeholde
     const clearButton = document.getElementById('clear-saved-form');
 
     const fieldNames = [
+      'advertiserRelationship',
+      'jobImportId',
+      'jobImportRevision',
+      'jobLocation',
+      'professionalValues',
+      'recruiterName',
       'jobTitle',
       'organisationUrl',
       'organisationName',
@@ -638,13 +658,14 @@ export function renderRefinementPanel({
   polishingModel = DEFAULT_POLISHING_MODEL,
   refinementLastAttempt = null,
   polishingModelExplicit = false,
-  currentSubject = ''
+  currentSubject = '',
+  allowWithoutOrganisationResearch = false
 }) {
   const values = getSelectableCompanyValues(research);
   const selectedTone = normalizeLetterTone(letterTone);
   const selectedModel = normalizePolishingModel(polishingModel);
 
-  const selectorMarkup = research?.status === 'found'
+  const selectorMarkup = research?.status === 'found'||allowWithoutOrganisationResearch
     ? `
       <form method="post" action="/cover-letter-refinement">
         <input type="hidden" name="reviewId" value="${escapeHtml(reviewId)}">
@@ -664,7 +685,7 @@ export function renderRefinementPanel({
                 `).join('')}
               </fieldset>
             `
-            : '<p class="rich-editor-notice">`No verified organisation values were returned. You can still polish the cover letter using the organisation details and available research sources.`</p>'
+            : (allowWithoutOrganisationResearch?'<p class="rich-editor-notice">Employer/client unconfirmed. Optional polishing uses JD/CV evidence only; advertiser facts are not employer facts.</p>':'<p class="rich-editor-notice">`No verified organisation values were returned. You can still polish the cover letter using the organisation details and available research sources.`</p>')
         }
         <label for="polishing-model">Polishing model</label>
         <input type="hidden" name="polishingCostGuard" value="required">
@@ -681,7 +702,7 @@ export function renderRefinementPanel({
         </select>
         <input type="hidden" name="webSearchEnabled" value="false">
         <label>
-          <input type="checkbox" name="webSearchEnabled" value="true">
+          <input type="checkbox" name="webSearchEnabled" value="true"${refinementLastAttempt?.webSearchEnabled===false?'':' checked'}>
           Allow web search during polishing
         </label>
         <button type="submit">Polish cover letter</button>
@@ -697,9 +718,8 @@ export function renderRefinementPanel({
         <p>This proposal has not changed the current draft.</p>
         ${refinementProposal.attemptMetadata ? `<p class="rich-editor-notice">This proposal's requested model: ${escapeHtml(refinementProposal.attemptMetadata.requestedModel || 'Unreported')}; returned model: ${escapeHtml(refinementProposal.attemptMetadata.returnedModel || 'Unreported')}.</p>` : '<p class="rich-editor-notice">Model not recorded for this proposal.</p>'}
         <label for="proposed-cover-letter-subject">Proposed subject</label>
-        <input id="proposed-cover-letter-subject" class="subject-editor-input" type="text"
-          name="proposedSubject" form="apply-refinement-form" required maxlength="${MAX_SUBJECT_LENGTH}"
-          value="${escapeHtml(refinementProposal.proposedSubject ?? currentSubject)}">
+        <textarea id="proposed-cover-letter-subject" class="subject-editor-input" rows="2" wrap="soft"
+          name="proposedSubject" form="apply-refinement-form" required maxlength="${MAX_SUBJECT_LENGTH}">${escapeHtml(refinementProposal.proposedSubject ?? currentSubject)}</textarea>
         <p class="rich-editor-notice">Subject edits are included when you accept this proposal. They do not change the current subject before acceptance.</p>
         <label for="proposed-cover-letter">Proposed cover letter</label>
         <div class="rich-editor-toolbar" role="toolbar" aria-label="Proposed cover letter formatting" data-editor-target="proposed-cover-letter">
@@ -909,7 +929,8 @@ export function renderApplicationReview({
     polishingModel,
     refinementLastAttempt,
     polishingModelExplicit,
-    currentSubject: subject
+    currentSubject: subject,
+    allowWithoutOrganisationResearch:usesCandidateValues(formData)
   });
 
   const role = prepared.jobDescription?.role || formData.jobTitle;
@@ -955,6 +976,7 @@ export function renderApplicationReview({
     ? `
       <form method="post" action="/review-cv-selection">
         <input type="hidden" name="reviewId" value="${escapeHtml(reviewId)}">
+        <div class="cv-applybar"><button type="submit">Apply CV selection</button><span>Current letter and existing queue snapshots are unchanged.</span></div>
         <fieldset class="cv-selection-list">
           <legend>Select the CV to use for the next explicit action</legend>
           ${rankedCvs.map((candidate, index) => {
@@ -978,7 +1000,7 @@ export function renderApplicationReview({
                   <span>
                     <strong>${escapeHtml(roleName)}</strong>
                     ${roleCode ? ` (${escapeHtml(roleCode)})` : ''}
-                    ${isRecommended ? ' â€” recommended by local ATS ranking' : ''}
+                    ${isRecommended ? ' - recommended' : ''}
                   </span>
                 </label>
                 <p class="cv-candidate__score">
@@ -986,12 +1008,12 @@ export function renderApplicationReview({
                     Number.isFinite(ats.score) ? ats.score : 'Not available'
                   )}
                   <span class="cv-candidate__summary">
-                    Â· Matched ${
+                    | Matched ${
                       Array.isArray(ats.matchedKeywords)
                         ? ats.matchedKeywords.length
                         : 0
                     }
-                    Â· Missing ${
+                    | Missing shown ${
                       Array.isArray(ats.missingKeywords)
                         ? ats.missingKeywords.length
                         : 0
@@ -1046,7 +1068,6 @@ export function renderApplicationReview({
             `;
           }).join('')}
         </fieldset>
-        <button type="submit">Select CV for next action</button>
       </form>
     `
     : '<p>No ranked CV candidates are available for this review.</p>';
@@ -1080,7 +1101,7 @@ export function renderApplicationReview({
     : '';
 
   return `<!doctype html>
-<html lang="en">
+<html lang="en" class="review-workspace">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1591,6 +1612,9 @@ export function renderApplicationReview({
 }
 
 </style>
+<link rel="stylesheet" href="/review-workspace.css"><script type="module" src="/review-workspace.js" nonce="__SCRIPT_NONCE__"></script>
+<script type="module" src="/job-import-controls.js" nonce="__SCRIPT_NONCE__"></script>
+<script type="module" src="/saved-application-delete.js" nonce="__SCRIPT_NONCE__"></script>
 </head>
 <body>
   <main>
@@ -1606,14 +1630,18 @@ export function renderApplicationReview({
 
     <section class="panel panel--decision">
       <h2>CV selection and ATS comparison</h2>
+      <p class="cv-active-summary"><strong>Selected CV:</strong> ${escapeHtml((rankedCvs.find(item=>item.cv?.role_code===activeCvRoleCode)?.cv?.role_name)||activeCvRoleCode||'Not available')}</p>
+      <details class="cv-ranking-summary"><summary>Ranking summary</summary>
       <p><strong>Recommended CV:</strong> ${escapeHtml(bestCv.role_name || bestCv.role_code || 'Not available')}</p>
 ${alternative}
-${score}
+${score}</details>
       <p data-subject-summary><strong>Subject:</strong> ${escapeHtml(subject)}</p>
       ${cvSelectionStatus}
       ${cvSelectionMarkup}
       <p class="notice">Changing the selected CV does not alter the current cover letter. A future explicit generation or refinement action can use the selected CV.</p>
     </section>
+
+${renderEmailDomainResolution(reviewId, formData, research)}
 
     <section class="research-panel panel--research">
       <h2>Organisation research</h2>
@@ -1639,15 +1667,15 @@ ${score}
           : ''
       }
       <label for="current-cover-letter-subject">Current subject</label>
-      <input id="current-cover-letter-subject" class="subject-editor-input" type="text"
-        required maxlength="${MAX_SUBJECT_LENGTH}" value="${escapeHtml(subject)}">
+      <textarea id="current-cover-letter-subject" class="subject-editor-input" rows="2" wrap="soft"
+        required maxlength="${MAX_SUBJECT_LENGTH}">${escapeHtml(subject)}</textarea>
       <button id="save-current-subject" type="button" data-review-id="${escapeHtml(reviewId)}">Save subject</button>
       <p id="current-subject-status" role="status" aria-live="polite">Save preserves this subject in the active review. Adding to the queue snapshots the visible subject, even before saving. Existing queue items are unchanged.</p>
       <label for="cover-letter-draft">Editable cover letter draft</label>
       <div class="rich-editor-toolbar" role="toolbar" aria-label="Cover letter formatting" data-editor-target="cover-letter-draft">
         <button type="button" data-editor-command="bold" title="Bold selected text"><strong>B</strong></button>
         <button type="button" data-editor-command="italic" title="Italic selected text"><em>I</em></button>
-        <button type="button" data-editor-command="insertUnorderedList" title="Bullet list">â€¢ List</button>
+        <button type="button" data-editor-command="insertUnorderedList" title="Bullet list">List</button>
         <button type="button" data-editor-command="insertOrderedList" title="Numbered list">1. List</button>
         <button type="button" data-editor-command="hiliteColor" data-command-value="#fff2a8" title="Highlight selected text">Highlight</button>
         <button type="button" data-editor-command="createLink" title="Add a link">Link</button>
@@ -1674,13 +1702,13 @@ ${score}
       </div>
     </section>
 
-    <p><a href="/">Prepare another application</a></p>
+
     <p class="notice">This local tool does not send email. Review and send manually.</p>
 ${renderRecruiterContacts(contacts)}
 
 ${renderContactLinking(contactLinking)}
 
-${renderEmailDomainResolution(reviewId, formData, research)}
+
 
   </main>
 
@@ -1961,7 +1989,7 @@ export function renderRecruiterContacts(contacts = []) {
     <section class="review-section organisation-contact-summary"
              ${contacts.length ? "" : "hidden"}>
       <h2>Organisation contacts</h2>
-      <p>Contacts linked to this application.</p>
+      <p>Contacts linked to this application. Select an email row to add the reviewed letter to the queue. Removing a contact link does not remove existing queued messages or mail history.</p>
       <table>
         <thead>
           <tr>

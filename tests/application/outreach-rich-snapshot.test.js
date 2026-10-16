@@ -54,10 +54,18 @@ test('draft preparation is read-only, uses UUID and resolves greeting',async()=>
   assert.ok(!result.drafts[0].bodyHtml.includes('{{'));
   assert.equal(JSON.stringify(f.entries),before);
 });
-test('HTML recipient substitution escapes markup',()=>{
-  const result=prepareDraftSnapshot({id:uuid,status:'new',email:'a@example.test',subject:'Application',firstname:'A<&',bodyPlainText:'Dear {{firstname}},',bodyHtml:'Dear {{firstname}},'});
-  assert.equal(result.bodyHtml,'Dear A&lt;&amp;,');
-  assert.equal(result.bodyPlainText,'Dear A<&,');
+test('HTML recipient substitution escapes permitted name characters',()=>{
+  for(const [firstname,escaped] of [['A&B','A&amp;B'],["O'Neil",'O&#39;Neil']]){
+    const result=prepareDraftSnapshot({id:uuid,status:'new',email:'a@example.test',subject:'Application',firstname,bodyPlainText:'Dear {{firstname}},',bodyHtml:'Dear {{firstname}},'});
+    assert.equal(result.bodyHtml,`Dear ${escaped},`);
+    assert.equal(result.bodyPlainText,`Dear ${firstname},`);
+  }
+});
+test('recipient substitution rejects markup-like names before HTML generation',()=>{
+  assert.throws(
+    ()=>prepareDraftSnapshot({id:uuid,status:'new',email:'a@example.test',subject:'Application',firstname:'A<&',bodyPlainText:'Dear {{firstname}},',bodyHtml:'Dear {{firstname}},'}),
+    error=>error.statusCode===400 && /Recipient name must be plain single-line text/.test(error.message)
+  );
 });
 test('missing CV attachment metadata and unknown IDs fail preparation',()=>{
   assert.throws(()=>prepareDraftSnapshot({id:uuid,status:'new',email:'a@example.test',subject:'Application',bodyPlainText:'Dear Alice',application:{selectedCvRoleCode:'DM'}}),/attachment/);

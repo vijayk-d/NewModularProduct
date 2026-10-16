@@ -89,7 +89,7 @@ export function createOutreachHttpHandler({ repository, contactStore, getReview,
         const q=String(url.searchParams.get('q')||'').trim().toLowerCase().slice(0,200);
         const all=repository.listSentEmails().filter(r=>!q||[r.fullName,r.email,r.subject].some(v=>String(v||'').toLowerCase().includes(q)));
         const pages=Math.max(1,Math.ceil(all.length/10)),page=Math.min(pages,Math.max(1,parseInt(url.searchParams.get('page')||'1',10)||1));
-        const items=all.slice((page-1)*10,page*10).map(r=>({id:r.id,fullName:r.fullName,email:r.email,subject:r.subject,action:r.action||'send',sentAt:r.sentAt,status:'sent',messageId:r.messageId}));
+        const items=all.slice((page-1)*10,page*10).map(r=>({id:r.id,fullName:r.fullName,email:r.email,subject:r.subject,action:r.action||'send',sentAt:r.sentAt,status:'sent',messageId:r.messageId,linkedinUrl:typeof r.linkedinUrl==='string'?r.linkedinUrl:''}));
         json(response,200,{ok:true,items,total:all.length,page,pages});return true;
       }
       // queue-single-editor-v1

@@ -11,6 +11,17 @@ export function createRecruiterContactStore({ filePath }) {
   let operationQueue = Promise.resolve();
 
   const store = {
+  async removeOrganisationContacts({reviewId,contactIds,permanent=false}){
+    const bad=(message,statusCode=409)=>{throw Object.assign(new Error(message),{statusCode,code:'ORGANISATION_CONTACT_REMOVE'});};
+    if(typeof reviewId!=='string'||!reviewId.trim()||!Array.isArray(contactIds)||!contactIds.length||contactIds.length>100||contactIds.some(id=>typeof id!=='string'||!id.trim()))bad('Select between 1 and 100 explicit organisation contacts.',400);
+    const ids=new Set(contactIds),contacts=structuredClone(await load()),selected=contacts.filter(c=>ids.has(c.id));
+    if(selected.length!==ids.size||selected.some(c=>!Array.isArray(c.linkedApplicationReviewIds)||!c.linkedApplicationReviewIds.includes(reviewId)))bad('Selection is stale or is not linked to this application. Refresh contacts.');
+    if(permanent&&selected.some(c=>c.linkedApplicationReviewIds.some(id=>id!==reviewId)))bad('A selected contact is linked to another application. Remove only the current link, or review those applications first. No contacts were deleted.');
+    const next=permanent?contacts.filter(c=>!ids.has(c.id)):contacts.map(c=>ids.has(c.id)?{...c,linkedApplicationReviewIds:c.linkedApplicationReviewIds.filter(id=>id!==reviewId)}:c);
+    let backupCreated=false;if(permanent){await fs.copyFile(filePath,`${filePath}.before-organisation-delete-${Date.now()}-${randomUUID()}.bak`);backupCreated=true;}
+    await save(next);return {removed:selected.length,action:permanent?'delete':'unlink',backupCreated,queueAndHistoryUnchanged:true};
+  },
+
   async saveOutreachCandidates({reviewId,organisationId,rows}) {
     const bad=message=>{const e=new Error(message);e.statusCode=400;throw e;};
     if(typeof reviewId!=='string'||!reviewId.trim()||!Array.isArray(rows)||!rows.length||rows.length>100)bad('Select between 1 and 100 contact-address rows.');
@@ -25,7 +36,7 @@ export function createRecruiterContactStore({ filePath }) {
       if(!contact){
         const key=String(row.clientKey||'');if(!/^[a-zA-Z0-9-]{8,100}$/.test(key))bad('Manual row identifier is missing.');
         const id=`outreach-manual-${key}`;contact=contacts.find(c=>c.id===id);
-        if(!contact){contact={id,organisationId,source:'manual',verified:false,emailCandidates:[],linkedApplicationReviewIds:[]};contacts.push(contact);}
+        if(!contact){contact={id,organisationId,source:'manual',firstImportedAt:Date.now(),lastImportedAt:Date.now(),verified:false,emailCandidates:[],linkedApplicationReviewIds:[]};contacts.push(contact);}
       }
       const identity=JSON.stringify([firstName,lastName,role]);
       if(seen.has(contact.id)&&seen.get(contact.id)!==identity)bad('Rows for the same contact must have consistent names and role.');seen.set(contact.id,identity);
@@ -34,7 +45,7 @@ export function createRecruiterContactStore({ filePath }) {
       Object.assign(contact,{verified:contact.verified===true&&contact.firstName===firstName&&contact.lastName===lastName,
         firstName,lastName,fullName:[firstName,lastName].filter(Boolean).join(' '),role,
         emailCandidates:[...new Set([...oldEmails,email])],emailSources:{...(contact.emailSources||{}),[email.toLowerCase()]:origin},
-        selectedEmail:contact.selectedEmail||email,emailSource:contact.emailSource||'manual',
+        selectedEmail:!contact.selectedEmail||(contact.emailSource==='inferred'&&contact.verified!==true&&origin==='inferred')?email:contact.selectedEmail,emailSource:!contact.selectedEmail||(contact.emailSource==='inferred'&&contact.verified!==true&&origin==='inferred')?origin:contact.emailSource||'manual',
         linkedApplicationReviewIds:[...new Set([...(contact.linkedApplicationReviewIds||[]),reviewId])]});
       recipients.push({contactId:contact.id,email});
     }

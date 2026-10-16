@@ -1,3 +1,5 @@
+import {renderHistoryRows} from './review-workspace.js';
+import {createQueueRole} from './review-flow-view.js';
 import {partitionQueueSelection,executeBulkSend,showBulkConfirmation,shortSendLabel} from './outreach-bulk.js';
 import { createQueueMessageControl, saveQueuedMessageBeforeDraft } from './queue-message-editor.js';
 import { attachSimpleContacts } from './outreach-simple-contacts.js';
@@ -63,7 +65,7 @@ function startOutreachQueue() {
       checkbox.className = 'outreach-queue-checkbox'; checkbox.value = item.id;checkbox.checked=previousSelection.has(item.id);
       checkbox.setAttribute('aria-label', `Select queued recipient ${item.fullName || item.email}`);
       row.insertCell().appendChild(checkbox);
-      textCell(row, item.fullName); const roleCell=textCell(row, item.role);roleCell.className='outreach-role';roleCell.title=item.role||'';
+      textCell(row, item.fullName); const roleCell=row.insertCell();roleCell.appendChild(createQueueRole(item.role));roleCell.className='outreach-role';roleCell.title=item.role||'';
       textCell(row, `${item.email} (${item.verified ? 'verified' : item.emailSource || 'unknown'})`);
       textCell(row, item.status); textCell(row, item.lastOutcome);
       // queue-single-editor-v1
@@ -191,7 +193,7 @@ function startOutreachQueue() {
     }
   });
   refreshDraftFeature().catch(error=>{draftStatus.textContent=error.message;});
-  attachSimpleContacts();
+  try{attachSimpleContacts();}catch(error){console.error('Contact UI initialization failed; queue/history initialization continues.',error);}
   document.addEventListener('outreach-queue-changed',()=>refresh().catch(error=>status.textContent=error.message));
   const sendStatus=document.createElement('p');section.querySelector('h2').after(sendStatus);
   async function refreshSendFeature(){
@@ -216,8 +218,8 @@ function startOutreachQueue() {
     }catch(e){status.textContent=e.data?.sent&&e.data.messageId?`Gmail confirmed sending ${e.data.messageId}. History persistence uncertain; do not retry.`:sent?receipt+' Refresh failed; do not resend.':e.message;try{await refresh();}catch{}}
     finally{directBusy=false;controls.forEach(b=>b.disabled=false);await refreshSendFeature();section.querySelectorAll('[data-direct-queue-id]').forEach(b=>b.disabled=!liveDraftConfig?.draftCreationEnabled||!liveDraftConfig?.configurationReady);syncBulkControls();}
   }
-  const history=document.createElement('section');history.className='review-section';history.innerHTML='<h2>Recorded sent history</h2><p>Application records only, not a full Gmail Sent-folder sync.</p><input type="search" aria-label="Search sent history" placeholder="Name, email or subject"><button type="button" data-history-search>Search</button><button type="button" data-history-refresh>Refresh history</button><p role="status" data-history-status></p><table><thead><tr><th>Name</th><th>Email</th><th>Subject</th><th>Action</th><th>Sent at</th><th>Gmail message ID</th></tr></thead><tbody></tbody></table><button type="button" data-history-prev>Previous</button><button type="button" data-history-next>Next</button>';main.appendChild(history);let historyPage=1;
-  async function refreshHistory(){try{const data=await request(`/api/outreach-queue/send-history?page=${historyPage}&q=${encodeURIComponent(history.querySelector('input').value)}`);historyPage=data.page;const body=history.querySelector('tbody');body.replaceChildren();for(const item of data.items){const row=body.insertRow();for(const v of [item.fullName,item.email,item.subject,item.action,item.sentAt,item.messageId])textCell(row,v);}history.querySelector('[data-history-status]').textContent=`${data.total} recorded send(s). Page ${data.page} of ${data.pages}.`;history.querySelector('[data-history-prev]').disabled=data.page<=1;history.querySelector('[data-history-next]').disabled=data.page>=data.pages;}catch(e){history.querySelector('[data-history-status]').textContent=e.message;}}
+  const history=document.createElement('section');history.className='review-section';history.innerHTML='<h2>Recorded sent history</h2><p>Application records only, not a full Gmail Sent-folder sync.</p><input type="search" aria-label="Search sent history" placeholder="Name, email or subject"><button type="button" data-history-search>Search</button><button type="button" data-history-refresh>Refresh history</button><p role="status" data-history-status></p><table class="sent-history-table"><thead><tr><th>Recipient</th><th>Subject</th><th>Action</th><th>Sent</th><th>Details</th></tr></thead><tbody></tbody></table><button type="button" data-history-prev>Previous</button><button type="button" data-history-next>Next</button>';main.appendChild(history);const historyTable=history.querySelector('table'),scroll=document.createElement('div');scroll.className='sent-history-scroll';scroll.tabIndex=0;scroll.setAttribute('role','region');scroll.setAttribute('aria-label','Recorded sent history; scroll horizontally to view all columns');historyTable.before(scroll);scroll.appendChild(historyTable);let historyPage=1;
+  async function refreshHistory(){try{const data=await request(`/api/outreach-queue/send-history?page=${historyPage}&q=${encodeURIComponent(history.querySelector('input').value)}`);historyPage=data.page;const body=history.querySelector('tbody');renderHistoryRows(body,data.items,document);history.querySelector('[data-history-status]').textContent=`${data.total} recorded ${data.total===1?'send':'sends'}${data.pages>1?` · Page ${data.page} of ${data.pages}`:''}`;history.querySelector('[data-history-prev]').disabled=data.page<=1;history.querySelector('[data-history-next]').disabled=data.page>=data.pages;history.querySelector('[data-history-prev]').hidden=data.pages<=1;history.querySelector('[data-history-next]').hidden=data.pages<=1;}catch(e){history.querySelector('[data-history-status]').textContent=e.message;}}
   history.querySelector('[data-history-search]').addEventListener('click',()=>{historyPage=1;refreshHistory();});history.querySelector('[data-history-refresh]').addEventListener('click',refreshHistory);history.querySelector('[data-history-prev]').addEventListener('click',()=>{historyPage=Math.max(1,historyPage-1);refreshHistory();});history.querySelector('[data-history-next]').addEventListener('click',()=>{historyPage++;refreshHistory();});history.querySelector('input').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();historyPage=1;refreshHistory();}});
   refreshSendFeature();refreshHistory();
   // outreach-bulk-controls-v1

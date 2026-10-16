@@ -40,9 +40,9 @@ import {renderApplicationReview,renderRefinementPanel} from '../../src/interface
 test('proposed subject belongs to the apply form and is safely escaped',()=>{
  const html=renderRefinementPanel({research:{status:'found'},currentSubject:'Role & "Name"',refinementProposal:{proposedDraft:'Evidence'}});
  assert.ok(html.includes('id="proposed-cover-letter-subject"'));assert.ok(html.includes('form="apply-refinement-form"'));
- assert.ok(html.includes('value="Role &amp; &quot;Name&quot;"'));assert.ok(html.includes('id="apply-refinement-form"'));
+ assert.ok(html.includes('>Role &amp; &quot;Name&quot;</textarea>'));assert.ok(html.includes('id="apply-refinement-form"'));
 });
 test('current subject is independent of proposed subject and uses its own field',()=>{
  const html=renderApplicationReview({formData:{jobTitle:'Delivery Manager'},prepared:{coverLetter:{subject:'Original',plainText:'Body'}},currentDraftSubject:'Current subject',refinementProposal:{proposedDraft:'Proposal',proposedSubject:'Proposed subject'}});
- assert.ok(html.includes('id="current-cover-letter-subject"'));assert.ok(html.includes('value="Current subject"'));assert.ok(html.includes('value="Proposed subject"'));
+ assert.ok(html.includes('id="current-cover-letter-subject"'));assert.ok(html.includes('>Current subject</textarea>'));assert.ok(html.includes('>Proposed subject</textarea>'));
 });

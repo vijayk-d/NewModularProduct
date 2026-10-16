@@ -12,7 +12,7 @@ function clean(value){
 }
 const hashes=v=>Object.fromEntries(Object.entries(v).map(([k,x])=>[k,hash(x)]));
 export function createDurableReviewStore(repository){
- const store={durable:repository.durable===true,
+ const store={durable:repository.durable===true,deletionSupported:typeof repository.remove==='function',
   get(id){const row=repository.read(id);if(!row)return undefined;const value=clean(row.value);return {...value,_storageMeta:{revision:row.revision,fields:hashes(value)}};},
   has(id){return Boolean(repository.read(id));},
   set(id,input){
@@ -31,13 +31,14 @@ export function createDurableReviewStore(repository){
    }
    return store;
   },
+  delete(id,revision){if(typeof id!=='string'||!(/^[A-Za-z0-9_-]{1,100}$/).test(id)||!Number.isInteger(revision)||revision<1)throw reviewStoreError('Valid application ID/revision required.','REVIEW_STORE_CONFLICT',409);if(typeof repository.remove!=='function')throw reviewStoreError('Saved application deletion unavailable.');return repository.remove(id,revision);},
   summaries(options={}){return repository.summaries(options);},
   close(){repository.close?.();}
  };
  return store;
 }
 export function createMemoryReviewRepository(){
- const rows=new Map();return {read:id=>rows.has(id)?structuredClone(rows.get(id)):undefined,
-  write(id,revision,value){if((rows.get(id)?.revision||0)!==revision)throw reviewStoreError('Revision changed.','REVIEW_STORE_CONFLICT',409);rows.set(id,{revision:revision+1,value:structuredClone(value)});},
+ const rows=new Map(),deleted=new Set();return {remove(id,revision){const row=rows.get(id);if(!row)throw reviewStoreError('Application missing/deleted.','REVIEW_STORE_DELETED',404);if(row.revision!==revision)throw reviewStoreError('Application changed.','REVIEW_STORE_CONFLICT',409);rows.delete(id);deleted.add(id);return {deleted:true};},read:id=>rows.has(id)?structuredClone(rows.get(id)):undefined,
+  write(id,revision,value){if(deleted.has(id))throw reviewStoreError('Application was permanently deleted.','REVIEW_STORE_DELETED',410);if((rows.get(id)?.revision||0)!==revision)throw reviewStoreError('Revision changed.','REVIEW_STORE_CONFLICT',409);rows.set(id,{revision:revision+1,value:structuredClone(value)});},
   summaries({query='',page=1,size=20}={}){const items=[...rows].map(([id,r])=>({id,revision:r.revision,jobTitle:r.value.formData?.jobTitle||'',organisation:r.value.formData?.organisationName||'',subject:r.value.currentDraftSubject||r.value.prepared?.coverLetter?.subject||'',cvCode:r.value.selectedCvRoleCode||'',advertUrl:r.value.formData?.jobAdvertLink||''})).filter(r=>!query||[r.jobTitle,r.organisation,r.subject].some(v=>v.toLowerCase().includes(query.toLowerCase())));const pages=Math.max(1,Math.ceil(items.length/size)),p=Math.min(pages,Math.max(1,page));return {items:items.slice((p-1)*size,p*size),total:items.length,page:p,pages};}};
 }

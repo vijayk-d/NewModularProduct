@@ -6,7 +6,7 @@ const context = { jobTitle: 'Delivery Manager', organisationName: 'Ageas', adver
 test('local composition protects purpose, exact advert URL, outreach paragraph and name', () => {
   const body = composeOutreachLetter({ ...context, draft: 'Dear {{firstname}},\n\nI led multi-squad delivery.\n\nWarm regards,\nVijay DAFAL' });
   assert.ok(body.startsWith('Dear {{firstname}},\n\nI am applying for the Delivery Manager opportunity at Ageas.'));
-  assert.ok(body.includes('Job advert: https://example.test/jobs/123'));
+  assert.ok(body.includes('Role details: https://example.test/jobs/123'));
   assert.ok(body.includes(OUTREACH_REDIRECTION));
   assert.ok(body.endsWith('Warm regards,\nVijay DAFAL'));
 });

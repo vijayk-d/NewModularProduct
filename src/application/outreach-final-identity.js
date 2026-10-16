@@ -1,3 +1,5 @@
+import {renderLinkedRoleOpening,restoreLinkedOpeningPlain,canonicalLinkedOpeningPlain} from '../domain/shared/linked-role-opening.js';
+import { recipientFirstName, assertResolvedMessage } from './outreach-recipient-identity.js';
 import { escapeHtml, sanitizeSnapshotHtml } from './outreach-message-snapshot.js';
 const bad=message=>{const e=new Error(message);e.statusCode=400;throw e;};
 const decode=s=>s.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|nbsp|mdash|ndash);/gi,(_,v)=>v[0]==='#'?String.fromCodePoint(v[1].toLowerCase()==='x'?parseInt(v.slice(2),16):Number(v.slice(1))):({amp:'&',lt:'<',gt:'>',quot:'"',apos:"'",nbsp:' ',mdash:'—',ndash:'–'})[v.toLowerCase()]);
@@ -10,10 +12,11 @@ function ranges(text,first,candidate){
  return [{start:a.index,end:a.index+a[0].length,value:`Dear ${first},`},{start,end:start+b[1].length,value:candidate}];
 }
 export function finalizeOutreachIdentity(snapshot,{firstName,candidateName,advertUrl=''}={}){
- const first=name(firstName,'Recipient first name'),candidate=name(candidateName,'Candidate name');
- let plain=String(snapshot.bodyPlainText).replace(/\r\n/g,'\n').trim();
+ const first=recipientFirstName({firstName}),candidate=name(candidateName,'Candidate name');
+ let plain=canonicalLinkedOpeningPlain(String(snapshot.bodyPlainText)).replace(/\r\n/g,'\n').trim();
  for(const r of ranges(plain,first,candidate).reverse())plain=plain.slice(0,r.start)+r.value+plain.slice(r.end);
- if(!snapshot.bodyHtml)return {bodyPlainText:plain,bodyHtml:plain.split('\n').map(escapeHtml).join('<br>')};
+ assertResolvedMessage(plain);
+ if(!snapshot.bodyHtml)return {bodyPlainText:plain,bodyHtml:renderLinkedRoleOpening(plain) ?? plain.split('\n').map(escapeHtml).join('<br>')};
  const clean=sanitizeSnapshotHtml(snapshot.bodyHtml);let offset=0;
  const spans=(clean.html.match(/<[^>]+>|[^<]+/g)||[]).map(raw=>{
   const tag=raw.startsWith('<'),text=tag?(/^<br\b|^<\/?(?:p|div|li|ul|ol)\b/i.test(raw)?'\n':''):decode(raw);
@@ -29,9 +32,10 @@ export function finalizeOutreachIdentity(snapshot,{firstName,candidateName,adver
   }
   return result+escapeHtml(s.text.slice(pos-s.start));
  }).join('');
- const rendered=sanitizeSnapshotHtml(html);let comparable=rendered.text;
+ const rendered=sanitizeSnapshotHtml(html);assertResolvedMessage(rendered.html,rendered.text);let comparable=restoreLinkedOpeningPlain(rendered.text,rendered.links,advertUrl);
  if(advertUrl&&rendered.links.some(l=>l.href===new URL(advertUrl).href))comparable=comparable.replace(/^Job advert:[ \t]*Job advert[ \t]*$/mi,()=>`Job advert: ${advertUrl}`);
  const norm=s=>s.replace(/\s+/gu,' ').trim();
  if(norm(comparable)!==norm(plain))bad('Plain-text and formatted message disagree after identity resolution. Refresh the editor.');
  return {bodyPlainText:plain,bodyHtml:rendered.html};
 }
+

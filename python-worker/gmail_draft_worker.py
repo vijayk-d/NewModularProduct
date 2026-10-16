@@ -38,7 +38,8 @@ def _build_message(draft, from_address):
         if path.stat().st_size > 20 * 1024 * 1024:
             raise ValueError('Selected CV exceeds the worker attachment limit.')
         name = str(attachment.get('name') or path.name)
-        if any(ch in name for ch in '\r\n/\\'):
+        if (not name.strip() or len(name) > 180 or not name.lower().endswith('.pdf')
+                or re.search(r'[\x00-\x1f\x7f<>:"/\\|?*]', name)):
             raise ValueError('Attachment display name is invalid.')
         message.add_attachment(path.read_bytes(), maintype='application', subtype='pdf', filename=name)
     return message

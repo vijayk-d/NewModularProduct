@@ -6,14 +6,14 @@ import path from 'node:path';
 import { draftSnapshotFingerprint } from '../../src/application/gmail-draft-state-ledger.js';
 import { createConfirmedGmailDraftService } from '../../src/application/confirmed-gmail-draft-service.js';
 const account='sender@example.test';
-async function fixture(t,{runner,flag='true'}={}){
+async function fixture(t,{runner,flag='true',signatureReader}={}){
  const root=await mkdtemp(path.join(tmpdir(),'confirmed-draft-'));t.after(()=>rm(root,{recursive:true,force:true}));await writeFile(path.join(root,'cv.pdf'),Buffer.from('%PDF-1.4\nsynthetic'));
  const queue={id:'queue-uuid',status:'new',applicationKey:'app',email:'matt@example.test',firstname:'Matt',lastname:'Smith',subject:'Application | Vijay DAFAL',
   bodyPlainText:'Dear {{firstname}},\n\nI led delivery.\n\nWarm regards,\nVijay DAFAL',bodyHtml:'Dear {{firstname}},<br><br>I led delivery.<br><br>Warm regards,<br>Vijay DAFAL',attachment:{relativePath:'cv.pdf',name:'CV.pdf'},application:{selectedCvRoleCode:'DM'}};
  let operation=null,calls=0,checks=0,now=1000;
  const repo={getById(){return structuredClone(queue);},findDraftOperation(){return operation;},claimDraftOperation(){if(operation)throw new Error('duplicate');operation={id:'operation',status:'reserved',snapshotFingerprint:draftSnapshotFingerprint(queue)};queue.status='draft_creating';return operation;},recordDraftOutcome(value){operation={...operation,...value};queue.status=value.status==='drafted'?'drafted':value.status==='unknown'?'draft_unknown':'draft_failed';return operation;}};
  const mailbox={getStatus(){return {mailboxCheckEnabled:true,configurationReady:true,configuredFromAddress:account};},async check(){checks++;return {ok:true,mailboxMatch:true,mailbox:account};}};
- const service=createConfirmedGmailDraftService({repository:repo,mailboxPort:mailbox,env:{ENABLE_GMAIL_DRAFT_CREATION:flag,CV_FOLDER:root},clock:()=>now,
+ const service=createConfirmedGmailDraftService({repository:repo,mailboxPort:mailbox,env:{ENABLE_GMAIL_DRAFT_CREATION:flag,CV_FOLDER:root,ENABLE_GMAIL_SIGNATURE:signatureReader?'true':'false'},signatureReader,clock:()=>now,
   runner:async args=>{calls++;return runner?runner(args):{sent:0,profileVerified:true,sendingAccount:account,details:[{queueId:queue.id,status:'drafted',draftId:'draft-real',messageId:'message-real',creationAttempted:true}]};}});
  return {service,queue,repo,root,mailbox,get calls(){return calls;},get checks(){return checks;},get operation(){return operation;},advance(){now+=6*60*1000;}};
 }
@@ -62,4 +62,15 @@ test('confirmed Gmail ID is returned honestly if database persistence fails',asy
 test('mismatched worker account cannot become recorded success',async t=>{
  const f=await fixture(t,{runner:async()=>({sent:0,profileVerified:true,sendingAccount:'other@example.test',details:[{queueId:'queue-uuid',status:'drafted',draftId:'other-draft',creationAttempted:true}]})});
  const p=await f.service.preview({queueId:f.queue.id,confirmed:true});await assert.rejects(f.service.create({ticket:p.ticket,confirmed:true}),/uncertain/);assert.equal(f.operation.status,'unknown');
+});
+
+test('signed preview is bound to signature content; changed signature blocks before worker',async t=>{
+ let suffix='Original';const signatureReader=async()=>({ok:true,mailbox:account,html:'<b>'+suffix+'</b>',plainText:suffix});
+ const f=await fixture(t,{signatureReader});const p=await f.service.preview({queueId:f.queue.id,confirmed:true});assert.ok(p.draft.bodyPlainText.includes('Warm regards,\nVijay DAFAL\n\n-- \nOriginal'));
+ suffix='Changed';await assert.rejects(f.service.create({ticket:p.ticket,confirmed:true}),/changed/);assert.equal(f.calls,0);assert.equal(f.operation,null);
+});
+test('confirmed worker receives the signed body, once, after explicit confirmation',async t=>{
+ let received;const signatureReader=async()=>({ok:true,mailbox:account,html:'<b>Signature</b>',plainText:'Signature'});
+ const f=await fixture(t,{signatureReader,runner:async args=>{received=args.payload.drafts[0];return {sent:0,profileVerified:true,sendingAccount:account,details:[{queueId:'queue-uuid',status:'drafted',draftId:'real-id',creationAttempted:true}]};}});
+ const p=await f.service.preview({queueId:f.queue.id,confirmed:true});await f.service.create({ticket:p.ticket,confirmed:true});assert.equal(received.bodyPlainText,p.draft.bodyPlainText);assert.equal(f.calls,1);
 });

@@ -1,3 +1,4 @@
+import {renderLinkedRoleOpening,canonicalLinkedOpeningPlain} from '../shared/linked-role-opening.js';
 import {normalizeLegacyAdvertPlain,embedCanonicalAdvertHtml} from '../shared/legacy-advert-normalization.js';
 import { fillTemplate } from './fill-template.js';
 import { validateCoverLetter } from './validate-cover-letter.js';
@@ -318,8 +319,16 @@ export function generateCoverLetter({
     ? supportedMethods.join(' and ')
     : 'pragmatic delivery practices';
 
+  const evidenceText = toText(highlights);
+  const evidenceBody = evidenceText.replace(/\.{2,}$/, '.');
+  const evidenceWithEnding = /[.!?]$/.test(evidenceBody)
+    ? evidenceBody
+    : `${evidenceBody}.`;
+
   const evidence = profile.evidence ||
-    `My relevant experience includes ${highlights}. In these settings, I used ${methods} to coordinate delivery, manage dependencies, and improve collaboration across stakeholders.`;
+    (/^(?:I|My|We|Our)\b/i.test(evidenceBody)
+      ? evidenceWithEnding
+      : `Relevant experience:\n${evidenceWithEnding}`);
 
   const currentRoleEvidence = profile.currentRoleEvidence ||
     candidateProfile.currentRoleEvidence ||
@@ -387,11 +396,11 @@ export function generateCoverLetter({
     referenceSuffix
   });
 
-  const plainText = normalizeLegacyAdvertPlain(ensureAtsRedirectionParagraph(
+  const plainText = canonicalLinkedOpeningPlain(normalizeLegacyAdvertPlain(ensureAtsRedirectionParagraph(
     refinedCoverLetterText || templateBody
-  ),jobAdvertLink).text;
+  ),jobAdvertLink).text);
 
-  const subject = `Application for ${parsedJobDescription.role}` +
+  const subject = `_Application for ${parsedJobDescription.role}` +
     `${jobAdvertLink ? ' | LinkedIn' : ''}` +
     `${referenceSuffix} | ${recipient}`;
     
@@ -402,7 +411,7 @@ export function generateCoverLetter({
   );
 
   const richText = highlightTermsInHtml(
-    embedCanonicalAdvertHtml(plainText,jobAdvertLink).replace(/\n\n/g, '<p>').replace(/\n/g, '<br>'),
+    renderLinkedRoleOpening(plainText) ?? embedCanonicalAdvertHtml(plainText,jobAdvertLink).replace(/\n\n/g, '<p>').replace(/\n/g, '<br>'),
     selectedHighlights
   );
 

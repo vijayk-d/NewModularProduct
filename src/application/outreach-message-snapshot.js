@@ -1,3 +1,5 @@
+import {renderLinkedRoleOpening,restoreLinkedOpeningPlain,canonicalLinkedOpeningPlain} from '../domain/shared/linked-role-opening.js';
+import { recipientFirstName } from './outreach-recipient-identity.js';
 import {normalizeLegacyAdvertSnapshot} from '../domain/shared/legacy-advert-normalization.js';
 function invalid(message) { const error = new Error(message); error.statusCode = 400; throw error; }
 export function escapeHtml(value) {
@@ -24,6 +26,7 @@ export function sanitizeSnapshotHtml(value) {
     const tag=match[2].toLowerCase(), closing=Boolean(match[1]);
     if(closing) {
       const last=stack.pop(); if(!last || last.tag!==tag) invalid('Formatted message has mismatched HTML tags.');
+      if(tag==='a'){const link=links.findLast(l=>l.textEnd===undefined);if(link){link.textEnd=plain.join('').length;link.text=plain.join('').slice(link.textStart,link.textEnd);}}
       output.push(`</${last.render}>`);
       if(['p','div','li','ul','ol'].includes(tag)) plain.push('\n');
       continue;
@@ -45,7 +48,7 @@ export function sanitizeSnapshotHtml(value) {
     if(tag==='a') {
       let url; try {url=new URL(attributes.href || '');} catch {invalid('Message link must be a full HTTP or HTTPS URL.');}
       if(!['http:','https:'].includes(url.protocol) || url.username || url.password) invalid('Message link must use HTTP or HTTPS without embedded credentials.');
-      links.push({href:url.href}); extra=` href="${escapeHtml(url.href)}" target="_blank" rel="noopener noreferrer"`;
+      links.push({href:url.href,textStart:plain.join('').length}); extra=` href="${escapeHtml(url.href)}" target="_blank" rel="noopener noreferrer"`;
     }
     if(render==='mark') extra=' style="background-color:#fff2a8"';
     if(['p','div','li'].includes(tag)) plain.push('\n');
@@ -57,20 +60,21 @@ export function sanitizeSnapshotHtml(value) {
 }
 export function snapshotMessage(bodyPlainText,bodyHtml,advertUrl='') {
   if(typeof bodyPlainText!=='string' || !bodyPlainText.trim() || bodyPlainText.length>100000) invalid('A non-empty message of at most 100000 characters is required.');
+  bodyPlainText=canonicalLinkedOpeningPlain(bodyPlainText);
   const advertFix=normalizeLegacyAdvertSnapshot({bodyPlainText,bodyHtml},advertUrl);
   bodyPlainText=advertFix.bodyPlainText;bodyHtml=advertFix.bodyHtml;
   if(bodyHtml===undefined || bodyHtml==='') return {bodyPlainText:bodyPlainText.trim()};
   const clean=sanitizeSnapshotHtml(bodyHtml);
-  if(normalize(clean.text)!==normalize(bodyPlainText)) invalid('Plain-text and formatted message disagree. Refresh the editor and queue again.');
-  let text=bodyPlainText.trim();
+  const linkedPlain=restoreLinkedOpeningPlain(clean.text,clean.links,advertUrl);
+  if(normalize(clean.text)!==normalize(bodyPlainText)&&normalize(linkedPlain)!==normalize(bodyPlainText)) invalid('Plain-text and formatted message disagree. Refresh the editor and queue again.');
+  let text=(linkedPlain!==clean.text?linkedPlain:bodyPlainText).trim();
   let canonicalAdvert='';
   if(advertUrl){try{canonicalAdvert=new URL(advertUrl).href;}catch{invalid('The application advert URL is invalid.');}}
   if(canonicalAdvert && clean.links.some(link=>link.href===canonicalAdvert)) text=text.replace(/^Job advert:[ \t]*Job advert[ \t]*$/mi,()=>`Job advert: ${advertUrl}`);
   return {bodyPlainText:text,bodyHtml:clean.html};
 }
 function valuesFor(item) {
-  const firstname=String(item.firstname||item.fullName?.trim().split(/\s+/)[0]||'').trim();
-  if(/\{\{firstname\}\}/.test(item.bodyPlainText||'') && !firstname) invalid('Recipient first name is missing. Correct the linked contact and requeue.');
+  const firstname = recipientFirstName(item);
   return {firstname,lastname:String(item.lastname||'').trim()};
 }
 function personalize(text,values,html=false) {
@@ -84,7 +88,7 @@ export function prepareDraftSnapshot(item) {
   if(typeof item.subject!=='string' || !item.subject.trim() || /[\r\n]/.test(item.subject)) invalid('Queued subject is invalid.');
   if(typeof item.bodyPlainText!=='string' || !item.bodyPlainText.trim()) invalid('Queued message body is empty.');
   const values=valuesFor(item);
-  let html=item.bodyHtml?sanitizeSnapshotHtml(item.bodyHtml).html:String(item.bodyPlainText||'').split('\n').map(escapeHtml).join('<br>');
+  let html=item.bodyHtml?sanitizeSnapshotHtml(item.bodyHtml).html:(renderLinkedRoleOpening(item.bodyPlainText) ?? String(item.bodyPlainText||'').split('\n').map(escapeHtml).join('<br>'));
   html=personalize(html,values,true);
   const body=personalize(item.bodyPlainText,values);
   const attachment=item.attachment ? structuredClone(item.attachment) : null;
@@ -92,4 +96,5 @@ export function prepareDraftSnapshot(item) {
   return {queueId:item.id,recipient:{email:item.email,firstname:values.firstname,lastname:values.lastname},
     subject:personalize(item.subject,values),bodyPlainText:body,bodyHtml:html,attachment};
 }
+
 

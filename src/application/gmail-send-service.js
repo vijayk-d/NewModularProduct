@@ -1,8 +1,10 @@
+import {applyGmailSignature,readGmailSignature,letterWithoutSignature} from './gmail-message-presentation.js';
+import {recipientFirstName,assertResolvedMessage} from './outreach-recipient-identity.js';
 import {randomUUID,createHash} from 'node:crypto';import {realpath,stat,readFile} from 'node:fs/promises';import path from 'node:path';
 import {prepareDraftSnapshot} from './outreach-message-snapshot.js';import {messageEditVersion} from './queue-message-editor.js';import {extractOutreachExperienceBody} from './compose-outreach-letter.js';import {runGmailSendWorker} from './gmail-send-worker-runner.js';
 const hash=b=>createHash('sha256').update(b).digest('hex');
 function fail(m,code='SEND_BLOCKED',statusCode=409){const e=new Error(m);e.code=code;e.statusCode=statusCode;throw e;}
-export function createGmailSendService({repository,mailboxPort,env=process.env,runner=runGmailSendWorker,clock=()=>Date.now()}={}){
+export function createGmailSendService({repository,mailboxPort,env=process.env,runner=runGmailSendWorker,clock=()=>Date.now(),signatureReader=readGmailSignature}={}){
  const tickets=new Map();
  function getStatus(){const m=mailboxPort.getStatus(),flags=['ENABLE_GMAIL','ENABLE_GMAIL_SENDING'].every(k=>String(env[k]||'').trim().toLowerCase()==='true'),ready=Boolean(m.mailboxCheckEnabled&&m.configurationReady&&repository&&['getSendState','claimSendAttempt','finishSendAttempt'].every(k=>typeof repository[k]==='function'));return {sendingEnabled:flags&&ready,configurationReady:ready,configuredMailbox:m.configuredFromAddress||'',reason:!flags?'Sending disabled. Enable both ENABLE_GMAIL and ENABLE_GMAIL_SENDING explicitly.':!ready?'Configure mailbox checking, OAuth and send storage.':'Sending ready; each email requires explicit confirmation.'};}
  function gate(){const s=getStatus();if(!s.sendingEnabled)fail(s.reason,'SEND_DISABLED',403);return s.configuredMailbox;}
@@ -32,11 +34,12 @@ export function createGmailSendService({repository,mailboxPort,env=process.env,r
  return {getStatus,eligibility,cancel({ticket}={}){return {cancelled:tickets.delete(ticket),sent:false};},
  async prepare({queueId}={}){
   const account=gate();if(typeof queueId!=='string'||!queueId)fail('Choose one explicit queue item.');const item=repository.getById(queueId);if(!item)fail('Queue item no longer exists.');
-  const {mode}=modeFor(item,account),version=messageEditVersion(item),draft=mode==='draft'?null:await withCV(item);
+  const {mode}=modeFor(item,account),version=messageEditVersion(item),draft=mode==='draft'?null:await applyGmailSignature(await withCV(item),{account,env,signatureReader});
   let r;try{r=await runner({payload:{action:'prepare',mode,expectedAddress:account,recipient:item.email,draftId:mode==='draft'?item.draftId:undefined,draft}});}catch{fail('Preparation failed; nothing sent. Check Python/OAuth setup.','SEND_PREFLIGHT',503);}
   if(r.ok!==true||r.sent!==false||r.sendingAttempted!==false||String(r.sendingAccount||'').toLowerCase()!==account.toLowerCase())fail('Preparation failed; nothing sent: '+(r.error||'invalid receipt'),'SEND_PREFLIGHT');
   const summary=r.summary;if(!summary||typeof r.raw!=='string'||summary.recipient?.toLowerCase()!==item.email.toLowerCase()||hash(Buffer.from(r.raw,'base64url'))!==summary.contentHash)fail('Invalid prepared message receipt.');
-  const plain=String(summary.bodyPlainText||'').trim(),first=String(item.firstname||item.fullName?.trim().split(/\s+/)[0]||'').trim(),candidate=String(env.CANDIDATE_DISPLAY_NAME||'Vijay DAFAL').trim();
+  const plain=letterWithoutSignature(summary.bodyPlainText,summary.bodyHtml),first=recipientFirstName(item),candidate=String(env.CANDIDATE_DISPLAY_NAME||'Vijay DAFAL').trim();
+  assertResolvedMessage(summary.bodyPlainText,summary.bodyHtml,summary.subject);
   if(!first||!plain.startsWith(`Dear ${first},`)||!plain.endsWith(candidate))fail('Prepared/Gmail greeting or signoff does not match the resolved identity.','SEND_IDENTITY');
   if(/^Candidate$|\|\s*Candidate\s*$/i.test(String(summary.subject||'')))fail('Correct the generic Candidate subject.','SEND_SUBJECT');
   if(/\u00c2\u00a3|\u00e2\u20ac\u2122|\u00e2\u0080\u0099/.test(plain+String(summary.bodyHtml||'')))fail('Encoding corruption detected (Â£ / â€™). Correct the queued message or actual Gmail draft before sending.','SEND_ENCODING');
@@ -45,7 +48,7 @@ export function createGmailSendService({repository,mailboxPort,env=process.env,r
   for(const [id,t] of tickets)if(t.expiresAt<=clock())tickets.delete(id);
   if(/* outreach-bulk-controls-v1 */ tickets.size>=50||[...tickets.values()].reduce((n,t)=>n+t.raw.length,0)+r.raw.length>96*1024*1024)fail('Too many pending confirmations; cancel or wait for expiry.');
   const ticket=randomUUID(),expiresAt=clock()+300000;tickets.set(ticket,{queueId,account,mode,version,raw:r.raw,summary,expiresAt,draftId:mode==='draft'?item.draftId:null,cvHash:draft?.attachment.sha256});
-  return {ticket,expiresAt,mode,sendingAccount:account,recipient:item.email,emailVerified:item.verified===true,emailSource:item.emailSource||'unknown',subject:summary.subject,attachments:summary.attachments,contentHash:summary.contentHash,sent:false};
+  return {ticket,expiresAt,mode,sendingAccount:account,recipient:item.email,emailVerified:item.verified===true,emailSource:item.emailSource||'unknown',subject:summary.subject,bodyPlainText:summary.bodyPlainText,bodyHtml:summary.bodyHtml,attachments:summary.attachments,contentHash:summary.contentHash,sent:false};
  },
  async commit({ticket,confirmed=false,repeatApproved=false}={}){
   const account=gate();if(confirmed!==true)fail('Confirm the exact prepared send.','SEND_CONFIRMATION',400);
@@ -66,3 +69,4 @@ export function createGmailSendService({repository,mailboxPort,env=process.env,r
   const definite=r.ok===false&&r.sent===false&&r.sendingAttempted===false;repository.finishSendAttempt({attemptId:op.id,status:definite?'failed':'unknown',safeToRetry:definite});fail(definite?'Sending was not attempted: '+(r.error||'preflight failed'):'Send outcome uncertain. Check Gmail; do not retry.',definite?'SEND_NOT_ATTEMPTED':'SEND_UNKNOWN',503);
  }};
 }
+

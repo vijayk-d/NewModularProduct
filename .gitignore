@@ -1,4 +1,4 @@
-﻿node_modules/
+node_modules/
 .env
 .env.*
 *.log
@@ -57,3 +57,8 @@ __pycache__/
 
 # Checkpoint hygiene: generated files and optional local packages
 /tools/patches/
+
+# Local delivery reports and source captures
+/tools/maintenance/*-source.json
+/tools/maintenance/local-production-audit-*.json
+/recipient-package-before-newline-repair-*/

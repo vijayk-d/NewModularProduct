@@ -73,5 +73,11 @@ test('standalone queue page and browser module are available', async t => {
   const page = await fetch(f.base + '/outreach-queue');
   assert.equal(page.status, 200); assert.match(await page.text(), /outreach-queue.js/);
   const script = await fetch(f.base + '/outreach-queue.js');
-  assert.equal(script.status, 200); assert.match(await script.text(), /Add selected to queue/);
+  assert.equal(script.status, 200);
+  const scriptText = await script.text();
+  assert.match(scriptText, /import\s*\{\s*attachSimpleContacts\s*\}\s*from\s*['"]\.\/outreach-simple-contacts\.js['"]/);
+  assert.match(scriptText, /\battachSimpleContacts\(\)/);
+  const contacts = await fetch(f.base + '/outreach-simple-contacts.js');
+  assert.equal(contacts.status, 200);
+  assert.match(await contacts.text(), /export function attachSimpleContacts\(/);
 });

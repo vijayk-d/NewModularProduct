@@ -53,11 +53,14 @@ test('queue refresh preserves a dirty edit and discard restores the latest saved
 import {createOutreachHttpHandler} from '../../src/interfaces/http/outreach-queue-http.js';
 import {Readable} from 'node:stream';
 async function http(handler,url,payload,origin){const req=Readable.from(payload===undefined?[]:[Buffer.from(JSON.stringify(payload))]);req.method=payload===undefined?'GET':'POST';req.headers={host:'localhost','content-type':'application/json',...(origin?{origin}:{})};let code,text,headers;await handler(req,{writeHead(c,h){code=c;headers=h;},end(t){text=t;}},new URL('http://localhost'+url));return {code,text,headers};}
-test('HTTP list/save wiring exposes one sanitized editor and returns updated version',async()=>{
+test('HTTP list/save wiring exposes one sanitized editor and returns updated version',async t=>{
+ const previousCandidate=process.env.CANDIDATE_DISPLAY_NAME;
+ t.after(()=>{if(previousCandidate===undefined)delete process.env.CANDIDATE_DISPLAY_NAME;else process.env.CANDIDATE_DISPLAY_NAME=previousCandidate;});
+ process.env.CANDIDATE_DISPLAY_NAME='Vijay DAFAL';
  let item=structuredClone(base);const repo={list:()=>[item],getById:()=>item,listDraftOperations:()=>[],updatePendingMessage(v){item={...item,bodyPlainText:v.bodyPlainText,bodyHtml:v.bodyHtml,updatedAt:'saved'};return item;}};
  const handler=createOutreachHttpHandler({repository:repo,getReview:()=>null,contactStore:{}});
  const list=JSON.parse((await http(handler,'/api/outreach-queue')).text),version=list.items[0].editVersion;assert.equal(list.items[0].canEditMessage,true);
- const response=await http(handler,'/api/outreach-queue/message-save',{...payload(),expectedVersion:version});assert.equal(response.code,200);assert.equal(JSON.parse(response.text).saved,true);
+ const response=await http(handler,'/api/outreach-queue/message-save',{...payload(),expectedVersion:version});assert.equal(response.code,200,response.text);assert.equal(JSON.parse(response.text).saved,true);
  const script=await http(handler,'/queue-message-editor.js');assert.equal(script.code,200);assert.match(script.text,/createQueueMessageControl/);
 });
 test('cross-origin save is blocked before any repository write',async()=>{

@@ -44,7 +44,7 @@ test('normalizes a LinkedIn company People URL without overwriting user-entered 
   );
 
   await expect(
-    page.getByLabel('Organisation name')
+    page.getByLabel('Organisation / advertiser name', { exact: true })
   ).toHaveValue('leidos');
 
   await expect(
@@ -53,7 +53,7 @@ test('normalizes a LinkedIn company People URL without overwriting user-entered 
     'https://www.linkedin.com/company/leidos/people'
   );
 
-  await page.getByLabel('Organisation name').fill('Leidos UK');
+  await page.getByLabel('Organisation / advertiser name', { exact: true }).fill('Leidos UK');
   await page.getByLabel('Stakeholder source or recruiter page').fill(
     'Existing recruiter source'
   );
@@ -64,7 +64,7 @@ test('normalizes a LinkedIn company People URL without overwriting user-entered 
   await organisationUrl.blur();
 
   await expect(
-    page.getByLabel('Organisation name')
+    page.getByLabel('Organisation / advertiser name', { exact: true })
   ).toHaveValue('Leidos UK');
 
   await expect(
@@ -157,7 +157,7 @@ test('reviews vacancy details and provides local cover-letter copying', async ({
 
   await expect(
     page.getByRole('link', {
-      name: 'Prepare another application'
+      name: 'New application', exact: true
     })
   ).toBeVisible();
 });

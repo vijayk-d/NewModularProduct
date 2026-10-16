@@ -134,6 +134,14 @@ async function fixture(t, mode = "success", linkedOverrides = {}) {
   const reviewId = initial.html.match(/name="reviewId"\s+value="([^"]+)"/)?.[1];
   assert.ok(reviewId, "Application response must contain a review ID");
 
+  // These workflow cases exercise contacts explicitly reimported for this review.
+  const refreshed = await store.upsertMany({
+    organisationId,
+    incomingContacts: await store.listAll()
+  });
+  assert.equal(refreshed.imported, 0);
+  assert.equal(refreshed.duplicates, 5);
+
   await store.linkToReview({ reviewId, contactIds: ["linked"] });
 
   return { store, base, reviewId, form, json };

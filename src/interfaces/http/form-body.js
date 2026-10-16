@@ -1,7 +1,7 @@
 
 const MAX_FORM_BODY_BYTES = 64 * 1024;
 
-export async function readFormBody(request) {
+export async function readFormBody(request,{maxBytes=MAX_FORM_BODY_BYTES}={}) {
   const contentType = String(request.headers['content-type'] || '')
     .split(';', 1)[0]
     .trim()
@@ -16,13 +16,14 @@ export async function readFormBody(request) {
     };
   }
 
-  let body = '';
+  if(!Number.isSafeInteger(maxBytes)||maxBytes<1||maxBytes>256*1024)throw new Error('Invalid form size boundary.');
+  const chunks=[];
   let size = 0;
 
   for await (const chunk of request) {
     size += chunk.length;
 
-    if (size > MAX_FORM_BODY_BYTES) {
+    if (size > maxBytes) {
       return {
         error: {
           statusCode: 413,
@@ -31,11 +32,11 @@ export async function readFormBody(request) {
       };
     }
 
-    body += chunk;
+    chunks.push(Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk));
   }
 
   return {
-    values: new URLSearchParams(body)
+    values: new URLSearchParams(Buffer.concat(chunks).toString('utf8'))
   };
 }
 

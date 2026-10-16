@@ -5,6 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { createLocalServer } from "../../src/interfaces/http/create-local-server.js";
 import { createRecruiterContactStore } from "../../src/application/recruiter-contact-store.js";
+import {createOutreachRepository} from "../../src/infrastructure/outreach/sqlite-outreach-repository.js";
+import {createDurableReviewStore,createMemoryReviewRepository} from "../../src/application/durable-review-store.js";
 
 const test = base.extend({
   app: async ({}, use) => {
@@ -44,9 +46,12 @@ const test = base.extend({
       ]
     });
 
-    const cv = { role_code: "PM", role_name: "Project Manager" };
+    const cv = { role_code: "PM", role_name: "Project Manager", local_path: "PM/fixture.pdf" };
+    const outreachRepository=createOutreachRepository({filePath:":memory:"});
     const server = createLocalServer({
       recruiterContactStore: store,
+      outreachRepository,
+      applicationReviewStore:createDurableReviewStore(createMemoryReviewRepository()),
       prepareApplication: async () => ({
         jobDescription: { role: "Project Manager", location: "London" },
         recommendation: {
@@ -57,7 +62,7 @@ const test = base.extend({
         rankedCvs: [{ cv, ats: { score: 75 } }],
         coverLetter: {
           subject: "Browser regression application",
-          plainText: "Original browser regression draft."
+          plainText: "Dear {{firstname}},\n\nOriginal browser regression draft.\n\nWarm regards,\nTest Candidate"
         }
       }),
       researchOrganization: async () => ({
@@ -93,6 +98,7 @@ const test = base.extend({
       await new Promise((resolve, reject) =>
         server.close((error) => error ? reject(error) : resolve())
       );
+      outreachRepository.close();
       await rm(directory, { recursive: true, force: true });
     }
   }
@@ -114,14 +120,27 @@ async function prepare(page, app) {
     page.getByRole("button", { name: "Generate application", exact: true }).click()
   ]);
 
+  const reviewId = await page.locator('input[name="reviewId"]').first().inputValue();
+  // This fixture explicitly reimports its synthetic contacts for the new review.
+  const refreshed = await app.store.upsertMany({
+    organisationId: "domain:twinstream.com",
+    incomingContacts: await app.store.listAll()
+  });
+  expect(refreshed.imported).toBe(0);
+  expect(refreshed.duplicates).toBe(4);
+  await expect(page.locator('.simple-contact-status')).toBeAttached();
+  await page.evaluate(async id => {
+    const {refreshImportedContacts} = await import('/review-page.js');
+    await refreshImportedContacts(id);
+  }, reviewId);
   await expect(page.locator(".available-imported-contacts-body")).toBeVisible();
-  return page.locator('input[name="reviewId"]').first().inputValue();
+  return reviewId;
 }
 
 function availableRow(page, id) {
   return page.locator(".available-imported-contacts-body tr").filter({
     has: page.locator(`input.contact-link-checkbox[value="${id}"]`)
-  });
+  }).first();
 }
 
 async function clickDeleteAndWait(page, buttonName) {
@@ -147,7 +166,7 @@ test("delete selected then clear displayed works without researching or saving a
   await page.getByRole("button", { name: "Refresh contacts", exact: true }).click();
   await expect(availableRow(page, "linked")).toHaveCount(0);
 
-  await availableRow(page, "selected").locator("input").check();
+  await availableRow(page, "selected").locator("input[type=checkbox]").check();
   const deleted = await clickDeleteAndWait(page, "Delete selected");
 
   expect(deleted.deleted).toBe(1);
@@ -192,7 +211,7 @@ test("cancelling clear sends no deletion request and preserves contacts", async 
   }).click();
   await dismissed;
 
-  await expect(page.locator(".available-imported-contacts-body tr")).toHaveCount(4);
+  await expect(page.locator(".available-imported-contacts-body tr")).toHaveCount(8);
   expect(deleteRequests).toBe(0);
   expect((await app.store.listAll()).length).toBe(4);
 });
@@ -220,6 +239,7 @@ test("research polish and apply preserve contacts, email layout and saved domain
   );
 
   for (const buttonName of ["Polish cover letter", "Use proposal as current draft"]) {
+    if(buttonName==="Polish cover letter")page.once("dialog",dialog=>dialog.accept());
     await Promise.all([
       page.waitForNavigation(),
       page.getByRole("button", { name: buttonName, exact: true }).click()
@@ -235,23 +255,25 @@ test("research polish and apply preserve contacts, email layout and saved domain
   await expect(row.locator("td")).toHaveCount(5);
   await expect(row.locator(".contact-role-cell")).toHaveCount(1);
   await expect(row.locator(".contact-email-cell")).toHaveCount(1);
-  await expect(row.locator('.contact-email-cell a[href^="mailto:"]')).toHaveCount(2);
+  await expect(page.locator('.available-imported-contacts-body tr[data-contact-id="selected"] .candidate-email')).toHaveCount(2);
+  await expect(row.locator(".candidate-email")).toHaveValue("test.selected@twinstream.com");
   await expect(row).not.toContainText("(inferred)");
   expect(errors).toEqual([]);
 });
 
 test("link selected moves only the checked row and retains the page sections", async ({ page, app }) => {
   const reviewId = await prepare(page, app);
-  await availableRow(page, "selected").locator("input").check();
+  await availableRow(page, "selected").locator("input[type=checkbox]").check();
 
-  await Promise.all([
-    page.waitForNavigation(),
-    page.getByRole("button", { name: "Link selected contacts", exact: true }).click()
-  ]);
+  const queued = page.waitForResponse(r=>r.url().endsWith('/api/outreach-queue/link-and-add')&&r.request().method()==='POST');
+  await page.getByRole('button',{name:/^Link and add selected to queue/}).click();
+  expect((await queued).status()).toBe(200);
+  await expect(page.locator('.simple-contact-status')).toContainText('1 new;');
 
   await expect(availableRow(page, "selected")).toHaveCount(0);
   await expect(availableRow(page, "unselected")).toBeVisible();
-  await expect(page.locator(".linked-imported-contacts-body")).toContainText("Test selected");
+  await expect(page.locator('.linked-imported-contacts-body tr[data-contact-id="selected"] .candidate-first').first()).toHaveValue("Test");
+  await expect(page.locator('.linked-imported-contacts-body tr[data-contact-id="selected"] .candidate-last').first()).toHaveValue("selected");
   await expect(page.locator("#email-domain-input")).toBeVisible();
 
   const selected = (await app.store.listAll()).find((contact) => contact.id === "selected");
@@ -289,15 +311,15 @@ test("saving a domain refreshes linked emails without losing local draft edits",
     const emailCell = page.locator(
       ".linked-imported-contacts-body .contact-email-cell"
     );
-    await expect(emailCell.locator("a")).toHaveCount(2);
-    await expect(emailCell).toContainText(`test.linked@${domain}`);
-    await expect(emailCell).toContainText(`linked.test@${domain}`);
-    await expect(emailCell).not.toContainText("@twinstream.com");
+    await expect(emailCell.locator(".candidate-email")).toHaveCount(2);
+    await expect(emailCell.locator(".candidate-email").nth(0)).toHaveValue(`test.linked@${domain}`);
+    await expect(emailCell.locator(".candidate-email").nth(1)).toHaveValue(`linked.test@${domain}`);
+    await expect(emailCell.locator(".candidate-email").nth(0)).not.toHaveValue(/@twinstream\.com$/);
     await expect(page.locator("#cover-letter-draft")).toHaveText(localDraft);
 
     await expect(
-      availableRow(page, "selected").locator(".contact-email-cell")
-    ).toContainText("test.selected@twinstream.com");
+      availableRow(page, "selected").locator(".candidate-email")
+    ).toHaveValue("test.selected@twinstream.com");
   }
 });
 
@@ -313,21 +335,21 @@ test("linked selection unlink and clear preserve contact records and local edits
   });
 
   await page.getByRole("button", { name: "Refresh contacts", exact: true }).click();
-  await expect(page.locator(".linked-contact-checkbox")).toHaveCount(2);
+  await expect(page.locator(".linked-contact-checkbox")).toHaveCount(4);
 
   const draft = "Keep this local draft during contact actions.";
   await page.locator("#cover-letter-draft").fill(draft);
 
   await page.locator("#select-all-linked-contacts").check();
-  await expect(page.locator(".linked-contact-checkbox:checked")).toHaveCount(2);
+  await expect(page.locator(".linked-contact-checkbox:checked")).toHaveCount(4);
   await expect(page.locator(".contact-link-checkbox:checked")).toHaveCount(0);
 
   await page.locator("#select-all-contact-links").check();
   await page.locator("#select-all-linked-contacts").uncheck();
   await expect(page.locator(".linked-contact-checkbox:checked")).toHaveCount(0);
-  await expect(page.locator(".contact-link-checkbox:checked")).toHaveCount(2);
+  await expect(page.locator(".contact-link-checkbox:checked")).toHaveCount(4);
 
-  await page.locator('.linked-contact-checkbox[value="selected"]').check();
+  await page.locator('.linked-contact-checkbox[value="selected"]').first().check();
 
   const unlinkResponse = page.waitForResponse((response) =>
     response.url().endsWith("/api/recruiter-contacts/unlink") &&
@@ -336,7 +358,7 @@ test("linked selection unlink and clear preserve contact records and local edits
   await page.getByRole("button", { name: "Unlink selected", exact: true }).click();
   expect((await unlinkResponse).status()).toBe(200);
 
-  await expect(page.locator(".linked-contact-checkbox")).toHaveCount(1);
+  await expect(page.locator(".linked-contact-checkbox")).toHaveCount(2);
   await expect(availableRow(page, "selected")).toBeVisible();
   await expect(page.locator("#cover-letter-draft")).toHaveText(draft);
   expect((await app.store.listAll()).length).toBe(4);
@@ -355,7 +377,7 @@ test("linked selection unlink and clear preserve contact records and local edits
   await page.getByRole("button", { name: "Clear linked contacts", exact: true }).click();
   await dismissed;
   expect(requests).toBe(0);
-  await expect(page.locator(".linked-contact-checkbox")).toHaveCount(1);
+  await expect(page.locator(".linked-contact-checkbox")).toHaveCount(2);
 
   page.once("dialog", (dialog) => dialog.accept());
   const clearResponse = page.waitForResponse((response) =>
@@ -384,7 +406,7 @@ test("organisation summary follows refresh domain saving and unlinking", async (
   const summary = page.locator(".organisation-contact-summary");
   const rows = page.locator(".organisation-contact-summary-body tr");
 
-  await expect(summary).toBeHidden();
+  await expect(summary).toBeVisible();
 
   await app.store.linkToReview({
     reviewId,
@@ -396,10 +418,11 @@ test("organisation summary follows refresh domain saving and unlinking", async (
   }).click();
 
   await expect(summary).toBeVisible();
-  await expect(rows).toHaveCount(1);
-  await expect(rows).toContainText("Test linked");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.locator(".candidate-first").first()).toHaveValue("Test");
+  await expect(rows.locator(".candidate-last").first()).toHaveValue("linked");
 
-  const draft = "Summary updates must not replace this local draft.";
+  const draft = "Dear {{firstname}},\n\nSummary updates must not replace this local draft.\n\nWarm regards,\nTest Candidate";
   await page.locator("#cover-letter-draft").fill(draft);
 
   await page.locator("#email-domain-input").fill("summary-company.test");
@@ -411,33 +434,30 @@ test("organisation summary follows refresh domain saving and unlinking", async (
   await expect(page.locator("#email-domain-status")).toHaveText(
     "Domain saved for this active review."
   );
-  await expect(rows).toContainText("summary-company.test");
-  await expect(page.locator("#cover-letter-draft")).toHaveText(draft);
+  await expect(rows.locator(".candidate-email").first()).toHaveValue(/@summary-company\.test$/);
+  await expect(page.locator("#cover-letter-draft")).toHaveText(draft, {useInnerText:true});
 
-  await page.locator('.linked-contact-checkbox[value="linked"]').check();
+  await page.locator('.linked-contact-checkbox[value="linked"]').first().check();
   await page.getByRole("button", {
     name: "Unlink selected",
     exact: true
   }).click();
 
-  await expect(summary).toBeHidden();
+  await expect(summary).toBeVisible();
   await expect(rows).toHaveCount(0);
   await expect(availableRow(page, "linked")).toBeVisible();
-  await expect(page.locator("#cover-letter-draft")).toHaveText(draft);
+  await expect(page.locator("#cover-letter-draft")).toHaveText(draft, {useInnerText:true});
   expect((await app.store.listAll()).length).toBe(4);
 
-  await availableRow(page, "linked").locator("input").check();
-  await Promise.all([
-    page.waitForNavigation(),
-    page.getByRole("button", {
-      name: "Link selected contacts",
-      exact: true
-    }).click()
-  ]);
+  await availableRow(page, "linked").locator("input[type=checkbox]").check();
+  const queued = page.waitForResponse(r=>r.url().endsWith('/api/outreach-queue/link-and-add')&&r.request().method()==='POST');
+  await page.getByRole('button',{name:/^Link and add selected to queue/}).click();
+  expect((await queued).status()).toBe(200);
+  await expect(page.locator('.simple-contact-status')).toContainText('1 new;');
 
   await expect(summary).toBeVisible();
-  await expect(rows).toHaveCount(1);
-  await expect(rows).toContainText("summary-company.test");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.locator(".candidate-email").first()).toHaveValue(/@summary-company\.test$/);
 });
 
 test("available deletion reports contacts protected by another application", async ({ page, app }) => {
@@ -452,7 +472,7 @@ test("available deletion reports contacts protected by another application", asy
     name: "Refresh contacts", exact: true
   }).click();
 
-  await availableRow(page, "selected").locator("input").check();
+  await availableRow(page, "selected").locator("input[type=checkbox]").check();
 
   const completed = page.waitForResponse((response) =>
     response.url().endsWith("/api/recruiter-contacts/delete") &&
@@ -494,7 +514,7 @@ test("successful available deletion remains visible when refresh fails", async (
     })
   );
 
-  await availableRow(page, "selected").locator("input").check();
+  await availableRow(page, "selected").locator("input[type=checkbox]").check();
   await page.getByRole("button", {
     name: "Delete selected", exact: true
   }).click();
@@ -533,7 +553,7 @@ test("permanent delete requires confirmation and removes selected old-linked rec
 
   const draft = "Permanent contact deletion must preserve local draft edits.";
   await page.locator("#cover-letter-draft").fill(draft);
-  await availableRow(page, "selected").locator("input").check();
+  await availableRow(page, "selected").locator("input[type=checkbox]").check();
 
   let requests = 0;
   page.on("request", (request) => {
@@ -551,7 +571,7 @@ test("permanent delete requires confirmation and removes selected old-linked rec
     });
   });
 
-  await page.getByRole("button", {
+  await page.locator(".contact-linking-actions").getByRole("button", {
     name: "Permanently delete selected", exact: true
   }).click();
   await cancelled;
@@ -566,7 +586,7 @@ test("permanent delete requires confirmation and removes selected old-linked rec
     response.request().method() === "POST"
   );
 
-  await page.getByRole("button", {
+  await page.locator(".contact-linking-actions").getByRole("button", {
     name: "Permanently delete selected", exact: true
   }).click();
 
@@ -580,7 +600,7 @@ test("permanent delete requires confirmation and removes selected old-linked rec
     "1 contact(s) permanently deleted"
   );
   await expect(page.locator("#cover-letter-draft")).toHaveText(draft);
-  await expect(page.getByRole("button", {
+  await expect(page.locator(".contact-linking-actions").getByRole("button", {
     name: "Permanently delete selected", exact: true
   })).toBeEnabled();
 

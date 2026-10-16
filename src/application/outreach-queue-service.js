@@ -1,3 +1,5 @@
+import { cvDisplayName } from './gmail-message-presentation.js';
+import { recipientFirstName } from './outreach-recipient-identity.js';
 import { snapshotMessage, prepareDraftSnapshot } from './outreach-message-snapshot.js';
 import { finalizeOutreachIdentity } from './outreach-final-identity.js';
 import { createHash } from 'node:crypto';
@@ -35,7 +37,7 @@ export function createOutreachQueueService({ repository, contactStore, getReview
     const selectedCode = review.selectedCvRoleCode || review.prepared?.recommendation?.bestCv?.role_code || '';
     const selectedCv = (review.prepared?.rankedCvs || []).map(item=>item.cv).find(cv=>cv?.role_code===selectedCode)
       || (review.prepared?.recommendation?.bestCv?.role_code===selectedCode ? review.prepared.recommendation.bestCv : null);
-    const attachment = selectedCv?.local_path ? {relativePath:String(selectedCv.local_path),name:String(selectedCv.local_path).split(/[\\/]/).at(-1)} : null;
+    const attachment = selectedCv?.local_path ? {relativePath:String(selectedCv.local_path),name:cvDisplayName(process.env.CANDIDATE_DISPLAY_NAME||'Vijay DAFAL',form.jobTitle||selectedCv.role_name)} : null;
     const subject = queueSnapshotSubject(review, submittedSubject);
       if (!subject || /[\r\n]/.test(subject)) invalid('The application needs a valid single-line subject.');
       const items = recipients.map(recipient => {
@@ -52,7 +54,7 @@ export function createOutreachQueueService({ repository, contactStore, getReview
         }
         if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) invalid('Recipient email is invalid.');
         const finalSnapshot=finalizeIdentity===true?finalizeOutreachIdentity(snapshot,{
-          firstName:contact.firstName||contact.fullName?.trim().split(/\s+/)[0],
+          firstName:recipientFirstName(contact),
           candidateName:process.env.CANDIDATE_DISPLAY_NAME||'Vijay DAFAL',advertUrl:advert
         }):snapshot;
         return {
@@ -68,7 +70,7 @@ export function createOutreachQueueService({ repository, contactStore, getReview
             jobReference: form.jobReference || '', selectedCvRoleCode: review.selectedCvRoleCode || ''
           },
           subject, ...finalSnapshot,
-        ...(finalSnapshot.bodyHtml ? {firstname:String(contact.firstName || contact.fullName?.trim().split(/\s+/)[0] || ''),
+        ...(finalSnapshot.bodyHtml ? {firstname:recipientFirstName(contact),
           lastname:String(contact.lastName || ''),attachment} : {})
         };
       });
@@ -92,4 +94,5 @@ export function createOutreachQueueService({ repository, contactStore, getReview
     }
   };
 }
+
 

@@ -1,3 +1,4 @@
+import {renderLinkedRoleOpening} from '../../domain/shared/linked-role-opening.js';
 function escape(value) {
   return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
@@ -17,6 +18,8 @@ export function renderCoverLetterHtml(text = '', highlightPhrases = []) {
     }
     return result+escape(line.slice(cursor));
   };
+  const linked=renderLinkedRoleOpening(text,highlight);
+  if(linked!==null)return linked;
   return String(text).replace(/\r\n/g, '\n').split('\n').map(line => {
     const match = line.match(/^Job advert:\s*(https?:\/\/\S+)\s*$/i);
     if (match) {

@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 import {createApplicationPackExporter} from '../../infrastructure/applications/application-pack-exporter.js';
+import {createSqliteJobImportStore} from '../../infrastructure/applications/sqlite-job-import-store.js';
 import { gmailLoadedEnvironment } from '../../application/gmail-runtime-diagnostics.js';
 import {createSqliteReviewStore} from '../../infrastructure/applications/sqlite-review-store.js';
 import { createOutreachRepository } from '../../infrastructure/outreach/sqlite-outreach-repository.js';
 
 import { createRecruiterContactStore } from "../../application/recruiter-contact-store.js";
 import { createRecruiterContactImportService } from "../../application/import-recruiter-contacts.js";
+import {deploymentRuntime} from '../../config/deployment-runtime.js';
 import { loadRuntimeConfig } from '../../config/load-runtime-config.js';
 import {
   createFileTemplateRepository
@@ -30,6 +32,7 @@ import { createSelectedCvEvidenceLoader } from '../../application/selected-cv-ev
 import { createLocalServer } from './create-local-server.js';
 
 const DEFAULT_TEMPLATE_ID = 'standard-cover-letter';
+const deployment=deploymentRuntime({env:process.env,projectRoot:fileURLToPath(new URL('../../../',import.meta.url))});
 
 const config = loadRuntimeConfig({
   env: process.env
@@ -79,11 +82,7 @@ const projectRoot = path.resolve(
 );
 
 const recruiterContactStore = createRecruiterContactStore({
-  filePath: path.join(
-    projectRoot,
-    "output",
-    "imported-recruiter-contacts.json"
-  )
+  filePath: deployment.contacts
 });
 
 const recruiterContactImportService = createRecruiterContactImportService({
@@ -91,7 +90,7 @@ const recruiterContactImportService = createRecruiterContactImportService({
 });
 
 const outreachRepository = createOutreachRepository({
-  filePath: path.join(projectRoot, "output", "outreach.db")
+  filePath: deployment.outreach
 });
 
 const cvEvidenceLoader = createSelectedCvEvidenceLoader({
@@ -100,8 +99,10 @@ const cvEvidenceLoader = createSelectedCvEvidenceLoader({
   documentExtractor: createPdfTextExtractor({ cvFolder: process.env.CV_FOLDER })
 });
 
-const applicationReviewStore=createSqliteReviewStore({filePath:path.join(projectRoot,'output','application-reviews-v1.db')});
+const applicationReviewStore=createSqliteReviewStore({filePath:deployment.reviews});
+const jobImportService=createSqliteJobImportStore({filePath:deployment.imports});
 const server = createLocalServer({
+  jobImportService,
   applicationReviewStore,
   applicationPackExporter:createApplicationPackExporter({cvFolder:config.storage.cvFolder}),
   cvEvidenceLoader,
@@ -129,7 +130,18 @@ const server = createLocalServer({
     }
 
     return prepareApplicationFromRepositories({
-      request,
+      request: {
+        ...request,
+        candidateProfile: {
+          ...(request.candidateProfile || {}),
+          displayName: (
+            String(process.env.CANDIDATE_DISPLAY_NAME || '').trim() ||
+            String(request.candidateProfile?.displayName || '').trim() ||
+            String(request.candidateProfile?.name || '').trim() ||
+            String(request.candidateProfile?.firstName || '').trim()
+          )
+        }
+      },
       templateId: DEFAULT_TEMPLATE_ID,
       templateRepository,
       cvInventoryRepository
@@ -153,6 +165,9 @@ server.listen(config.server.port, config.server.host, () => {
   );
 });
 
-server.on("close", () => {outreachRepository.close();applicationReviewStore.close();});
+server.on("close", () => {outreachRepository.close();applicationReviewStore.close();jobImportService.close();});
 
 
+
+// Wait for active HTTP requests before closing persistent stores.
+for(const signal of ['SIGINT','SIGTERM',...(process.platform==='win32'?['SIGBREAK']:[])])process.on(signal,()=>server.close(()=>process.exit(0)));

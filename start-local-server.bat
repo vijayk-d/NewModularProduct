@@ -1,5 +1,6 @@
 @echo off
 setlocal
+set "NMP_ENV=development"
 
 cd /d "%~dp0"
 
