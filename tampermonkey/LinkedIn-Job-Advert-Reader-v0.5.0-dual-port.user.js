@@ -1,12 +1,17 @@
 // ==UserScript==
 // @name         LinkedIn Job Advert - Diagnostic Reader
 // @namespace    local.linkedin-job-reader
-// @version      0.3.0
-// @description  Read job details locally with a green rounded corner button.
+// @version      0.5.0
+// @description  Review LinkedIn jobs and import to production (3100), development (3000), or both.
 // @match        https://www.linkedin.com/*
 // @run-at       document-idle
 // @noframes
 // @grant        GM_setClipboard
+// @grant        GM_xmlhttpRequest
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @connect      127.0.0.1
+// @connect      localhost
 // ==/UserScript==
 
 (() => {
@@ -118,7 +123,7 @@
     const workplaceTypes = [...new Set(([workplace.value, ...preferences, primary.value].join("\n").match(/\b(?:hybrid|remote|on[- ]site)\b/gi) || []).map(value => /^hybrid$/i.test(value) ? "Hybrid" : /^remote$/i.test(value) ? "Remote" : "On-site"))];
     const id = location.pathname.match(JOB_PATH)?.[1] || "";
     return {
-      scriptVersion: "0.3.0", extractedAt: new Date().toISOString(), jobId: id, jobUrl: `https://www.linkedin.com/jobs/view/${id}/`, sourceUrl: location.href,
+      scriptVersion: "0.5.0", extractedAt: new Date().toISOString(), jobId: id, jobUrl: `https://www.linkedin.com/jobs/view/${id}/`, sourceUrl: location.href,
       jobTitle: clean(title.value),
       advertiser: {name: clean(company.value), linkedinUrl: companyAnchor ? absoluteUrl(companyAnchor.getAttribute("href")) : "", note: "Company/agency shown on the advert; not independently verified as the employer."},
       location: {raw: locationMatch.value, workplaceTypes, primaryDetailsRaw: primary.value, jobPreferencesRaw: preferences},
@@ -202,29 +207,203 @@
       "EXPANSION REPORT", JSON.stringify(result.diagnostics.expansionReport, null, 2)
     ].join("\n");
   }
+  const IMPORT_TARGETS = Object.freeze([
+    Object.freeze({id:"production", label:"Production (3100)", origin:"http://127.0.0.1:3100", keyName:"job-import-key:production-3100"}),
+    Object.freeze({id:"development", label:"Development (3000)", origin:"http://127.0.0.1:3000", keyName:"job-import-key:development-3000"})
+  ]);
+  const DESTINATION_SETTING = "job-import-destination-mode";
+  let importBusy = false;
+  function selectedTargets(mode) {
+    if (mode === "both") return [...IMPORT_TARGETS];
+    const target = IMPORT_TARGETS.find(item => item.id === mode);
+    return target ? [target] : [];
+  }
+  function storedImportKey(target) {
+    const current = String(GM_getValue(target.keyName, "") || "").trim();
+    if (current) return /^[a-f0-9]{64}$/i.test(current) ? current : "";
+    // The existing single-server key belongs only to development. Never silently reuse it for production.
+    if (target.id === "development") {
+      const legacy = String(GM_getValue("job-import-key", "") || "").trim();
+      return /^[a-f0-9]{64}$/i.test(legacy) ? legacy : "";
+    }
+    return "";
+  }
+  function configureImportKey(target) {
+    const value = window.prompt(
+      `Paste the 64-character LOCAL job-reader key for ${target.label}.\n`+
+      `Get it from Pair/reconnect LinkedIn job reader at ${target.origin}.\n`+
+      "This is NOT a Gmail or Perplexity credential. The current key is not displayed.", ""
+    );
+    if (value === null) return false;
+    const key = value.trim();
+    if (!/^[a-f0-9]{64}$/i.test(key)) {window.alert("Expected the 64-character local reader key. Nothing changed.");return false;}
+    GM_setValue(target.keyName, key);
+    return true;
+  }
+  function buildJobImportPayload(r, includePosters = true) {
+    const modes = r.location.workplaceTypes;
+    const mode = modes.length === 1 ? ({hybrid:"hybrid",remote:"remote","on-site":"onsite","on site":"onsite"})[modes[0].toLowerCase()] || "unknown" : "unknown";
+    const patterns = String(r.aboutTheJob || "").split(/\r?\n/).map(value=>value.trim())
+      .filter(value=>/\b(?:\d+|one|two|three|four|five)\s*days?\s*(?:(?:per|a)\s*week)?\s*(?:in(?:\s+the)?\s+office|office|on[- ]site)\b/i.test(value))
+      .sort((a,b)=>Number(/per week|a week/i.test(b))-Number(/per week|a week/i.test(a)));
+    return {
+      schemaVersion:1,source:"linkedin",requestId:crypto.randomUUID(),jobId:r.jobId,
+      jobAdvertLink:r.jobUrl,jobTitle:r.jobTitle,jobDescriptionText:r.aboutTheJob,
+      advertiser:{name:r.advertiser.name,linkedinUrl:r.advertiser.linkedinUrl},
+      location:{text:r.location.raw,workplaceType:mode,workingPatternText:patterns[0] || ""},
+      jobPosters:includePosters ? (r.hiringTeamOrJobPoster.identifiedJobPosters || [])
+        .filter(p=>p.identification==='Explicit "Job poster" label')
+        .map(p=>({fullName:p.fullName,headline:p.headline,linkedinUrl:p.linkedinUrl,identification:"explicit-job-poster-label"})) : [],
+      extraction:{readerVersion:"0.5.0",extractedAt:r.extractedAt,descriptionStatus:r.descriptionDetails.possiblyTruncated ? "possibly-truncated" : "unknown"}
+    };
+  }
+  function createImportTransaction(result, includePosters) {
+    const payload = buildJobImportPayload(result, includePosters);
+    if (!/^\d{1,20}$/.test(payload.jobId) || !String(payload.jobTitle).trim()) throw new Error("A valid job ID and job title are required. Extract the intended advert again.");
+    if (!String(payload.jobDescriptionText).trim() || /^About the job\s*$/i.test(payload.jobDescriptionText)) throw new Error("The description is empty or heading-only. Expand it and extract again.");
+    if (payload.jobDescriptionText.length > 48000 || new TextEncoder().encode(payload.jobDescriptionText).length > 48000) throw new Error("The description exceeds the server's 48 KiB limit. It has NOT been truncated or sent.");
+    if (payload.jobTitle.length > 300) throw new Error("The job title exceeds the server limit. Nothing sent.");
+    if (payload.jobPosters.length > 5) throw new Error("More than five labelled posters were found. Review the extraction; no posters were silently dropped. You can uncheck poster inclusion before sending.");
+    return {payload,json:JSON.stringify(payload),results:new Map(),started:false};
+  }
+  function importFailure(message, kind = "uncertain") {
+    const error = new Error(message);error.importKind = kind;return error;
+  }
+  function sendJobImport(transaction, target, key) {
+    return new Promise((resolve,reject)=>{
+      let finished=false,handle,timer;
+      const complete=(error,value)=>{if(finished)return;finished=true;clearTimeout(timer);error ? reject(error) : resolve(value);};
+      timer=setTimeout(()=>{
+        complete(importFailure("No receipt before the local deadline. Storage outcome is unknown; retry this same payload."));
+        try {handle?.abort();} catch {}
+      },16000);
+      try {
+        handle=GM_xmlhttpRequest({
+          method:"POST",url:target.origin+"/api/job-imports",anonymous:true,redirect:"error",
+          headers:{"Content-Type":"application/json","X-Job-Import-Token":key},
+          data:transaction.json,timeout:15000,
+          onload:response=>{
+            if(response.finalUrl) {
+              try {
+                const final=new URL(response.finalUrl);
+                if(final.origin!==target.origin || final.pathname!=="/api/job-imports") {
+                  complete(importFailure("Unexpected response destination. No storage confirmation accepted."));return;
+                }
+              } catch {complete(importFailure("Invalid response destination. No storage confirmation accepted."));return;}
+            }
+            let receipt;
+            try {receipt=JSON.parse(response.responseText);} catch {
+              complete(importFailure("Invalid server JSON. Storage outcome is unknown; retry the same payload."));return;
+            }
+            if(!receipt || typeof receipt!=="object" || Array.isArray(receipt)) {
+              complete(importFailure("Invalid receipt shape. Storage outcome is unknown; retry the same payload."));return;
+            }
+            if(response.status<200 || response.status>=300) {
+              const kind=[400,401,403,404,405,409,413,415].includes(response.status)?"rejected":"uncertain";
+              let detail=typeof receipt.error==="string"?receipt.error.replaceAll(key,"[redacted]").replace(/[\u0000-\u001f]/g," ").slice(0,240):"Import rejected.";
+              if(response.status===401)detail="Reader key not accepted. Configure this destination's key and retry.";
+              complete(importFailure(`HTTP ${response.status}: ${detail}`,kind));return;
+            }
+            if(receipt.ok!==true || receipt.stored!==true || typeof receipt.importId!=="string" || !receipt.importId.trim() || !Number.isInteger(receipt.revision) || receipt.revision<1) {
+              complete(importFailure("No valid storage receipt. Storage outcome is unknown; retry the same payload."));return;
+            }
+            complete(null,{importId:receipt.importId,revision:receipt.revision,duplicate:receipt.duplicate===true});
+          },
+          onerror:()=>complete(importFailure("Server unavailable, request blocked, or redirect refused. No receipt; storage outcome is unconfirmed.")),
+          ontimeout:()=>complete(importFailure("Request timed out. Storage outcome is unknown; retry this same payload.")),
+          onabort:()=>complete(importFailure("Request aborted. No confirmed storage receipt."))
+        });
+      } catch {complete(importFailure("The local request could not start. Check Tampermonkey permissions.","not-sent"));}
+    });
+  }
+  async function deliverImport(transaction, targets, onUpdate = ()=>{}) {
+    await Promise.all(targets.map(async target=>{
+      if(transaction.results.get(target.id)?.kind==="stored")return;
+      const key=storedImportKey(target);
+      if(!key){transaction.results.set(target.id,{kind:"not-sent",message:"Reader key not configured; nothing sent to this destination."});onUpdate();return;}
+      transaction.results.set(target.id,{kind:"sending",message:"Awaiting storage receipt…"});onUpdate();
+      try {
+        const receipt=await sendJobImport(transaction,target,key);
+        transaction.results.set(target.id,{kind:"stored",...receipt});
+      } catch(error) {
+        transaction.results.set(target.id,{kind:error.importKind || "uncertain",message:error.message});
+      }
+      onUpdate();
+    }));
+  }
+
   function showPanel(result) {
     document.getElementById(PANEL_ID)?.remove();
-    const panel = document.createElement("div"); panel.id = PANEL_ID;
-    Object.assign(panel.style, {position: "fixed", inset: "5vh 3vw 5vh auto", width: "min(850px, 94vw)", zIndex: "2147483647", background: "#fff", color: "#111827", border: "3px solid #16a34a", borderRadius: "16px", boxShadow: "0 12px 45px #0006", display: "flex", flexDirection: "column", padding: "14px", boxSizing: "border-box", font: "14px system-ui, sans-serif"});
-    const toolbar = document.createElement("div");
-    Object.assign(toolbar.style, {display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center", marginBottom: "10px"});
-    const title = document.createElement("span"); title.textContent = `Job ${result.jobId} — extraction review`; title.style.fontWeight = "700"; title.style.marginRight = "auto"; toolbar.append(title);
-    const output = document.createElement("textarea"); output.readOnly = true; output.spellcheck = false; output.value = readable(result);
-    Object.assign(output.style, {flex: "1", minHeight: "0", width: "100%", resize: "none", boxSizing: "border-box", background: "#f8fafc", color: "#111827", border: "1px solid #cbd5e1", padding: "12px", font: "13px/1.5 monospace"});
-    function action(label, handler) {
-      const button = document.createElement("button"); button.type = "button"; button.textContent = label;
-      Object.assign(button.style, {padding: "7px 10px", cursor: "pointer", color: "#111827", background: "#f1f5f9", border: "1px solid #94a3b8", borderRadius: "12px"});
-      button.addEventListener("click", handler); toolbar.append(button);
+    const panel=document.createElement("div");panel.id=PANEL_ID;
+    Object.assign(panel.style,{position:"fixed",inset:"5vh 3vw 5vh auto",width:"min(850px, 94vw)",zIndex:"2147483647",background:"#fff",color:"#111827",border:"3px solid #16a34a",borderRadius:"16px",boxShadow:"0 12px 45px #0006",display:"flex",flexDirection:"column",padding:"14px",boxSizing:"border-box",font:"14px system-ui, sans-serif"});
+    const toolbar=document.createElement("div");Object.assign(toolbar.style,{display:"flex",flexWrap:"wrap",gap:"8px",alignItems:"center",marginBottom:"10px"});
+    const title=document.createElement("span");title.textContent=`Job ${result.jobId} — extraction review`;title.style.fontWeight="700";title.style.marginRight="auto";toolbar.append(title);
+    const output=document.createElement("textarea");output.readOnly=true;output.spellcheck=false;output.value=readable(result);
+    Object.assign(output.style,{flex:"1",minHeight:"0",width:"100%",resize:"none",boxSizing:"border-box",background:"#f8fafc",color:"#111827",border:"1px solid #cbd5e1",padding:"12px",font:"13px/1.5 monospace"});
+    const controls=[];
+    function action(label,handler){
+      const button=document.createElement("button");button.type="button";button.textContent=label;
+      Object.assign(button.style,{padding:"7px 10px",cursor:"pointer",color:"#111827",background:"#f1f5f9",border:"1px solid #94a3b8",borderRadius:"12px"});
+      button.addEventListener("click",handler);toolbar.append(button);controls.push(button);return button;
     }
-    action("Readable view", () => {output.value = readable(result);});
-    action("JSON view", () => {output.value = JSON.stringify(result, null, 2);});
-    action("Copy shown text", () => GM_setClipboard(output.value, "text"));
-    action("Extract again", runExtraction);
-    action("Close", () => panel.remove());
-    panel.append(toolbar, output); document.body.append(panel);
+    const receipt=document.createElement("pre");receipt.setAttribute("role","status");receipt.setAttribute("aria-live","polite");
+    Object.assign(receipt.style,{whiteSpace:"pre-wrap",overflowWrap:"anywhere",maxHeight:"23vh",overflowY:"auto",padding:"10px",margin:"0 0 10px",background:"#f0fdf4",font:"13px/1.5 system-ui, sans-serif"});
+    let pending=null,sending=false;
+    const destinationLabel=document.createElement("label");destinationLabel.textContent="Send to: ";
+    const destination=document.createElement("select");destination.setAttribute("aria-label","Import destinations");
+    for(const [value,label] of [["both","Both — Production 3100 + Development 3000"],["production","Production only — 3100"],["development","Development only — 3000"]]){
+      const option=document.createElement("option");option.value=value;option.textContent=label;destination.appendChild(option);
+    }
+    const saved=GM_getValue(DESTINATION_SETTING,"both");destination.value=["both","production","development"].includes(saved)?saved:"both";
+    destinationLabel.appendChild(destination);toolbar.appendChild(destinationLabel);
+    const posterLabel=document.createElement("label"),include=document.createElement("input");include.type="checkbox";include.checked=true;
+    posterLabel.append(include,document.createTextNode(" Include explicitly labelled posters (no contact/email action yet)"));toolbar.appendChild(posterLabel);
+    function renderReceipt(){
+      const activeIds=new Set(selectedTargets(destination.value).map(target=>target.id));
+      const lines=[pending ? `Payload request ID: ${pending.payload.requestId}` : "No import sent from this review yet."];
+      for(const target of IMPORT_TARGETS){
+        const state=pending?.results.get(target.id),selected=activeIds.has(target.id)?"selected":"not selected";
+        if(state?.kind==="stored")lines.push(`${target.label}: STORED — ${state.importId}, revision ${state.revision}${state.duplicate?" (already stored)":""}. Confirmed; will not be resent from this review.`);
+        else if(state)lines.push(`${target.label}: ${state.kind.toUpperCase()} — ${state.message} [${selected}]`);
+        else lines.push(`${target.label}: ${selected}; reader key ${storedImportKey(target)?"configured":"not configured"}.`);
+      }
+      lines.push("Each server has its own copy and import ID. Later application edits are not synchronised.");
+      if(pending?.started)lines.push("Poster selection is locked for this payload. Keep this panel open for same-payload retries; Extract again creates a new review.");
+      receipt.textContent=lines.join("\n");
+    }
+    destination.addEventListener("change",()=>{GM_setValue(DESTINATION_SETTING,destination.value);renderReceipt();});
+    include.addEventListener("change",()=>{if(!pending?.started)pending=null;renderReceipt();});
+    action("Readable view",()=>{output.value=readable(result);});
+    action("JSON view",()=>{output.value=JSON.stringify(result,null,2);});
+    action("Import JSON only",()=>{
+      try{pending=pending || createImportTransaction(result,include.checked);output.value=JSON.stringify(pending.payload,null,2);renderReceipt();}
+      catch(error){receipt.textContent=error.message;}
+    });
+    action("Copy shown text",()=>GM_setClipboard(output.value,"text"));
+    for(const target of IMPORT_TARGETS)action(`Configure ${target.label} key`,()=>{if(configureImportKey(target))renderReceipt();});
+    action("Send / retry selected destinations",async()=>{
+      if(sending || importBusy){receipt.textContent="An import is already in progress. Wait for its receipts before sending again.";return;}
+      if(location.pathname.match(JOB_PATH)?.[1]!==result.jobId){receipt.textContent="Page changed. Extract the intended job again.";return;}
+      try{pending=pending || createImportTransaction(result,include.checked);}catch(error){receipt.textContent=error.message;return;}
+      const targets=selectedTargets(destination.value),remaining=targets.filter(target=>pending.results.get(target.id)?.kind!=="stored");
+      if(!remaining.length){renderReceipt();return;}
+      const configured=remaining.filter(target=>storedImportKey(target));
+      if(!configured.length){for(const target of remaining)pending.results.set(target.id,{kind:"not-sent",message:"Configure this destination's reader key first."});renderReceipt();return;}
+      const details=remaining.map(target=>`${target.label} — ${target.origin}${storedImportKey(target)?"":" — NOT SENT (key not configured)"}`).join("\n");
+      if(!window.confirm(`Send reviewed job ${result.jobId} and ${pending.payload.jobPosters.length} explicitly labelled poster(s)?\n\n${details}\n\nDiagnostics and main-page snapshot are excluded. No generation, research, contact import, draft creation or sending is triggered. Previously confirmed destinations will not be resent.`))return;
+      sending=true;importBusy=true;pending.started=true;controls.forEach(button=>button.disabled=true);include.disabled=true;destination.disabled=true;
+      const extractButton=document.getElementById(BUTTON_ID);if(extractButton){extractButton.disabled=true;extractButton.textContent="Sending reviewed job…";}
+      try{await deliverImport(pending,remaining,renderReceipt);}finally{
+        sending=false;importBusy=false;controls.forEach(button=>button.disabled=false);destination.disabled=false;
+        if(extractButton){extractButton.disabled=false;extractButton.textContent="Extract LinkedIn job";}
+        renderReceipt();
+      }
+    });
+    action("Extract again",runExtraction);action("Close",()=>panel.remove());
+    panel.append(receipt,toolbar,output);document.body.append(panel);renderReceipt();
   }
   async function runExtraction() {
-    if (busy || !supported()) return;
+    if (busy || importBusy || !supported()) return;
     busy = true;
     const button = document.getElementById(BUTTON_ID);
     if (button) {button.disabled = true; button.textContent = "Reading…"; button.style.opacity = "0.75";}
