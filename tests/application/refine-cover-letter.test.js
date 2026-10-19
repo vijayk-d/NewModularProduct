@@ -71,6 +71,7 @@ test('normalizes manual research selections and returns a proposal without chang
   assert.deepEqual(calls, [{
     applicationJobTitle: '',
     organisationName: '',
+    advertiserRelationship:'direct-employer',candidateProfessionalValues:'',allowUnknownOrganisation:false,
     jobAdvertLink: '',
     protectOutreachStructure: false,
     researchSources: [],
@@ -88,7 +89,8 @@ test('normalizes manual research selections and returns a proposal without chang
     }],
     organisationUrl: 'https://example.test/',
     instructions: 'Improve clarity',
-    maxWords: 450
+    letterLengthMode:'standard',
+    maxWords: 400
   }]);
 
   assert.equal(result.proposedDraft, 'Proposed draft');

@@ -1,3 +1,5 @@
+import {assessLetterQuality,lengthPolicy} from '../../domain/cover-letter/letter-quality-policy.js';
+import {renderAchievementPreparation,renderAchievementSummary} from './achievement-preparation-view.js';
 import {usesCandidateValues,contextMode} from '../../domain/cover-letter/advertiser-context.js';
 import {sanitizeSnapshotHtml} from '../../application/outreach-message-snapshot.js';
 import { LETTER_TONES, normalizeLetterTone } from '../../application/cover-letter-controls.js';
@@ -60,6 +62,8 @@ export function renderApplicationForm({
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Application preparation</title>
+<link rel="stylesheet" href="/achievement-preparation.css">
+<script type="module" src="/achievement-preparation.js" nonce="__SCRIPT_NONCE__"></script>
   <style>
     :root {
       color-scheme: light;
@@ -263,21 +267,25 @@ ${renderField('jobAdvertLink', 'Job advert URL', values.jobAdvertLink, { type: '
 <div id="job-import-tools" class="notice"></div>
 <input type="hidden" id="jobImportId" name="jobImportId" value="${escapeHtml(values.jobImportId||'')}">
 <input type="hidden" id="jobImportRevision" name="jobImportRevision" value="${escapeHtml(values.jobImportRevision||'')}">
-${renderField('jobTitle', 'Job title', values.jobTitle, { required: true })}
 ${renderField('organisationUrl', 'Organisation website or LinkedIn page', values.organisationUrl, { type: 'url' })}
+<div class="preparation-fields-row">
+${renderField('jobTitle', 'Job title', values.jobTitle, { required: true })}
 ${renderField('organisationName', 'Organisation / advertiser name', values.organisationName)}
+${renderField('jobLocation', 'Job location', values.jobLocation)}
+</div>
 <label>Advertiser relationship<select id="advertiserRelationship" name="advertiserRelationship"><option value="unknown"${(!values.advertiserRelationship||values.advertiserRelationship==='unknown')?' selected':''}>Unknown — neutral wording and my professional values</option><option value="direct-employer"${values.advertiserRelationship==='direct-employer'?' selected':''}>Direct employer — reviewed employer values may be used</option><option value="recruitment-intermediary"${values.advertiserRelationship==='recruitment-intermediary'?' selected':''}>Recruitment agency / intermediary — use my professional values</option></select></label>
 ${renderField('stakeholderSource', 'Stakeholder source or recruiter page', values.stakeholderSource, {
   placeholder: 'Company People page or recruiter/source URL; recipient name is separate'
 })}
 
-${renderField('jobLocation', 'Job location', values.jobLocation)}
 ${renderField('recruiterName', 'Recipient name (optional; never a URL)', values.recruiterName)}
 ${renderField('professionalValues', 'My professional values (optional, review before using)', values.professionalValues, {textarea:true,placeholder:'Your own approved values; leave blank rather than invent claims'})}
 ${renderField('jobReference', 'Vacancy reference', values.jobReference)}
-${renderField('preferredRoleCodes', 'Preferred CV role codes', values.preferredRoleCodes, { placeholder: 'SM, ADL' })}
+<div id="preferred-role-fallback">${renderField('preferredRoleCodes', 'Preferred CV role codes', values.preferredRoleCodes, { placeholder: 'SM, ADL' })}</div>
+<fieldset id="preferred-role-choices" class="preferred-role-choices" hidden><legend>Preferred CV role codes</legend><label>Filter role codes<input type="search" id="preferred-role-search" autocomplete="off"></label><div id="preferred-role-list" class="preferred-role-list"></div></fieldset>
 ${renderField('jobDescriptionText', 'Job description', values.jobDescriptionText, { required: true, textarea: true })}
-${renderField('cvHighlights', 'CV highlights', values.cvHighlights, { placeholder: 'One truthful, role-relevant item per line', textarea: true })}
+${renderAchievementPreparation(values)}
+<details data-legacy-highlights hidden><summary>Legacy manual highlights — not CV-verified</summary>${renderField('cvHighlights', 'CV highlights', values.cvHighlights, { placeholder: 'Legacy input retained for compatibility', textarea: true })}</details>
       <label><input id="import-job-posters" type="checkbox" name="importJobPosters" value="true"> Import/link explicit job poster(s) as unverified contacts when generating. No email inferred.</label>
       <div class="form-actions">
         <button type="submit">Generate application</button>
@@ -650,6 +658,11 @@ function renderPolishingAttempt(attempt) {
   </dl></section>`;
 }
 
+function qualityMarkup(text,editor,{mode='standard',maxWords=500,advertUrl=''}={}){
+ const q=assessLetterQuality(text,{mode,maxWords,advertUrl});
+ return `<p data-letter-quality-for="${escapeHtml(editor)}" data-quality-mode="${escapeHtml(q.mode)}" data-quality-cap="${escapeHtml(String(maxWords))}" data-advert-url="${escapeHtml(advertUrl)}" role="status" aria-live="polite">${q.wordCount} words · ${q.mode} target ${q.targetMinimum}–${q.maximumWords} · ${q.narrativeParagraphs} narrative paragraphs. ${escapeHtml(q.warnings.join(' '))} Page fit not checked. Subject and Gmail signature excluded.</p>`;
+}
+
 export function renderRefinementPanel({
   reviewId,
   research,
@@ -659,7 +672,8 @@ export function renderRefinementPanel({
   refinementLastAttempt = null,
   polishingModelExplicit = false,
   currentSubject = '',
-  allowWithoutOrganisationResearch = false
+  allowWithoutOrganisationResearch = false,
+  letterLengthMode='standard',qualityMaximumWords=500,rejectedRefinementProposal=null
 }) {
   const values = getSelectableCompanyValues(research);
   const selectedTone = normalizeLetterTone(letterTone);
@@ -687,6 +701,9 @@ export function renderRefinementPanel({
             `
             : (allowWithoutOrganisationResearch?'<p class="rich-editor-notice">Employer/client unconfirmed. Optional polishing uses JD/CV evidence only; advertiser facts are not employer facts.</p>':'<p class="rich-editor-notice">`No verified organisation values were returned. You can still polish the cover letter using the organisation details and available research sources.`</p>')
         }
+        <fieldset class="workspace-choice-cards" data-choice-kind="length"><legend>Letter length for the next polish</legend><div class="workspace-choice-options">
+        ${['standard','extended'].map(mode=>{const p=lengthPolicy(mode,qualityMaximumWords);return `<label class="workspace-choice-card"><input type="radio" name="letterLengthMode" value="${mode}"${mode===letterLengthMode?' checked':''}><span><strong>${mode==='standard'?'Standard senior':'Extended strategic'}</strong><small>${p.targetMinimum}–${p.maximumWords} complete-letter words</small></span></label>`;}).join('')}
+        </div></fieldset><p class="rich-editor-notice">Extended is an explicit choice. No padding, truncation or automatic paid retry. Existing .env caps are respected. Page fit requires a separate rendered check.</p>
         <label for="polishing-model">Polishing model</label>
         <input type="hidden" name="polishingCostGuard" value="required">
         <select id="polishing-model" name="polishingModel" data-selection-explicit="${polishingModelExplicit ? 'true' : 'false'}">
@@ -721,6 +738,7 @@ export function renderRefinementPanel({
         <textarea id="proposed-cover-letter-subject" class="subject-editor-input" rows="2" wrap="soft"
           name="proposedSubject" form="apply-refinement-form" required maxlength="${MAX_SUBJECT_LENGTH}">${escapeHtml(refinementProposal.proposedSubject ?? currentSubject)}</textarea>
         <p class="rich-editor-notice">Subject edits are included when you accept this proposal. They do not change the current subject before acceptance.</p>
+        ${qualityMarkup(refinementProposal.proposedDraft,'proposed-cover-letter',{mode:refinementProposal.letterLengthMode||'standard',maxWords:qualityMaximumWords,advertUrl:refinementProposal.qualityAdvertUrl||''})}
         <label for="proposed-cover-letter">Proposed cover letter</label>
         <div class="rich-editor-toolbar" role="toolbar" aria-label="Proposed cover letter formatting" data-editor-target="proposed-cover-letter">
           <button type="button" data-editor-command="bold" title="Bold selected text"><strong>B</strong></button>
@@ -781,6 +799,7 @@ export function renderRefinementPanel({
       ${selectorMarkup}
       ${renderPolishingAttempt(refinementLastAttempt)}
       ${warningMarkup}
+      ${rejectedRefinementProposal?.proposedDraft?`<details data-rejected-quality-proposal><summary>Retained over-limit proposal — not applied</summary><p>${escapeHtml((rejectedRefinementProposal.warnings||[]).join(' '))}</p><pre style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(rejectedRefinementProposal.proposedDraft)}</pre><form method="post" action="/cover-letter-refinement/reassess-length"><input type="hidden" name="reviewId" value="${escapeHtml(reviewId)}"><input type="hidden" name="letterLengthMode" value="extended"><button type="submit">Review retained proposal in Extended mode — no AI call</button></form></details>`:''}
     </section>
     ${proposalMarkup}
   `;
@@ -898,6 +917,7 @@ export function renderApplicationReview({
   refinementLastAttempt = null,
   polishingModelExplicit = false,
   letterTone = 'professional',
+  letterLengthMode='standard',currentLetterLengthMode='standard',qualityMaximumWords=500,rejectedRefinementProposal=null,
   refinementProposal = null,
   selectedCvRoleCode = '',
   cvSelectionMessage = '',
@@ -930,6 +950,7 @@ export function renderApplicationReview({
     refinementLastAttempt,
     polishingModelExplicit,
     currentSubject: subject,
+    letterLengthMode,qualityMaximumWords,rejectedRefinementProposal,
     allowWithoutOrganisationResearch:usesCandidateValues(formData)
   });
 
@@ -1106,6 +1127,7 @@ export function renderApplicationReview({
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Application review</title>
+<link rel="stylesheet" href="/achievement-preparation.css">
   <style>
     :root {
       color-scheme: light;
@@ -1641,6 +1663,7 @@ ${score}</details>
       <p class="notice">Changing the selected CV does not alter the current cover letter. A future explicit generation or refinement action can use the selected CV.</p>
     </section>
 
+${renderAchievementSummary(formData,activeCvRoleCode)}
 ${renderEmailDomainResolution(reviewId, formData, research)}
 
     <section class="research-panel panel--research">
@@ -1671,6 +1694,7 @@ ${renderEmailDomainResolution(reviewId, formData, research)}
         required maxlength="${MAX_SUBJECT_LENGTH}">${escapeHtml(subject)}</textarea>
       <button id="save-current-subject" type="button" data-review-id="${escapeHtml(reviewId)}">Save subject</button>
       <p id="current-subject-status" role="status" aria-live="polite">Save preserves this subject in the active review. Adding to the queue snapshots the visible subject, even before saving. Existing queue items are unchanged.</p>
+      ${qualityMarkup(plainText,'cover-letter-draft',{mode:currentLetterLengthMode,maxWords:qualityMaximumWords,advertUrl:formData.jobAdvertLink})}
       <label for="cover-letter-draft">Editable cover letter draft</label>
       <div class="rich-editor-toolbar" role="toolbar" aria-label="Cover letter formatting" data-editor-target="cover-letter-draft">
         <button type="button" data-editor-command="bold" title="Bold selected text"><strong>B</strong></button>
@@ -1901,7 +1925,7 @@ ${renderContactLinking(contactLinking)}
   </script>
 
 
-      <script type="module" src="/review-page.js" nonce="__SCRIPT_NONCE__"></script>
+      <script type="module" src="/review-page.js" nonce="__SCRIPT_NONCE__"></script><script type="module" src="/letter-quality-controls.js" nonce="__SCRIPT_NONCE__"></script>
 </body>
 </html>
 

@@ -1,3 +1,4 @@
+import {enhanceWorkspaceV2} from './workspace-review-v2.js';
 import {createLinkedInIcon,historyDate} from './contact-history-display.js';
 // review-ui-v1: presentation only; no fetch, API actions or stored-data rewrites.
 export function actionStyle(button){
@@ -16,7 +17,7 @@ export function renderHistoryRows(body,items,doc=body.ownerDocument){
  for(const item of items){const row=body.insertRow();
   const cell=(label)=>{const c=row.insertCell();c.dataset.label=label;return c;};
   const recipient=cell('Recipient'),name=doc.createElement('strong'),email=doc.createElement('span');name.textContent=item.fullName||'Unnamed contact';email.textContent=item.email||'';const line=doc.createElement('div');line.className='history-recipient-name';line.appendChild(name);const profile=createLinkedInIcon(item.linkedinUrl,item.fullName||'contact',doc);if(profile)line.appendChild(profile);recipient.append(line,email);
-  const subject=cell('Subject');subject.textContent=item.subject||'';subject.className='history-subject';
+  const subject=cell('Subject');subject.textContent=item.subject||'';subject.className='history-subject';subject.title=item.subject||'';subject.tabIndex=0;
   const action=cell('Action'),badge=doc.createElement('span');badge.className=item.action==='send_again'?'history-badge history-badge--repeat':'history-badge';badge.textContent=historyAction(item.action);action.appendChild(badge);
   const sent=cell('Sent'),time=doc.createElement('time');time.textContent=historyDate(item.sentAt);time.title=historyTime(item.sentAt);if(item.sentAt)time.setAttribute('datetime',item.sentAt);sent.appendChild(time);
   const details=doc.createElement('details'),summary=doc.createElement('summary');summary.textContent='Details';details.appendChild(summary);
@@ -44,6 +45,7 @@ export function enhanceReview(doc=document){
  for(const button of doc.querySelectorAll('button,input[type="submit"]'))button.dataset.uiAction=actionStyle(button);
  const main=doc.querySelector('main'),current=doc.querySelector('.panel--current'),decision=doc.querySelector('.panel--decision');if(current&&decision&&current.parentElement===decision.parentElement&&!doc.documentElement?.dataset?.uiEditorPromoted){decision.before(current);if(doc.documentElement)doc.documentElement.dataset.uiEditorPromoted='true';}
  if(main&&!doc.querySelector('.workspace-nav')){const nav=doc.createElement('nav');nav.className='workspace-nav';nav.setAttribute('aria-label','Application workspaces');for(const [href,label] of [['/','New application'],['/applications','Saved applications'],['/outreach-queue','Outreach queue']]){const a=doc.createElement('a');a.href=href;a.textContent=label;if(doc.defaultView?.location.pathname===href||(href==='/applications'&&doc.defaultView?.location.pathname.startsWith('/applications/')))a.setAttribute('aria-current','page');nav.appendChild(a);}main.prepend(nav);}
+ enhanceWorkspaceV2(doc);
 }
 if(typeof document!=='undefined'){
  const boot=()=>{enhanceReview(document);let queued=false;const Observer=document.defaultView?.MutationObserver;if(Observer)new Observer(records=>{if(queued||!records.some(r=>!r.target.closest?.('[contenteditable="true"]')))return;queued=true;(document.defaultView.requestAnimationFrame?.bind(document.defaultView)||setTimeout)(()=>{queued=false;enhanceReview(document);});}).observe(document.body,{childList:true,subtree:true});};

@@ -83,13 +83,12 @@ test('reviews vacancy details and provides local cover-letter copying', async ({
     'https://example.com/jobs/project-manager'
   );
   await page.getByLabel('Vacancy reference').fill('PM-42');
-  await page.getByLabel('Preferred CV role codes').fill('PM, ADL');
+  await page.getByRole('checkbox', {name:'PM — Project Manager',exact:true}).check();
   await page.getByLabel('Job description').fill(
     'Project Manager role requiring delivery leadership and stakeholder management.'
   );
-  await page.getByLabel('CV highlights').fill(
-    'Led complex delivery programmes\nImproved stakeholder reporting'
-  );
+  await expect(page.locator('#achievement-preparation')).toBeVisible();
+  // Empty explicit evidence selections must not invent achievement claims.
 
   await page.getByRole('button', {
     name: 'Generate application'

@@ -8,6 +8,7 @@ import { createOutreachRepository } from '../../infrastructure/outreach/sqlite-o
 import { createRecruiterContactStore } from "../../application/recruiter-contact-store.js";
 import { createRecruiterContactImportService } from "../../application/import-recruiter-contacts.js";
 import {deploymentRuntime} from '../../config/deployment-runtime.js';
+import {createAchievementEvidenceService} from '../../application/achievement-evidence.js';
 import { loadRuntimeConfig } from '../../config/load-runtime-config.js';
 import {
   createFileTemplateRepository
@@ -93,6 +94,7 @@ const outreachRepository = createOutreachRepository({
   filePath: deployment.outreach
 });
 
+const achievementEvidenceService=createAchievementEvidenceService({inventoryRepository:cvInventoryRepository,documentExtractor:createPdfTextExtractor({cvFolder:process.env.CV_FOLDER})});
 const cvEvidenceLoader = createSelectedCvEvidenceLoader({
   inventoryRepository: cvInventoryRepository,
   linkedinRelativePath: String(process.env.CANDIDATE_LINKEDIN_PDF || '').trim(),
@@ -102,10 +104,12 @@ const cvEvidenceLoader = createSelectedCvEvidenceLoader({
 const applicationReviewStore=createSqliteReviewStore({filePath:deployment.reviews});
 const jobImportService=createSqliteJobImportStore({filePath:deployment.imports});
 const server = createLocalServer({
+  coverLetterRefinementMaxWords:config.application.coverLetterRefinementMaxWords,
   jobImportService,
   applicationReviewStore,
   applicationPackExporter:createApplicationPackExporter({cvFolder:config.storage.cvFolder}),
   cvEvidenceLoader,
+  achievementEvidenceService,
   outreachRepository,
   recruiterContactImportService,
   recruiterContactStore,

@@ -11,6 +11,8 @@ export function prepareApplication({
   inventory = {},
   selectedCvPaths = [],
   preferredRoleCodes = [],
+  selectedCvRoleCode = '',
+  selectedAchievementStatements = null,
   jobDescriptionOverrides = {},
   coverLetterTemplate,
   candidateProfile = {},
@@ -44,12 +46,13 @@ export function prepareApplication({
     preferredRoleCodes
   );
 
-  const recommendation = selectCv(
+  let recommendation = selectCv(
     jobDescription,
     selectedInventory,
     preferredRoleCodes
   );
 
+  if(selectedCvRoleCode){const selected=rankedCvs.find(x=>x.cv.role_code===selectedCvRoleCode);if(!selected)throw new Error('The evidence CV is not in this inventory.');recommendation={bestCv:selected.cv,ats:selected.ats,alternativeCv:rankedCvs.find(x=>x.cv.role_code!==selectedCvRoleCode)?.cv||null};}
   const coverLetter = generateCoverLetter({
     template: coverLetterTemplate,
     jobDescription,
@@ -62,6 +65,7 @@ export function prepareApplication({
     refinedCoverLetter,
     atsScore: recommendation.ats,
     cvHighlights,
+    selectedAchievementStatements,
     jdKeywords,
     domainMapping,
     variantProfiles,

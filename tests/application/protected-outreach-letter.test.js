@@ -1,3 +1,4 @@
+import {coverLetterBudget} from '../../src/application/cover-letter-budget.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { composeOutreachLetter, OUTREACH_REDIRECTION } from '../../src/application/compose-outreach-letter.js';
@@ -40,7 +41,8 @@ test('provider prompt gets runtime date and reduced budget, final output include
     protectOutreachStructure: true, maxWords: 450 });
   const prompt=JSON.parse(sent.input[1].content[0].text);
   assert.equal(prompt.currentDate, new Date().toISOString().slice(0,10));
-  assert.equal(prompt.constraints.maxWords,330);
+  assert.equal(prompt.constraints.maxWords,coverLetterBudget({applicationJobTitle:context.jobTitle,organisationName:context.organisationName,jobAdvertLink:context.advertUrl,candidateDisplayName:context.candidateName,protectOutreachStructure:true,maxWords:450}).maximumExperienceWords);
+  assert.equal(prompt.constraints.fullLetterMaximumWords,400);
   assert.ok(result.proposedDraft.includes(context.advertUrl));
   assert.ok(result.proposedDraft.includes(OUTREACH_REDIRECTION));
 });

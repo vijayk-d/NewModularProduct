@@ -7,7 +7,7 @@ async function body(req){if(!String(req.headers['content-type']||'').startsWith(
 export function createApplicationReviewHandler({store,renderReview,sendJson,sendHtml,sendText,applicationPackExporter=null}){
  return async(req,res,url)=>{
   const method=req.method||'GET',route=url.pathname,api=/^\/api\/application-reviews(?:\/([A-Za-z0-9_-]{1,100}))?$/.exec(route),resume=/^\/applications\/([A-Za-z0-9_-]{1,100})$/.exec(route);
-  const asset=['/review-flow-view.js','/contact-workflow-policy.js','/contact-history-display.js','/review-workspace.css','/review-workspace.js','/application-review-controls.js','/application-review-controls.css','/application-export-controls.js'].includes(route);
+  const asset=['/workspace-review-v2.js','/review-flow-view.js','/contact-workflow-policy.js','/contact-history-display.js','/review-workspace.css','/review-workspace.js','/application-review-controls.js','/application-review-controls.css','/application-export-controls.js'].includes(route);
   if(!((method==='GET'&&(route==='/applications'||resume||api||asset))||(method==='POST'&&['/api/application-reviews/save','/api/application-reviews/export'].includes(route))))return false;
   try{
    const origin=req.headers.origin;if((origin&&origin!==`http://${req.headers.host}`&&origin!==`https://${req.headers.host}`)||req.headers['sec-fetch-site']==='cross-site'){sendJson(res,403,{ok:false,error:'Cross-origin application access is not allowed.'});return true;}

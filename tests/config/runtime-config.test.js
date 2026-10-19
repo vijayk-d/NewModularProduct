@@ -150,7 +150,7 @@ test('requires Perplexity API key only when a Perplexity feature is enabled', ()
 });
 
 test('rejects invalid cover-letter refinement word limits', () => {
-  for (const value of ['119', '451', 'not-a-number']) {
+  for (const value of ['119', '501', 'not-a-number']) {
     assert.throws(
       () => loadRuntimeConfig({
         env: {
@@ -159,7 +159,7 @@ test('rejects invalid cover-letter refinement word limits', () => {
       }),
       {
         message:
-          'Invalid runtime configuration: COVER_LETTER_REFINEMENT_MAX_WORDS must be an integer from 120 to 450.'
+          'Invalid runtime configuration: COVER_LETTER_REFINEMENT_MAX_WORDS must be an integer from 120 to 500.'
       }
     );
   }

@@ -1,3 +1,5 @@
+import {newApplicationPolishingModel} from '../../../src/application/new-review-defaults.js';
+import {POLISHING_MODELS} from '../../../src/application/polishing-model-catalog.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
@@ -797,6 +799,7 @@ test('returns a refinement proposal without changing the current draft', async (
 
   assert.equal(refined.status, 200);
   assert.deepEqual(refinementCalls, [{
+    polishingModel:newApplicationPolishingModel(POLISHING_MODELS),
   letterTone: 'professional',
   excludedEmployers: ['micro1'],
   jobDescriptionText: 'Delivery leadership',
@@ -820,7 +823,8 @@ test('returns a refinement proposal without changing the current draft', async (
     }
   ],
   instructions: "",
-  maxWords: 450
+  letterLengthMode:'standard',
+  maxWords: 500
   }]);
   assert.match(refined.text, /Proposed refined draft/);
   assert.match(
@@ -1269,3 +1273,5 @@ test('returns 410 when selecting a CV for an expired review', async (t) => {
 
 
 
+
+test('serves the same quality module for Node-relative and browser imports',async(t)=>{const {server,baseUrl}=await startServer();t.after(()=>server.close());const helper=await request(baseUrl,'/letter-quality-controls.js');assert.equal(helper.status,200);assert.match(helper.text,/from '..\/..\/domain\/cover-letter\/letter-quality-policy.js'/);const policy=await request(baseUrl,'/domain/cover-letter/letter-quality-policy.js');assert.equal(policy.status,200);assert.match(policy.headers.get('content-type'),/javascript/);assert.match(policy.text,/export function assessLetterQuality/);});

@@ -1,3 +1,4 @@
+import {validateAchievementSnapshot} from './achievement-evidence.js';
 export function createSelectedCvEvidenceLoader({ inventoryRepository, documentExtractor, linkedinRelativePath = '' }) {
   if (typeof inventoryRepository?.load !== 'function' || typeof documentExtractor?.extract !== 'function') {
     throw new Error('CV evidence requires inventory and document adapters.');
@@ -17,6 +18,11 @@ export function createSelectedCvEvidenceLoader({ inventoryRepository, documentEx
       if (!text || text.length > 120000) throw fail();
       const jobDescriptionText = String(review.formData?.jobDescriptionText || '').trim();
       if (!jobDescriptionText) throw fail();
+      let achievementEvidence={};
+      if(review.formData?.achievementMode){
+        if(review.formData.achievementSelection){try{validateAchievementSnapshot(review.formData.achievementSelection,{text,roleCode:code,roleName:cv.role_name});}catch{const e=fail();e.message='Achievement evidence changed or belongs to another CV. Return to preparation and review it again. No polishing request was sent.';e.safeAchievementError=true;throw e;}}
+        achievementEvidence={achievementSelectionExplicit:true,approvedAchievementEvidence:review.formData.achievementSelection||null};
+      }
       let profileEvidence = {};
       if (linkedinRelativePath) {
         let profile;
@@ -39,9 +45,9 @@ export function createSelectedCvEvidenceLoader({ inventoryRepository, documentEx
           jobAdvertLink: String(review.formData.jobAdvertLink || '').trim(),
           protectOutreachStructure: true
         } : {}),
-        ...profileEvidence, selectedCvText: text, jobDescriptionText, candidateDisplayName: 'Vijay DAFAL' };
+        ...profileEvidence, ...achievementEvidence, selectedCvText: text, jobDescriptionText, candidateDisplayName: 'Vijay DAFAL' };
     } catch (error) {
-      if (error.code === 'LINKEDIN_EVIDENCE_UNAVAILABLE') throw error;
+      if (error.code === 'LINKEDIN_EVIDENCE_UNAVAILABLE'||error.safeAchievementError) throw error;
       throw fail();
     }
   };

@@ -165,7 +165,7 @@ test('rejects a proposal that exceeds the configured word limit', async () => {
 
   await assert.rejects(
     () => adapter.refine(createRequest()),
-    /exceeded the configured word limit/
+    /selected standard limit is 400/
   );
 });
 

@@ -190,4 +190,61 @@ class WindowsEnvironmentPolicyTests(unittest.TestCase):
   for call in run.call_args_list:
    env=call.kwargs['env'];self.assertIn('SYSTEMROOT',env);self.assertIn('SYSTEMDRIVE',env);self.assertNotIn('GMAIL_OAUTH_REFRESH_TOKEN',env)
 
+
+class StagedSourceBytePolicyTests(unittest.TestCase):
+ def test_line_endings_only_are_normalised(self):
+  left=b'\xef\xbb\xbfimport example;\r\n\r\n'
+  right=b'\xef\xbb\xbfimport example;\n\n'
+  self.assertEqual(d.source_bytes_for_comparison(left),d.source_bytes_for_comparison(right))
+ def test_bom_is_preserved_and_changes_are_detected(self):
+  self.assertNotEqual(d.source_bytes_for_comparison(b'\xef\xbb\xbfvalue\n'),d.source_bytes_for_comparison(b'value\n'))
+ def test_leading_and_trailing_whitespace_is_not_stripped(self):
+  for changed in [b' value\n',b'value \n',b'value',b'value\n\n']:
+   self.assertNotEqual(d.source_bytes_for_comparison(b'value\n'),d.source_bytes_for_comparison(changed))
+ def test_bare_cr_is_not_silently_rewritten(self):
+  self.assertNotEqual(d.source_bytes_for_comparison(b'value\r'),d.source_bytes_for_comparison(b'value\n'))
+ def test_unicode_bytes_are_not_lossily_decoded(self):
+  first='£ résumé — delivery\n'.encode('utf-8')
+  self.assertEqual(d.source_bytes_for_comparison(first),first)
+  self.assertNotEqual(d.source_bytes_for_comparison(b'\xff'),d.source_bytes_for_comparison(b'\xfe'))
+ def test_real_git_index_with_bom_and_eol_attributes(self):
+  with tempfile.TemporaryDirectory() as folder:
+   root=Path(folder)
+   def git(*args):
+    return subprocess.run(['git',*args],cwd=root,check=True,capture_output=True)
+   git('init','-q');git('config','core.autocrlf','false')
+   (root/'.gitattributes').write_text('*.js text eol=lf\n',encoding='utf-8')
+   source=root/'sample.js';source.write_bytes(b'\xef\xbb\xbfimport example;\r\n')
+   git('add','.gitattributes','sample.js')
+   with patch.object(d,'ROOT',root):
+    self.assertEqual(d.staged_source_bytes('sample.js'),b'\xef\xbb\xbfimport example;\n')
+    self.assertTrue(d.staged_source_matches('sample.js'))
+    for changed in [b'import example;\r\n',b'\xef\xbb\xbf import example;\r\n',b'\xef\xbb\xbfimport example;']:
+     source.write_bytes(changed);self.assertFalse(d.staged_source_matches('sample.js'))
+ def test_missing_index_blob_does_not_pass(self):
+  with patch.object(d.subprocess,'run',return_value=type('Result',(),{'returncode':1,'stdout':b'','stderr':b'private diagnostic'})()):
+   with self.assertRaisesRegex(RuntimeError,'Cannot read staged source') as error:d.staged_source_bytes('missing.js')
+   self.assertNotIn('private diagnostic',str(error.exception))
+
+
+class BomCheckpointRegressionTests(unittest.TestCase):
+ def test_checkpoint_commits_reviewed_bom_crlf_source_without_false_rejection(self):
+  with tempfile.TemporaryDirectory() as folder:
+   root=Path(folder)/'repo';root.mkdir()
+   def git(*args):
+    return subprocess.run(['git',*args],cwd=root,capture_output=True,check=True).stdout
+   git('init','-q')
+   for k,v in [('user.email','fixture@example.invalid'),('user.name','Fixture'),('commit.gpgsign','false'),('tag.gpgsign','false'),('core.autocrlf','false'),('core.hooksPath',str(root/'empty-hooks'))]:git('config',k,v)
+   (root/'package.json').write_text('{}',encoding='utf-8')
+   (root/'.gitattributes').write_text('*.js text eol=lf\n',encoding='utf-8')
+   git('add','package.json','.gitattributes');git('commit','-qm','Fixture')
+   p=root/'src/app.js';p.parent.mkdir();original=b'\xef\xbb\xbfexport const value=1;\r\n';p.write_bytes(original)
+   with patch.object(d,'ROOT',root),patch.object(d,'prepare',lambda:None),contextlib.redirect_stdout(io.StringIO()):
+    d.plan();review=next((root/'var/maintenance/delivery').glob('checkpoint-plan-*.json'))
+    args=type('Args',(),{'plan':str(review)})()
+    with patch.object(d,'verify_candidate',return_value={'synthetic':True}):d.checkpoint(args)
+   self.assertEqual(p.read_bytes(),original)
+   self.assertEqual(git('show','HEAD:src/app.js'),original.replace(b'\r\n',b'\n'))
+   self.assertEqual(git('diff','--cached','--name-only').strip(),b'')
+
 if __name__=='__main__':unittest.main()

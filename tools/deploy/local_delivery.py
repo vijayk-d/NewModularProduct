@@ -20,6 +20,18 @@ def run(args,cwd=None,env=None,log=None):
  if r.returncode:fail('Command failed. '+('See '+str(log) if log else r.stderr.decode('utf-8','replace')[-1200:]))
  return r.stdout.decode('utf-8','replace').strip()
 def git(*args):return run(['git',*args],env={**os.environ,'GIT_OPTIONAL_LOCKS':'0'})
+def staged_source_bytes(name):
+ r=subprocess.run(['git','show',':'+name],cwd=ROOT,env={**os.environ,'GIT_OPTIONAL_LOCKS':'0'},capture_output=True)
+ if r.returncode:fail('Cannot read staged source: '+name)
+ return r.stdout
+
+def source_bytes_for_comparison(raw):
+ # Git text attributes may change CRLF to LF; preserve every other byte.
+ return raw.replace(b'\r\n',b'\n')
+
+def staged_source_matches(name):
+ return source_bytes_for_comparison(staged_source_bytes(name))==source_bytes_for_comparison((ROOT/name).read_bytes())
+
 def split(s):return [x for x in s.split('\0') if x]
 def base_env():
     keep = {'PATH','PATHEXT','SYSTEMROOT','SYSTEMDRIVE','WINDIR','COMSPEC',
@@ -223,8 +235,7 @@ def checkpoint(args):
   if set(split(git('diff','--cached','--no-renames','--name-only','-z')))!=expected:fail('Staged scope differs. No commit; inspect index.')
   for name in doc['paths']:
    if name in doc['files']:
-    actual=git('show',':'+name).replace('\r\n','\n').rstrip('\n');wanted=(ROOT/name).read_text(encoding='utf-8-sig').replace('\r\n','\n').rstrip('\n')
-    if actual!=wanted:fail('Staged content changed: '+name)
+    if not staged_source_matches(name):fail('Staged content changed: '+name)
   git('commit','-m',doc['message']);commit=git('rev-parse','HEAD')
   if set(split(git('diff-tree','--no-commit-id','--no-renames','--name-only','-r','-z','HEAD')))!=expected or fingerprints()!=doc['files']:fail('Commit created but hooks/concurrent edits changed scope. No tested tag. Inspect '+commit)
   tag='baseline-localprod-'+stamp();git('tag','-a',tag,'-m','Tested baseline '+commit);atomic(ROOT/'var/maintenance/delivery'/('checkpoint-'+commit+'.json'),{'commit':commit,'tag':tag,'testsPassed':True,'report':str(log),'runtime':runtime})

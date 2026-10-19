@@ -1,3 +1,6 @@
+import {lengthPolicy,normalizeLengthMode,assertLetterLength} from '../../domain/cover-letter/letter-quality-policy.js';
+import {newApplicationPolishingModel} from '../../application/new-review-defaults.js';
+import {createAchievementPreparationHandler} from './achievement-preparation-http.js';
 import {createJobImportHandler} from './job-import-http.js';
 import {importJobPosters} from '../../application/import-job-posters.js';
 import {usesCandidateValues,contextMode} from '../../domain/cover-letter/advertiser-context.js';
@@ -8,7 +11,7 @@ import { refinementAttemptLogFields } from '../../application/refinement-attempt
 import { buildPolishingApiRequest } from '../../infrastructure/refinement/perplexity-cover-letter-refinement-adapter.js';
 import { estimatePolishingApiRequest } from '../../application/polishing-cost-estimator.js';
 import { normalizeLetterTone } from '../../application/cover-letter-controls.js';
-import { DEFAULT_POLISHING_MODEL, normalizePolishingModel, buildPolishingAttempt, retainSuccessfulProposal } from '../../application/polishing-model-catalog.js';
+import { POLISHING_MODELS, DEFAULT_POLISHING_MODEL, normalizePolishingModel, buildPolishingAttempt, retainSuccessfulProposal } from '../../application/polishing-model-catalog.js';
 import { extractOutreachExperienceBody } from '../../application/compose-outreach-letter.js';
 import { describeRefinementFailure, formatRefinementFailure } from '../../application/refinement-error-details.js';
 import {createApplicationReviewHandler} from './application-review-http.js';
@@ -41,7 +44,7 @@ const writeDiagnostic = createDiagnosticWriter({
 });
 
 function splitValues(value = '', separator) {
-  return String(value)
+  return String(value ?? '')
     .split(separator)
     .map((item) => item.trim())
     .filter(Boolean);
@@ -71,7 +74,11 @@ return {
   jobDescriptionText: String(
     values.get('jobDescriptionText') || ''
   ).trim(),
-  cvHighlights: splitValues(values.get('cvHighlights'), /\r?\n/)
+  cvHighlights: splitValues(values.get('cvHighlights'), /\r?\n/),
+  achievementMode: values.get('achievementMode')==='selected',
+  achievementCvRoleCode: String(values.get('achievementCvRoleCode')||'').trim(),
+  achievementSourceHash: String(values.get('achievementSourceHash')||'').trim(),
+  achievementIds: values.getAll('achievementIds').map(String)
 };
 }
 
@@ -167,6 +174,8 @@ export function createLocalServer({
   researchOrganization = null,
   coverLetterRefinementPort = null,
   cvEvidenceLoader = null,
+  coverLetterRefinementMaxWords = 500,
+  achievementEvidenceService = null,
   localDiagnosticsEnabled = false,
   diagnosticsWriter = process.stdout,
 } = {}) {
@@ -246,6 +255,10 @@ export function createLocalServer({
       currentDraftSubject: currentReviewSubject(stored),
       currentHighlightPhrases: stored.currentHighlightPhrases || [],
       letterTone: stored.letterTone || 'professional',
+      letterLengthMode:stored.letterLengthMode||'standard',
+      currentLetterLengthMode:stored.currentLetterLengthMode||'standard',
+      rejectedRefinementProposal:stored.rejectedRefinementProposal||null,
+      qualityMaximumWords:coverLetterRefinementMaxWords,
       polishingModel: stored.polishingModel || DEFAULT_POLISHING_MODEL,
       polishingModelExplicit: Boolean(stored.polishingModel),
       refinementLastAttempt: stored.refinementLastAttempt || null,
@@ -321,6 +334,7 @@ export function createLocalServer({
     }
   }
 
+  const handleAchievementPreparation=createAchievementPreparationHandler({service:achievementEvidenceService,sendJson,sendText});
   const handleJobs=createJobImportHandler({service:jobImportService,getReview:id=>reviewStore.get(id),contactStore:recruiterContactStore,sendJson,sendText});
   const handleSavedDelete=createSavedApplicationDeleteHandler({store:reviewStore,contactStore:recruiterContactStore,outreachRepository,sendJson,sendText});
   const handleOrganisationContacts=createOrganisationContactHandler({contactStore:recruiterContactStore,outreachRepository,getReview:id=>reviewStore.get(id),sendJson});
@@ -345,6 +359,7 @@ export function createLocalServer({
     const method = request.method || 'GET';
     const url = new URL(request.url || '/', 'http://localhost');
     if(method==='GET'&&url.pathname==='/healthz'){sendJson(response,200,{ok:true,service:'NewModularProduct',environment:process.env.NMP_ENV||'development',release:process.env.NMP_RELEASE_COMMIT||'development'});return;}
+    if(await handleAchievementPreparation(request,response,url))return;
     if (await handleJobs(request,response,url)) return;
     if (await handleSavedDelete(request,response,url)) return;
     if (await handleApplications(request,response,url)) return;
@@ -425,6 +440,16 @@ export function createLocalServer({
 
         let importedJob=null;
         if(formData.jobImportId){importedJob=jobImportService?.get(formData.jobImportId,formData.jobImportRevision);if(!importedJob||formData.jobAdvertLink!==importedJob.jobAdvertLink){sendHtml(response,409,renderApplicationForm({formData,errors:['Import revision/advert mismatch. Reload the intended import before generating.']}));return;}}
+        let achievementSelection=null;
+        if(formData.achievementMode){
+          if(achievementEvidenceService){const codes=new Set((await achievementEvidenceService.roles()).map(x=>x.roleCode));if(formData.preferredRoleCodes.some(x=>!codes.has(x))){sendHtml(response,400,renderApplicationForm({formData,errors:['A preferred CV code is not in the configured inventory.']}));return;}}
+          if(formData.achievementCvRoleCode||formData.achievementIds.length){
+            if(!achievementEvidenceService){sendHtml(response,503,renderApplicationForm({formData,errors:['CV evidence preparation is unavailable.']}));return;}
+            try{achievementSelection=await achievementEvidenceService.resolve({roleCode:formData.achievementCvRoleCode,sourceHash:formData.achievementSourceHash,ids:formData.achievementIds});}
+            catch(e){sendHtml(response,e.statusCode||503,renderApplicationForm({formData,errors:[e.statusCode?e.message:'CV evidence could not be checked. No provider request was made.']}));return;}
+          }
+          formData.achievementSelection=achievementSelection;formData.cvHighlights=achievementSelection?.items.map(x=>x.text)||[];
+        }else if(formData.achievementIds.length){sendHtml(response,400,renderApplicationForm({formData,errors:['Achievement IDs require the evidence-selection workflow.']}));return;}
         const prepared = await prepareApplication({
         jobDescriptionText: formData.jobDescriptionText,
         jobDescriptionOverrides: {
@@ -435,7 +460,8 @@ export function createLocalServer({
         jobAdvertLink: formData.jobAdvertLink,
         jobReference: formData.jobReference,
         preferredRoleCodes: formData.preferredRoleCodes,
-        cvHighlights: formData.cvHighlights
+        cvHighlights: formData.cvHighlights,
+        ...(formData.achievementMode?{selectedCvRoleCode:achievementSelection?.roleCode||'',selectedAchievementStatements:formData.cvHighlights}:{})
       });
 
         const reviewId = randomUUID();
@@ -457,6 +483,7 @@ export function createLocalServer({
         originalDraftPlainText: prepared.coverLetter?.plainText || '',
         currentDraftPlainText: prepared.coverLetter?.plainText || '',
         refinementProposal: null,
+        polishingModel:newApplicationPolishingModel(POLISHING_MODELS),
         selectedCvRoleCode: prepared.recommendation?.bestCv?.role_code || '',
         cvSelectionMessage: '',
         createdAt: Date.now()
@@ -927,6 +954,25 @@ export function createLocalServer({
       return;
     }
 
+    if(method==='GET'&&['/letter-quality-controls.js','/domain/cover-letter/letter-quality-policy.js'].includes(url.pathname)) {
+      const file=url.pathname==='/letter-quality-controls.js'?'letter-quality-controls.js':'../../domain/cover-letter/letter-quality-policy.js';
+      try{sendText(response,200,await readFile(join(__dirname,file),'utf8'),{'content-type':'application/javascript'});}catch{sendText(response,500,'Local letter quality controls unavailable.');}return;
+    }
+    if(method==='POST'&&url.pathname==='/cover-letter-refinement/reassess-length') {
+      const body=await readFormBody(request);if(body.error){sendText(response,body.error.statusCode,body.error.message);return;}
+      const id=String(body.values.get('reviewId')||'').trim(),r=reviewStore.get(id);
+      if(!r){sendText(response,410,'Application review expired.');return;}
+      const candidate=r.rejectedRefinementProposal;
+      if(!candidate?.proposedDraft||candidate.lengthCheckFailed!==true||body.values.get('letterLengthMode')!=='extended'){sendText(response,400,'Choose Extended explicitly for a retained length-rejected proposal.');return;}
+      try{
+        extractOutreachExperienceBody(candidate.proposedDraft,['micro1']);
+        const quality=assertLetterLength(candidate.proposedDraft,{mode:'extended',maxWords:coverLetterRefinementMaxWords,advertUrl:r.formData.jobAdvertLink});
+        const proposal={...candidate,letterLengthMode:'extended',quality,qualityAdvertUrl:r.formData.jobAdvertLink,lengthCheckFailed:false,warnings:[...quality.warnings,'Reassessed locally in Extended mode. No provider call or automatic acceptance.'],qualityReassessedAt:new Date().toISOString()};
+        reviewStore.set(id,{...r,letterLengthMode:'extended',refinementProposal:proposal,rejectedRefinementProposal:null});
+        sendHtml(response,200,await renderCompleteReview({reviewId:id}));
+      }catch(error){sendHtml(response,400,await renderCompleteReview({reviewId:id,rejectedRefinementProposal:{...candidate,warnings:[error.code==='REFINEMENT_LENGTH_EXCEEDED'?error.message:'Local reassessment failed. Current letter unchanged.']}}));}return;
+    }
+
     if (method === 'POST' && url.pathname === '/cover-letter-refinement/estimate') {
       const formBody = await readFormBody(request);
       if (formBody.error) {sendJson(response, formBody.error.statusCode, {ok:false,error:formBody.error.message});return;}
@@ -938,18 +984,18 @@ export function createLocalServer({
         const cvEvidence = cvEvidenceLoader ? await cvEvidenceLoader(review) : {};
         const ids = formBody.values.getAll('selectedResearchPointIds').map(value=>String(value).trim());
         const selectedResearchPoints = usesCandidateValues(review.formData)?[]:getSelectableCompanyValues(review.research).filter(point=>ids.includes(point.id));
-        const requestForEstimate = {...cvEvidence,draftPlainText:review.currentDraftPlainText,
+        const requestForEstimate = {...cvEvidence,...(review.formData.achievementMode?{achievementSelectionExplicit:true,approvedAchievementEvidence:review.formData.achievementSelection}:{}),draftPlainText:review.currentDraftPlainText,
           jobDescriptionSummary:review.formData.jobTitle,jobDescriptionText:review.formData.jobDescriptionText,
           selectedCvHighlights:Array.isArray(review.formData.cvHighlights)?review.formData.cvHighlights.map(value=>String(value||'').trim()).filter(value=>value&&value.toLowerCase()!=='null'):[],
           companyValues:selectedResearchPoints.map(point=>point.text),selectedResearchPoints,
           organisationName:review.formData.organisationName,advertiserRelationship:contextMode(review.formData),...(review.formData.professionalValues?{candidateProfessionalValues:review.formData.professionalValues}:{}),organisationUrl:review.formData.organisationUrl,
-          researchSources:!usesCandidateValues(review.formData)&&Array.isArray(review.research?.sources)?review.research.sources:[],instructions:'',maxWords:450,
+          researchSources:!usesCandidateValues(review.formData)&&Array.isArray(review.research?.sources)?review.research.sources:[],instructions:'',letterLengthMode:normalizeLengthMode(formBody.values.get('letterLengthMode')||review.letterLengthMode||'standard'),maxWords:coverLetterRefinementMaxWords,
           letterTone:normalizeLetterTone(formBody.values.get('letterTone')||review.letterTone||'professional'),excludedEmployers:['micro1'],
           webSearchEnabled:formBody.values.getAll('webSearchEnabled').includes('true')};
         const apiBody = buildPolishingApiRequest(requestForEstimate,selectedModel);
-        sendJson(response,200,{ok:true,...estimatePolishingApiRequest(apiBody)});
+        sendJson(response,200,{ok:true,...estimatePolishingApiRequest(apiBody),letterLengthMode:requestForEstimate.letterLengthMode,fullLetterMaximumWords:lengthPolicy(requestForEstimate.letterLengthMode,coverLetterRefinementMaxWords).maximumWords});
       } catch(error) {
-        const known=['REFINEMENT_MODEL_INVALID','REFINEMENT_TONE_INVALID','CV_EVIDENCE_UNAVAILABLE','LINKEDIN_EVIDENCE_UNAVAILABLE'].includes(error.code);
+        const known=['REFINEMENT_LENGTH_INVALID','REFINEMENT_MODEL_INVALID','REFINEMENT_TONE_INVALID','CV_EVIDENCE_UNAVAILABLE','LINKEDIN_EVIDENCE_UNAVAILABLE'].includes(error.code);
         sendJson(response,known?400:503,{ok:false,error:known?error.message:'Local cost estimation failed. No provider call was made.'});
       }
       return;
@@ -1043,7 +1089,8 @@ export function createLocalServer({
 
       if (formBody.values.get('polishingCostGuard') === 'required' &&
           (formBody.values.get('polishingCostConfirmed') !== 'true' ||
-           formBody.values.get('polishingConfirmedModel') !== formBody.values.get('polishingModel'))) {
+           formBody.values.get('polishingConfirmedModel') !== formBody.values.get('polishingModel') ||
+           (formBody.values.has('letterLengthMode')&&formBody.values.get('polishingConfirmedLengthMode')!==formBody.values.get('letterLengthMode')))) {
         await renderReview(409,retainSuccessfulProposal(review.refinementProposal,{proposedDraft:'',
           warnings:['Review and confirm the local cost estimate before polishing. No provider call was made.']}));
         return;
@@ -1062,6 +1109,8 @@ export function createLocalServer({
       let letterTone = review.letterTone || 'professional';
       let polishingModel = review.polishingModel || DEFAULT_POLISHING_MODEL;
       let refinementLastAttempt = null;
+      let letterLengthMode=review.letterLengthMode||'standard';
+      let rejectedRefinementProposal=review.rejectedRefinementProposal||null;
 
       writeDiagnostic('refinement_provider_requested', {
         requestId,
@@ -1073,6 +1122,7 @@ export function createLocalServer({
       });
 
       try {
+      letterLengthMode=normalizeLengthMode(formBody.values.get('letterLengthMode')||letterLengthMode);
       letterTone = normalizeLetterTone(formBody.values.get('letterTone') || letterTone);
       review.letterTone = letterTone;
       polishingModel = normalizePolishingModel(formBody.values.get('polishingModel') || polishingModel);
@@ -1080,6 +1130,7 @@ export function createLocalServer({
       const cvEvidence = cvEvidenceLoader ? await cvEvidenceLoader(review) : {};
       refinementProposal = await coverLetterRefinementPort.refine({
         ...cvEvidence,
+        ...(review.formData.achievementMode?{achievementSelectionExplicit:true,approvedAchievementEvidence:review.formData.achievementSelection}:{}),
         ...(formBody.values.has('polishingModel') || review.polishingModel !== DEFAULT_POLISHING_MODEL ? {polishingModel} : {}),
         letterTone,
         excludedEmployers: ['micro1'],
@@ -1107,24 +1158,30 @@ export function createLocalServer({
           ? review.research.sources
           : [],
         instructions: "",
-        maxWords: 450
+        letterLengthMode,
+        maxWords: coverLetterRefinementMaxWords
       });
       if (refinementProposal.error) {
         const error = new Error(refinementProposal.error);
         error.code = refinementProposal.errorCode || 'REFINEMENT_FAILED';
         error.attemptMetadata = refinementProposal.attemptMetadata;
         error.refinementDetails = refinementProposal.failureDetails || {};
+        error.rejectedProposal=refinementProposal.rejectedProposal;
         throw error;
       }
+      const quality=assertLetterLength(refinementProposal.proposedDraft,{mode:letterLengthMode,maxWords:coverLetterRefinementMaxWords,advertUrl:review.formData.jobAdvertLink});
+      refinementProposal={...refinementProposal,letterLengthMode,quality,qualityAdvertUrl:review.formData.jobAdvertLink};
+      rejectedRefinementProposal=null;
       } catch (error) {
         if (isContactStoreLoadError(error)) throw error;
+        if(error.code==='REFINEMENT_LENGTH_EXCEEDED'){rejectedRefinementProposal=error.rejectedProposal||{...refinementProposal,letterLengthMode,quality:error.quality,lengthCheckFailed:true,warnings:[error.message]};rejectedRefinementProposal={...rejectedRefinementProposal,attemptMetadata:error.attemptMetadata||null};}
         writeDiagnostic('refinement_failed', { requestId, reviewId,
           ...describeRefinementFailure(error) });
         refinementLastAttempt = error.attemptMetadata || buildPolishingAttempt({requestModel:error.code === 'REFINEMENT_MODEL_INVALID' ? null : polishingModel,
           durationMs:Date.now()-actionStartedAt,tone:letterTone,
           webSearchEnabled:formBody.values.has('webSearchEnabled') ? formBody.values.getAll('webSearchEnabled').includes('true') : true,
           outcome:'failed',errorCode:describeRefinementFailure(error).errorCode});
-        const failedProposal = {proposedDraft:'',warnings:[formatRefinementFailure(error)]};
+        const failedProposal = {proposedDraft:'',warnings:[['REFINEMENT_LENGTH_EXCEEDED','REFINEMENT_LENGTH_INVALID'].includes(error.code)?error.message:formatRefinementFailure(error)]};
         refinementProposal = retainSuccessfulProposal(reviewStore.get(reviewId)?.refinementProposal, failedProposal);
       }
 
@@ -1147,6 +1204,8 @@ export function createLocalServer({
         ...(reviewStore.get(reviewId) || review),
         letterTone,
         polishingModel,
+        letterLengthMode,
+        rejectedRefinementProposal,
         refinementLastAttempt,
         refinementProposal
       });
@@ -1255,6 +1314,7 @@ export function createLocalServer({
       let acceptance;
 
       try {
+        assertLetterLength(proposedDraftPlainText,{mode:review.refinementProposal.letterLengthMode||'standard',maxWords:coverLetterRefinementMaxWords,advertUrl:review.formData.jobAdvertLink});
         extractOutreachExperienceBody(proposedDraftPlainText, ['micro1']);
         acceptance = acceptRefinedCoverLetter({
           originalDraftPlainText: review.currentDraftPlainText,
@@ -1287,6 +1347,7 @@ export function createLocalServer({
 
       const updatedReview = {
         ...review,
+        currentLetterLengthMode:review.refinementProposal.letterLengthMode||'standard',
         currentDraftPlainText: acceptance.finalDraftPlainText,
         currentDraftHtml: undefined,
         currentDraftSubject: acceptedSubject,

@@ -1,3 +1,4 @@
+import {lengthPolicy,normalizeLengthMode} from '../domain/cover-letter/letter-quality-policy.js';
 import { normalizeLetterTone, normalizeExcludedEmployers } from './cover-letter-controls.js';
 import { normalizePolishingModel, normalizeAttemptMetadata } from './polishing-model-catalog.js';
 import { describeRefinementFailure, formatRefinementFailure } from './refinement-error-details.js';
@@ -67,21 +68,16 @@ function normalizeResearchPoints(value) {
   }, []);
 }
 
-function normalizeMaxWords(value) {
-  const parsed = Number(value);
-
-  if (!Number.isInteger(parsed)) {
-    return 450;
-  }
-
-  return Math.min(Math.max(parsed, 120), 450);
-}
+function normalizeMaxWords(value,mode){return lengthPolicy(mode,value??500).maximumWords;}
 
 function normalizeRefinementRequest({
   draftPlainText,
   jobDescriptionSummary = '',
   applicationJobTitle = '',
   organisationName = '',
+  advertiserRelationship = 'direct-employer',
+  candidateProfessionalValues = '',
+  allowUnknownOrganisation = false,
   jobAdvertLink = '',
   protectOutreachStructure = false,
   researchSources = [],
@@ -95,11 +91,14 @@ function normalizeRefinementRequest({
   candidateLinkedInUrl = '',
   candidateDisplayName = '',
   selectedCvHighlights = [],
+  achievementSelectionExplicit = false,
+  approvedAchievementEvidence = null,
   companyValues = [],
   selectedResearchPoints = [],
   organisationUrl = '',
   instructions = '',
-  maxWords = 450
+  letterLengthMode = 'standard',
+  maxWords = 500
 } = {}) {
   const draft = normalizeString(draftPlainText);
 
@@ -111,6 +110,7 @@ function normalizeRefinementRequest({
     draftPlainText: draft,
     applicationJobTitle: normalizeString(applicationJobTitle),
     organisationName: normalizeString(organisationName),
+    advertiserRelationship:normalizeString(advertiserRelationship),candidateProfessionalValues:normalizeString(candidateProfessionalValues),allowUnknownOrganisation:allowUnknownOrganisation===true,
     jobAdvertLink: normalizeUrl(jobAdvertLink),
     protectOutreachStructure: protectOutreachStructure === true,
     researchSources: Array.isArray(researchSources) ? researchSources : [],
@@ -125,11 +125,13 @@ function normalizeRefinementRequest({
     ...(normalizeUrl(candidateLinkedInUrl) ? { candidateLinkedInUrl: normalizeUrl(candidateLinkedInUrl) } : {}),
     ...(normalizeString(candidateDisplayName) ? { candidateDisplayName: normalizeString(candidateDisplayName) } : {}),
     selectedCvHighlights: normalizeStringArray(selectedCvHighlights),
+    ...(achievementSelectionExplicit===true?{achievementSelectionExplicit:true,approvedAchievementEvidence:approvedAchievementEvidence?structuredClone(approvedAchievementEvidence):null}:{}),
     companyValues: normalizeStringArray(companyValues),
     selectedResearchPoints: normalizeResearchPoints(selectedResearchPoints),
     organisationUrl: normalizeUrl(organisationUrl),
     instructions: normalizeString(instructions),
-    maxWords: normalizeMaxWords(maxWords)
+    letterLengthMode:normalizeLengthMode(letterLengthMode),
+    maxWords: normalizeMaxWords(maxWords,letterLengthMode)
   };
 }
 
@@ -152,6 +154,7 @@ function normalizeRefinementResult(result) {
   return {
     review: normalizeReview(normalized.review),
     proposedDraft: normalizeString(normalized.proposedDraft),
+    ...(normalized.quality?{quality:normalized.quality,letterLengthMode:normalized.letterLengthMode,qualityAdvertUrl:normalized.qualityAdvertUrl||''}:{}),
     highlightPhrases: normalizeStringArray(normalized.highlightPhrases).filter(phrase => normalizeString(normalized.proposedDraft).toLowerCase().includes(phrase.toLowerCase())).slice(0, 8),
     warnings: normalizeStringArray(normalized.warnings),
     appliedResearchPointIds: normalizeStringArray(
@@ -191,6 +194,7 @@ export async function refineCoverLetter(request = {}, ports = {}) {
       model: '',
       ...(error.attemptMetadata ? {attemptMetadata:normalizeAttemptMetadata(error.attemptMetadata)} : {}),
       errorCode: describeRefinementFailure(error).errorCode,
+      ...(error.rejectedProposal?{rejectedProposal:error.rejectedProposal}:{}),
       failureDetails: describeRefinementFailure(error),
       error: formatRefinementFailure(error)
     };

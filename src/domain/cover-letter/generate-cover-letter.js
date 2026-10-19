@@ -1,3 +1,4 @@
+import {assessLetterQuality} from './letter-quality-policy.js';
 import {renderLinkedRoleOpening,canonicalLinkedOpeningPlain} from '../shared/linked-role-opening.js';
 import {normalizeLegacyAdvertPlain,embedCanonicalAdvertHtml} from '../shared/legacy-advert-normalization.js';
 import { fillTemplate } from './fill-template.js';
@@ -270,6 +271,7 @@ export function generateCoverLetter({
   finalCoverLetter = '',
   atsScore = '',
   cvHighlights = [],
+  selectedAchievementStatements = null,
   jdKeywords = [],
   domainMapping = {},
   variantProfiles = {},
@@ -300,7 +302,8 @@ export function generateCoverLetter({
   const matchedDomains = (parsedJobDescription.domain || [])
     .flatMap((domain) => domainMapping[domain] || []);
 
-  const highlights = profile.highlights ||
+  const explicitAchievements=Array.isArray(selectedAchievementStatements);
+  const highlights = explicitAchievements ? selectedAchievementStatements.join('\n\n') : profile.highlights ||
     toText(cvHighlights) ||
     (selectedCv.use_cases || []).slice(0, 3).join(', ') ||
     selectedCv.role_name ||
@@ -325,12 +328,12 @@ export function generateCoverLetter({
     ? evidenceBody
     : `${evidenceBody}.`;
 
-  const evidence = profile.evidence ||
+  const evidence = explicitAchievements ? selectedAchievementStatements.join('\n\n') : profile.evidence ||
     (/^(?:I|My|We|Our)\b/i.test(evidenceBody)
       ? evidenceWithEnding
       : `Relevant experience:\n${evidenceWithEnding}`);
 
-  const currentRoleEvidence = profile.currentRoleEvidence ||
+  const currentRoleEvidence = explicitAchievements ? '' : profile.currentRoleEvidence ||
     candidateProfile.currentRoleEvidence ||
     '';
 
@@ -347,7 +350,7 @@ export function generateCoverLetter({
       ['uae', 'dubai', 'gcc'].includes(String(location).toLowerCase())
     )
       ? candidateProfile.uaeResidencyNote ||
-        'I can support a prompt joining process in the UAE.'
+        ''
       : '';
 
   const clearanceNote = parsedJobDescription.scClearanceRequired
@@ -422,6 +425,7 @@ export function generateCoverLetter({
     richText,
     plainText,
     validation,
+    quality:assessLetterQuality(plainText,{advertUrl:jobAdvertLink}),
     variant,
     variantLabel: profile.label || variant,
     templateBody,

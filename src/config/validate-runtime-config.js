@@ -111,7 +111,7 @@ export function validateRuntimeConfig({
     {
       defaultValue: 450,
       minimum: 120,
-      maximum: 450
+      maximum: 500
     }
   );
 
