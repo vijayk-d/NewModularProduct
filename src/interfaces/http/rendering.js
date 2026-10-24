@@ -1,3 +1,5 @@
+import {inspectApplicationRole} from '../../application/application-role-review.js';
+import {roleConsistencyWarnings} from '../../application/contextual-highlights.js';
 import {assessLetterQuality,lengthPolicy} from '../../domain/cover-letter/letter-quality-policy.js';
 import {renderAchievementPreparation,renderAchievementSummary} from './achievement-preparation-view.js';
 import {usesCandidateValues,contextMode} from '../../domain/cover-letter/advertiser-context.js';
@@ -259,7 +261,7 @@ export function renderApplicationForm({
 </head>
 <body>
   <main>
-    <h1>Application preparation</h1><p><a href="/applications">Saved applications</a> · <a href="/outreach-queue">Outreach queue</a></p>
+    <h1>Application preparation</h1><p><a href="/applications">Saved applications</a> <a href="/maintenance">Maintenance &amp; Commands</a> <a href="/evidence-library">Assignment evidence library (development)</a> · <a href="/outreach-queue">Outreach queue</a></p>
     <p class="intro">Prepare and review a local application draft before manually sending it.</p>
 ${errorSummary}    <form id="application-form" method="post" action="/applications" autocomplete="on">
 <div class="form-draft-tools"><button id="clear-saved-form" type="button" class="secondary-button">Clear saved test data</button></div>
@@ -273,7 +275,7 @@ ${renderField('jobTitle', 'Job title', values.jobTitle, { required: true })}
 ${renderField('organisationName', 'Organisation / advertiser name', values.organisationName)}
 ${renderField('jobLocation', 'Job location', values.jobLocation)}
 </div>
-<label>Advertiser relationship<select id="advertiserRelationship" name="advertiserRelationship"><option value="unknown"${(!values.advertiserRelationship||values.advertiserRelationship==='unknown')?' selected':''}>Unknown — neutral wording and my professional values</option><option value="direct-employer"${values.advertiserRelationship==='direct-employer'?' selected':''}>Direct employer — reviewed employer values may be used</option><option value="recruitment-intermediary"${values.advertiserRelationship==='recruitment-intermediary'?' selected':''}>Recruitment agency / intermediary — use my professional values</option></select></label>
+<input type="hidden" name="advertiserRelationship" value="${escapeHtml(values.advertiserRelationship||'unknown')}">
 ${renderField('stakeholderSource', 'Stakeholder source or recruiter page', values.stakeholderSource, {
   placeholder: 'Company People page or recruiter/source URL; recipient name is separate'
 })}
@@ -433,7 +435,8 @@ ${renderAchievementPreparation(values)}
       for (const name of fieldNames) {
         const field = form.elements.namedItem(name);
 
-        if (field && !field.value && typeof draft[name] === 'string') {
+        const vacancyFields=new Set(['jobImportId','jobImportRevision','jobLocation','recruiterName','advertiserRelationship','jobTitle','organisationUrl','organisationName','stakeholderSource','jobAdvertLink','jobReference','jobDescriptionText']);
+        if (!vacancyFields.has(name) && field && !field.value && typeof draft[name] === 'string') {
           field.value = draft[name];
         }
       }
@@ -672,6 +675,9 @@ export function renderRefinementPanel({
   refinementLastAttempt = null,
   polishingModelExplicit = false,
   currentSubject = '',
+  polishingInstructions = '',
+  applicationRoleVersion = '',
+  advertiserRelationship = 'unknown',
   allowWithoutOrganisationResearch = false,
   letterLengthMode='standard',qualityMaximumWords=500,rejectedRefinementProposal=null
 }) {
@@ -679,10 +685,15 @@ export function renderRefinementPanel({
   const selectedTone = normalizeLetterTone(letterTone);
   const selectedModel = normalizePolishingModel(polishingModel);
 
-  const selectorMarkup = research?.status === 'found'||allowWithoutOrganisationResearch
+  const selectorMarkup = true
     ? `
       <form method="post" action="/cover-letter-refinement">
         <input type="hidden" name="reviewId" value="${escapeHtml(reviewId)}">
+        ${applicationRoleVersion?`<input type="hidden" name="applicationRoleVersion" value="${escapeHtml(applicationRoleVersion)}">`:''}
+        <fieldset class="workspace-choice-cards" data-advertiser-relationship><legend>Advertiser relationship for the next polish</legend><div class="workspace-choice-options">
+        ${[['direct-employer','Direct employer','The advertiser is hiring for its own vacancy.'],['recruitment-intermediary','Recruitment agency / intermediary','The advertiser represents a client.'],['unknown','Unknown / unclear','Use neutral wording; do not assume the employer relationship.']].map(([value,label,note])=>`<label class="workspace-choice-card"><input type="radio" name="advertiserRelationship" value="${value}"${value===advertiserRelationship?' checked':''}><span><strong>${label}</strong><small>${note}</small></span></label>`).join('')}
+        </div><p>Choose the relationship before requesting a second opinion. Switching does not rewrite the letter or make a paid call. Direct employer requires successful organisation research.</p></fieldset>
+
         ${
           values.length
             ? `
@@ -693,7 +704,7 @@ export function renderRefinementPanel({
                     <input
                       type="checkbox"
                       name="selectedResearchPointIds"
-                      value="${escapeHtml(value.id)}">
+                      value="${escapeHtml(value.id)}" checked>
                     ${escapeHtml(value.text)}
                   </label>
                 `).join('')}
@@ -722,6 +733,9 @@ export function renderRefinementPanel({
           <input type="checkbox" name="webSearchEnabled" value="true"${refinementLastAttempt?.webSearchEnabled===false?'':' checked'}>
           Allow web search during polishing
         </label>
+        <label for="personal-polishing-instructions" style="display:block">Personal polishing instructions (optional)</label>
+        <textarea id="personal-polishing-instructions" name="instructions" rows="4" maxlength="4000" style="box-sizing:border-box;width:100%;resize:vertical;padding:0.65rem;font:inherit" placeholder="For example: make the opening more direct, emphasise relevant achievements, and remove repetition.">${escapeHtml(polishingInstructions)}</textarea>
+        <p class="rich-editor-notice">Sent with your next polishing request only. Existing evidence, attribution and length rules still apply. Leave blank for normal polishing.</p>
         <button type="submit">Polish cover letter</button>
         <p class="rich-editor-notice">micro1 is excluded from application claims. Sources remain unchanged. Tone applies only when you polish.</p>
       </form>
@@ -745,7 +759,7 @@ export function renderRefinementPanel({
           <button type="button" data-editor-command="italic" title="Italic selected text"><em>I</em></button>
           <button type="button" data-editor-command="insertUnorderedList" title="Bullet list">&bull; List</button>
           <button type="button" data-editor-command="insertOrderedList" title="Numbered list">1. List</button>
-          <button type="button" data-editor-command="hiliteColor" data-command-value="#fff2a8" title="Highlight selected text">Highlight</button>
+          <button type="button" data-editor-command="toggleJobHighlight" title="Toggle background highlighting on selected text">Highlight</button><button type="button" data-editor-command="clearAutoHighlights">Clear automatic highlights</button><button type="button" data-editor-command="clearAllHighlights">Clear all highlights</button>
           <button type="button" data-editor-command="createLink" title="Add a link">Link</button>
           <button type="button" data-editor-command="unlink" title="Remove link">Unlink</button>
           <button type="button" data-editor-command="removeFormat" title="Clear selected formatting">Clear format</button>
@@ -759,7 +773,7 @@ export function renderRefinementPanel({
           role="textbox"
           aria-multiline="true"
           aria-label="Editable proposed cover letter"
-          data-editor-name="Proposed cover letter">${renderCoverLetterHtml(refinementProposal.proposedDraft, refinementProposal.highlightPhrases)}</div>
+          data-editor-name="Proposed cover letter">${refinementProposal.proposedDraftHtml?sanitizeSnapshotHtml(refinementProposal.proposedDraftHtml).html:renderCoverLetterHtml(refinementProposal.proposedDraft,refinementProposal.highlightSelections?.length?refinementProposal.highlightSelections:refinementProposal.highlightPhrases)}</div>
         <div class="rich-editor-actions">
           <button
             type="button"
@@ -778,7 +792,7 @@ export function renderRefinementPanel({
             : ''
         }
         <form id="apply-refinement-form" method="post" action="/cover-letter-refinement/apply">
-          <input type="hidden" name="reviewId" value="${escapeHtml(reviewId)}">
+          <input type="hidden" name="reviewId" value="${escapeHtml(reviewId)}"><input type="hidden" name="proposalBodyVersion" value="${crypto.createHash('sha256').update(String(refinementProposal.proposedDraft||'')).digest('hex')}">
           <button type="submit">Use proposal as current draft</button>
         </form>
       </section>
@@ -912,7 +926,11 @@ export function renderApplicationReview({
   currentDraftPlainText = '',
   currentDraftHtml,
   currentDraftSubject,
+  polishingInstructions = '',
   currentHighlightPhrases = [],
+  applicationRoleReview = null,
+  applicationRoleMessage = '',
+  applicationRoleCsrfToken = '',
   polishingModel = DEFAULT_POLISHING_MODEL,
   refinementLastAttempt = null,
   polishingModelExplicit = false,
@@ -941,6 +959,8 @@ export function renderApplicationReview({
     formData.organisationUrl
   );
   const subject = currentReviewSubject({prepared,formData,currentDraftSubject});
+  const roleState=applicationRoleReview||(formData.jobTitle?inspectApplicationRole(formData):null);
+  if(refinementProposal?.proposedDraft)refinementProposal={...refinementProposal,warnings:[...new Set([...(refinementProposal.warnings||[]),...roleConsistencyWarnings(refinementProposal.proposedDraft,formData.jobTitle)])]};
   const refinementMarkup = renderRefinementPanel({
     reviewId,
     research,
@@ -950,11 +970,19 @@ export function renderApplicationReview({
     refinementLastAttempt,
     polishingModelExplicit,
     currentSubject: subject,
+    polishingInstructions,
+    applicationRoleVersion:roleState?.version||'',
     letterLengthMode,qualityMaximumWords,rejectedRefinementProposal,
+    advertiserRelationship:contextMode(formData),
     allowWithoutOrganisationResearch:usesCandidateValues(formData)
   });
 
-  const role = prepared.jobDescription?.role || formData.jobTitle;
+  const rolePanel=roleState?`<details class="application-role-title-review" ${roleState.needsConfirmation?'open':''}><summary>Application role title — ${roleState.needsConfirmation?'confirmation required':roleState.confirmationValid?'confirmed':'no explicit mismatch detected'}</summary>
+ <p><strong>Original stored/application title:</strong> ${escapeHtml(roleState.sourceTitle)}</p><p><strong>Explicit description title:</strong> ${escapeHtml(roleState.descriptionTitle||'No reliable explicit heading found; no title was guessed.')}</p><p><strong>Application title for the next polish:</strong> ${escapeHtml(roleState.applicationTitle||'Choose below before polishing.')}</p>
+ ${roleState.conflict||roleState.staleConfirmation?`<form method="post" action="/review-role-title"><input type="hidden" name="reviewId" value="${escapeHtml(reviewId)}"><input type="hidden" name="roleBinding" value="${roleState.binding}"><input type="hidden" name="roleCsrfToken" value="${escapeHtml(applicationRoleCsrfToken)}"><input type="hidden" name="expectedRoleVersion" value="${roleState.version}"><fieldset><legend>Choose the title to use for this application</legend>${roleState.choices.map(c=>`<label><input type="radio" name="roleChoice" value="${c.key}" required${roleState.confirmationValid&&formData.applicationRoleConfirmation?.choice===c.key?' checked':''}>${escapeHtml(c.title)} — ${c.key==='stored'?'retain the stored title explicitly':'use the explicit JD title'}</label>`).join('')}</fieldset><button type="submit" data-role-title-confirm disabled>Confirm application role</button></form>`:''}
+ <p>Confirmation updates only saved role metadata. Pending current-letter edits are saved first, but title confirmation does not recompose the letter or change the effective subject, CV, queued snapshots or sent history, or make a paid request. The captured advert remains unchanged. Changed choices invalidate old proposals. Review a new polish and edit the proposed subject separately; update eligible unsent messages only through the existing explicit action.</p></details>`:'';
+ const role=formData.applicationRoleConfirmation?formData.jobTitle:prepared.jobDescription?.role||formData.jobTitle;
+
   const location = String(prepared.jobDescription?.location || '').trim() || 'Not specified';
 
   const alternative = alternativeCv
@@ -1041,6 +1069,7 @@ export function renderApplicationReview({
                     }
                   </span>
                 </p>
+                <button type="button" data-cv-inspect data-review-id="${escapeHtml(reviewId)}" data-role-code="${escapeHtml(roleCode)}">Inspect actual CV</button><div data-cv-document aria-live="polite"></div>
                 <details class="cv-candidate__details-toggle">
                   <summary>Show ATS evidence and CV profile</summary>
                   <div class="cv-candidate__details">
@@ -1637,17 +1666,23 @@ export function renderApplicationReview({
 <link rel="stylesheet" href="/review-workspace.css"><script type="module" src="/review-workspace.js" nonce="__SCRIPT_NONCE__"></script>
 <script type="module" src="/job-import-controls.js" nonce="__SCRIPT_NONCE__"></script>
 <script type="module" src="/saved-application-delete.js" nonce="__SCRIPT_NONCE__"></script>
+<script type="module" src="/rich-highlight-controls.js" nonce="__SCRIPT_NONCE__"></script>
 </head>
 <body>
   <main>
+
     <h1>Application review</h1>
     <p>Review the prepared local draft before you send anything manually.</p>
 
     <section class="panel panel--vacancy">
       <h2>Vacancy details</h2>
+      ${applicationRoleMessage?`<p class="notice" role="status">${escapeHtml(applicationRoleMessage)}</p>`:''}
+      ${rolePanel}
+      ${roleState?.confirmationValid&&roleState.applicationTitle!==roleState.sourceTitle&&subject.toLowerCase().includes(roleState.sourceTitle.toLowerCase())?`<p class="notice" data-role-subject-warning>The effective subject still contains the former stored role title. Review/edit the subject explicitly before applying or sending a new letter; title confirmation did not rewrite it.</p>`:''}
       <p><strong>Role:</strong> ${escapeHtml(role)}</p>
       <p><strong>Location:</strong> ${escapeHtml(location)}</p>
       ${organisation}${organisationUrl}${stakeholderSource}${reference}${advert}
+${formData.organisationName ? `<nav aria-label="Additional stakeholder searches">${[['Directors','Director'],['Heads of function','Head'],['Talent and recruitment','Talent, Recruiter']].map(([label,keywords])=>{const query=[formData.organisationName,formData.jobLocation||prepared.jobDescription?.location,keywords].flatMap(v=>String(v||'').split(',').map(x=>x.trim()).filter(Boolean)).join(', ');const url='https://www.linkedin.com/search/results/people/?keywords='+encodeURIComponent(query)+'&origin=GLOBAL_SEARCH_HEADER';return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${label}</a>`;}).join(' · ')}</nav>` : ''}
     </section>
 
     <section class="panel panel--decision">
@@ -1701,7 +1736,7 @@ ${renderEmailDomainResolution(reviewId, formData, research)}
         <button type="button" data-editor-command="italic" title="Italic selected text"><em>I</em></button>
         <button type="button" data-editor-command="insertUnorderedList" title="Bullet list">List</button>
         <button type="button" data-editor-command="insertOrderedList" title="Numbered list">1. List</button>
-        <button type="button" data-editor-command="hiliteColor" data-command-value="#fff2a8" title="Highlight selected text">Highlight</button>
+        <button type="button" data-editor-command="toggleJobHighlight" title="Toggle background highlighting on selected text">Highlight</button><button type="button" data-editor-command="clearAutoHighlights">Clear automatic highlights</button><button type="button" data-editor-command="clearAllHighlights">Clear all highlights</button>
         <button type="button" data-editor-command="createLink" title="Add a link">Link</button>
         <button type="button" data-editor-command="unlink" title="Remove link">Unlink</button>
         <button type="button" data-editor-command="removeFormat" title="Clear selected formatting">Clear format</button>
@@ -1716,6 +1751,7 @@ ${renderEmailDomainResolution(reviewId, formData, research)}
         aria-multiline="true"
         aria-label="Editable current cover letter draft"
         data-editor-name="Current cover letter">${typeof currentDraftHtml==='string'&&currentDraftHtml.trim()?sanitizeSnapshotHtml(currentDraftHtml).html:renderCoverLetterHtml(plainText, currentHighlightPhrases)}</div>
+      ${roleConsistencyWarnings(plainText,formData.jobTitle).map(message=>`<p class="notice" data-role-consistency-warning>${escapeHtml(message)}</p>`).join('')}
       <p class="rich-editor-notice">
         Application text/formatting can be saved and resumed. Queue messages remain independent snapshots.
       </p>
@@ -1731,6 +1767,7 @@ ${renderEmailDomainResolution(reviewId, formData, research)}
 ${renderRecruiterContacts(contacts)}
 
 ${renderContactLinking(contactLinking)}
+<details class="review-section application-intelligence-collapsible"><summary>Application history and CV assessment</summary><section data-application-intelligence data-review-id="${escapeHtml(reviewId)}"><p>Loading local activity context...</p></section></details>
 
 
 
@@ -1797,6 +1834,7 @@ ${renderContactLinking(contactLinking)}
 
     function runEditorCommand(editor, status, command, value = null) {
       editor.focus();
+      if(['toggleJobHighlight','clearAutoHighlights','clearAllHighlights','undo','redo'].includes(command)){const detail={command,status,handled:false};editor.dispatchEvent(new CustomEvent('highlight-editor-command',{bubbles:true,detail}));if(detail.handled)return;if(!['undo','redo'].includes(command)){status.textContent='Highlight controls are loading; retry shortly.';return;}}
 
       if (command === 'createLink') {
         const href = window.prompt(
@@ -1925,7 +1963,7 @@ ${renderContactLinking(contactLinking)}
   </script>
 
 
-      <script type="module" src="/review-page.js" nonce="__SCRIPT_NONCE__"></script><script type="module" src="/letter-quality-controls.js" nonce="__SCRIPT_NONCE__"></script>
+      <script type="module" src="/cv-documents.js" nonce="__SCRIPT_NONCE__"></script><script type="module" src="/application-intelligence.js" nonce="__SCRIPT_NONCE__"></script><script type="module" src="/review-page.js" nonce="__SCRIPT_NONCE__"></script><script type="module" src="/letter-quality-controls.js" nonce="__SCRIPT_NONCE__"></script>
 </body>
 </html>
 

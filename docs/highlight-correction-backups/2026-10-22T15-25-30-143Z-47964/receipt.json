@@ -1,0 +1,133 @@
+{
+  "id": "context-highlight-correction-20261022",
+  "root": "D:\\monorepo\\NewModularProduct",
+  "stateDb": "D:\\monorepo\\NewModularProduct\\output\\outreach.db",
+  "files": [
+    {
+      "path": "src/application/contextual-highlights.js",
+      "before": null,
+      "beforeNormalized": null,
+      "after": "37b1f27312607250755cb96910c1e089fa763bcfe2ce8f5db27cfe2d4082cd3a",
+      "original": null
+    },
+    {
+      "path": "src/application/cover-letter-controls.js",
+      "before": "1ca76fce502d9029192ec7971a5208ff32957007cca339d0b470a654a7510909",
+      "beforeNormalized": "1ca76fce502d9029192ec7971a5208ff32957007cca339d0b470a654a7510909",
+      "after": "8cc5d4d9d52ec1d4d7afc98dfbe381ef8dc452089224d617f38d0193b5d87aad",
+      "original": "1ca76fce502d9029192ec7971a5208ff32957007cca339d0b470a654a7510909"
+    },
+    {
+      "path": "src/infrastructure/refinement/perplexity-cover-letter-refinement-adapter.js",
+      "before": "82b0d25a88c7b6e44aae8a565e084a28aade62190c1e7c2fec5b14cf25ec1eef",
+      "beforeNormalized": "82b0d25a88c7b6e44aae8a565e084a28aade62190c1e7c2fec5b14cf25ec1eef",
+      "after": "8829aa952c9c3e45d084c5a996c1a6b0c923a6ad95867254563deff73afe927a",
+      "original": "82b0d25a88c7b6e44aae8a565e084a28aade62190c1e7c2fec5b14cf25ec1eef"
+    },
+    {
+      "path": "src/application/refine-cover-letter.js",
+      "before": "cdf5ef7a1bb54a33f4eb97b77a027fbca69904e9b840ff26dd7c8b4e9fa8505f",
+      "beforeNormalized": "cdf5ef7a1bb54a33f4eb97b77a027fbca69904e9b840ff26dd7c8b4e9fa8505f",
+      "after": "5a8bdac6506b7b4226febcf22f3573530df219a758756a3d57b7dd33da3f2b93",
+      "original": "cdf5ef7a1bb54a33f4eb97b77a027fbca69904e9b840ff26dd7c8b4e9fa8505f"
+    },
+    {
+      "path": "src/interfaces/http/cover-letter-html.js",
+      "before": "55c36b7b3083b3d3a185f204056b596c34727335f232c9713d909f4a0d952819",
+      "beforeNormalized": "55c36b7b3083b3d3a185f204056b596c34727335f232c9713d909f4a0d952819",
+      "after": "cde8cb513249c7f93ff0d2f53e9cf51e1eefa360699e78283d01eec26ab11c68",
+      "original": "55c36b7b3083b3d3a185f204056b596c34727335f232c9713d909f4a0d952819"
+    },
+    {
+      "path": "src/interfaces/http/rich-highlight-controls.js",
+      "before": null,
+      "beforeNormalized": null,
+      "after": "5fd6e5e93a126dba65c9a2937f5bba01983f81d4bfbb156b14d61863c3ea8fe7",
+      "original": null
+    },
+    {
+      "path": "src/interfaces/http/rendering.js",
+      "before": "ea905972bb283cff43501b1b7b6d680532c52c65154f83449a78ffc5b6ace7ca",
+      "beforeNormalized": "ea905972bb283cff43501b1b7b6d680532c52c65154f83449a78ffc5b6ace7ca",
+      "after": "f0f81550944918dc2e69b8756cad6cd0cbd8192932490deb731e6cf487b9fce9",
+      "original": "ea905972bb283cff43501b1b7b6d680532c52c65154f83449a78ffc5b6ace7ca"
+    },
+    {
+      "path": "src/interfaces/http/application-review-http.js",
+      "before": "6c717308179c28dbe884355d03c000224edbcd4169da4b6d46d6fc63a3ae1454",
+      "beforeNormalized": "6c717308179c28dbe884355d03c000224edbcd4169da4b6d46d6fc63a3ae1454",
+      "after": "72773dfef99af32d63bfa9deadb41ff15a14fd35384640b2ffe8252f69a21575",
+      "original": "6c717308179c28dbe884355d03c000224edbcd4169da4b6d46d6fc63a3ae1454"
+    },
+    {
+      "path": "src/application/outreach-message-snapshot.js",
+      "before": "a571478888f35bd004fa6225261aed46415c10dc2b22f9d523837d4effc72a8a",
+      "beforeNormalized": "a571478888f35bd004fa6225261aed46415c10dc2b22f9d523837d4effc72a8a",
+      "after": "5a245a2839c831b1fb66be9862f61b22c52c3be41e55561a5343f8a54d4060f4",
+      "original": "a571478888f35bd004fa6225261aed46415c10dc2b22f9d523837d4effc72a8a"
+    },
+    {
+      "path": "src/application/gmail-draft-update-port.js",
+      "before": "b7a5b669b15233def5a16eea0917819826bde13eb9705080f33f1bbee895f788",
+      "beforeNormalized": "b7a5b669b15233def5a16eea0917819826bde13eb9705080f33f1bbee895f788",
+      "after": "4832b9ace012de9d236df577f417223444ff8f241a5f4120e51d0b9000c311fc",
+      "original": "b7a5b669b15233def5a16eea0917819826bde13eb9705080f33f1bbee895f788"
+    },
+    {
+      "path": "src/application/save-application-review.js",
+      "before": "057ddaeed36db1763e547f15abfd925b15dc303c00e3710a5f4f968dce914f74",
+      "beforeNormalized": "057ddaeed36db1763e547f15abfd925b15dc303c00e3710a5f4f968dce914f74",
+      "after": "357caa6d35b7c073391798794d3b76497853af8ef44e4d7815610e111c623669",
+      "original": "057ddaeed36db1763e547f15abfd925b15dc303c00e3710a5f4f968dce914f74"
+    },
+    {
+      "path": "src/interfaces/http/create-local-server.js",
+      "before": "318688b3a84f35564dea88cd711ccb0d21288e2e6836be29880c6eb534b29167",
+      "beforeNormalized": "318688b3a84f35564dea88cd711ccb0d21288e2e6836be29880c6eb534b29167",
+      "after": "493902f7c731017776f0ed58f071e51c52e72dace3c1ff12315a9fd4b557ac9e",
+      "original": "318688b3a84f35564dea88cd711ccb0d21288e2e6836be29880c6eb534b29167"
+    },
+    {
+      "path": "tests/application/cover-letter-controls.test.js",
+      "before": "3349272b655359f8a5bfd1fffc74d3875b75b746c0cfdbdfbb7b14888d111d09",
+      "beforeNormalized": "3349272b655359f8a5bfd1fffc74d3875b75b746c0cfdbdfbb7b14888d111d09",
+      "after": "57398b2abce0ccff10cd27d19db19c535214302f5bc9b8a033758bd1598ce50f",
+      "original": "3349272b655359f8a5bfd1fffc74d3875b75b746c0cfdbdfbb7b14888d111d09"
+    },
+    {
+      "path": "tests/application/web-search-highlight-choice.test.js",
+      "before": "6ae0bb375700fa04d2446557ca66e106fa87f3be8740672a45141b9e77e49d25",
+      "beforeNormalized": "6ae0bb375700fa04d2446557ca66e106fa87f3be8740672a45141b9e77e49d25",
+      "after": "698680ac7bfafc494008502ba30bfc531876b8993a8a75bb1d884cce99c1bff6",
+      "original": "6ae0bb375700fa04d2446557ca66e106fa87f3be8740672a45141b9e77e49d25"
+    },
+    {
+      "path": "tests/application/outreach-rich-snapshot.test.js",
+      "before": "13a24295ffc0fe1918fcdfd99350f6996530b3cd00e2b639b9fee45e15ff167c",
+      "beforeNormalized": "13a24295ffc0fe1918fcdfd99350f6996530b3cd00e2b639b9fee45e15ff167c",
+      "after": "c54bf4d83a4b70da28e0772fc3bb898f764d6660eabd1748efd83e040f859759",
+      "original": "13a24295ffc0fe1918fcdfd99350f6996530b3cd00e2b639b9fee45e15ff167c"
+    },
+    {
+      "path": "tests/application/unified-letter-update.test.js",
+      "before": "ae76332501ed86ee1d41fa6aef3bcb4a303cfb0078b9ca090e0f276d5398ce03",
+      "beforeNormalized": "ae76332501ed86ee1d41fa6aef3bcb4a303cfb0078b9ca090e0f276d5398ce03",
+      "after": "0aab0b2ef33b85f14386d3e267492c947b7aba55b1b6dc0b5e85cfcd312c860d",
+      "original": "ae76332501ed86ee1d41fa6aef3bcb4a303cfb0078b9ca090e0f276d5398ce03"
+    },
+    {
+      "path": "tests/application/refinement-evidence-contract.test.js",
+      "before": "21dc87101edfa03bce139c85f8d23413a56415fe3b78fed56c9ff7a7317bc7a3",
+      "beforeNormalized": "21dc87101edfa03bce139c85f8d23413a56415fe3b78fed56c9ff7a7317bc7a3",
+      "after": "31b42bb73f3442708dfb42a05093fe9643a4af3de0db3c4b580f9ec2c282225b",
+      "original": "21dc87101edfa03bce139c85f8d23413a56415fe3b78fed56c9ff7a7317bc7a3"
+    },
+    {
+      "path": "tests/application/contextual-highlight-correction.test.js",
+      "before": null,
+      "beforeNormalized": null,
+      "after": "4d843d6cd8fe33f2a9c013ec556ee2208d0b1802a2cf6ed70b9cb6564deb7b49",
+      "original": null
+    }
+  ]
+}

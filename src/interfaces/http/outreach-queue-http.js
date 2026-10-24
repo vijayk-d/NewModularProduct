@@ -127,7 +127,9 @@ export function createOutreachHttpHandler({ repository, contactStore, getReview,
       if (!service) { json(response, 503, { ok: false, error: 'Outreach storage is not configured.' }); return true; }
       if (request.method === 'GET' && route === '/api/outreach-queue') {
         const messageAttempts=[...(repository.listDraftOperations?.()||[]),...(repository.listSendAttempts?.()||[])];const sendStatus=sends.getStatus();
-        const items=service.list().map(item=>{const operation=item.draftOperationId&&repository.getDraftOperationById?.(item.draftOperationId);
+        const scope=url.searchParams.get('reviewId');
+        if(scope!==null&&(!/^[A-Za-z0-9-]{1,100}$/.test(scope)||!getReview(scope))){json(response,404,{ok:false,error:'Application review not found; no queue records returned.'});return true;}
+        const items=service.list().filter(item=>scope===null||item.reviewId===scope).map(item=>{const operation=item.draftOperationId&&repository.getDraftOperationById?.(item.draftOperationId);
           return {...item,sendAction:sends.eligibility(item,sendStatus.configuredMailbox),...messagePresentation(item,{attempted:messageAttempts.some(a=>a.applicationKey===item.applicationKey&&a.recipientKey===String(item.email||'').toLowerCase())}),safeToRetry:operation?.status==='failed'&&operation.safeToRetry===true};});
         json(response, 200, { ok: true, items }); return true;
       }

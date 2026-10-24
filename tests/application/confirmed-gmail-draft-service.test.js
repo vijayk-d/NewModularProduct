@@ -66,7 +66,7 @@ test('mismatched worker account cannot become recorded success',async t=>{
 
 test('signed preview is bound to signature content; changed signature blocks before worker',async t=>{
  let suffix='Original';const signatureReader=async()=>({ok:true,mailbox:account,html:'<b>'+suffix+'</b>',plainText:suffix});
- const f=await fixture(t,{signatureReader});const p=await f.service.preview({queueId:f.queue.id,confirmed:true});assert.ok(p.draft.bodyPlainText.includes('Warm regards,\nVijay DAFAL\n\n-- \nOriginal'));
+ const f=await fixture(t,{signatureReader});const p=await f.service.preview({queueId:f.queue.id,confirmed:true});assert.ok(p.draft.bodyPlainText.includes('Warm regards,\nVijay DAFAL\n-- \nOriginal'));
  suffix='Changed';await assert.rejects(f.service.create({ticket:p.ticket,confirmed:true}),/changed/);assert.equal(f.calls,0);assert.equal(f.operation,null);
 });
 test('confirmed worker receives the signed body, once, after explicit confirmation',async t=>{

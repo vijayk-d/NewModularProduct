@@ -37,7 +37,7 @@ export function createOutreachQueueService({ repository, contactStore, getReview
     const selectedCode = review.selectedCvRoleCode || review.prepared?.recommendation?.bestCv?.role_code || '';
     const selectedCv = (review.prepared?.rankedCvs || []).map(item=>item.cv).find(cv=>cv?.role_code===selectedCode)
       || (review.prepared?.recommendation?.bestCv?.role_code===selectedCode ? review.prepared.recommendation.bestCv : null);
-    const attachment = selectedCv?.local_path ? {relativePath:String(selectedCv.local_path),name:cvDisplayName(process.env.CANDIDATE_DISPLAY_NAME||'Vijay DAFAL',form.jobTitle||selectedCv.role_name)} : null;
+    const attachment = selectedCv?.local_path ? {relativePath:String(selectedCv.local_path),name:cvDisplayName(process.env.CANDIDATE_DISPLAY_NAME||'Vijay DAFAL',form.jobTitle||selectedCv.role_name,selectedCv.local_path)} : null;
     const subject = queueSnapshotSubject(review, submittedSubject);
       if (!subject || /[\r\n]/.test(subject)) invalid('The application needs a valid single-line subject.');
       const items = recipients.map(recipient => {

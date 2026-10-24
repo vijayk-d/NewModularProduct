@@ -5,7 +5,7 @@ export function createSelectedCvEvidenceLoader({ inventoryRepository, documentEx
   }
   return async function loadEvidence(review) {
     const fail = () => {
-      const error = new Error('Selected CV evidence is unavailable. Check the selected CV, CV_FOLDER configuration and PDF text extraction, then retry. No polishing request was sent.');
+      const error = new Error('Selected CV evidence is unavailable. Check the selected CV, CV_FOLDER configuration and PDF/DOCX text extraction, then retry. No polishing request was sent.');
       error.code = 'CV_EVIDENCE_UNAVAILABLE'; return error;
     };
     try {

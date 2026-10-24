@@ -1,0 +1,55 @@
+{
+  "id": "advert-inbox-20261021",
+  "root": "D:\\monorepo\\NewModularProduct",
+  "files": [
+    {
+      "path": "src/application/linkedin-job-import.js",
+      "before": "17166558dc0a049041cd69c9105bea0387c2310db23f46950bc8f589710e3a5b",
+      "beforeNormalized": "17166558dc0a049041cd69c9105bea0387c2310db23f46950bc8f589710e3a5b",
+      "after": "5d8e56397c0c237ddee21e8f9dbed893304df1768b8a8c2e2bb27b81ecffa26f",
+      "original": "17166558dc0a049041cd69c9105bea0387c2310db23f46950bc8f589710e3a5b"
+    },
+    {
+      "path": "src/infrastructure/applications/sqlite-job-import-store.js",
+      "before": "d89695fd56dd822944319a55c39e999a9da55952f0bb9a4a874dfc0e553dadd5",
+      "beforeNormalized": "d89695fd56dd822944319a55c39e999a9da55952f0bb9a4a874dfc0e553dadd5",
+      "after": "cffce596476ec826a6c74dc37d77e8ca647531983f3d638b10d7ab73d8ff84de",
+      "original": "d89695fd56dd822944319a55c39e999a9da55952f0bb9a4a874dfc0e553dadd5"
+    },
+    {
+      "path": "src/interfaces/http/job-import-http.js",
+      "before": "04955f02bb281a93aefe0d62eef47922c246b6c03b1c09ab25bd0102159adb2b",
+      "beforeNormalized": "04955f02bb281a93aefe0d62eef47922c246b6c03b1c09ab25bd0102159adb2b",
+      "after": "494b0043e57327f5f00039adc7eb9522b129c00555fc3b87c39c4235c3a7d90e",
+      "original": "04955f02bb281a93aefe0d62eef47922c246b6c03b1c09ab25bd0102159adb2b"
+    },
+    {
+      "path": "src/interfaces/http/rendering.js",
+      "before": "740b98432b44bef459f581d24bd4edc88796e3cf3da9c140f1ddba0c931ff0ec",
+      "beforeNormalized": "740b98432b44bef459f581d24bd4edc88796e3cf3da9c140f1ddba0c931ff0ec",
+      "after": "a59c6b7f2d5cd6c81b644944b5bac7a1808ca21b40260ca236592c5130754eb0",
+      "original": "740b98432b44bef459f581d24bd4edc88796e3cf3da9c140f1ddba0c931ff0ec"
+    },
+    {
+      "path": "src/interfaces/http/job-import-controls.js",
+      "before": "072e53a8829878a30a8956c6a08321dabb91f06c7a9d5ead49c0deeaf3a6ec90",
+      "beforeNormalized": "072e53a8829878a30a8956c6a08321dabb91f06c7a9d5ead49c0deeaf3a6ec90",
+      "after": "ebac94388ab90ac7d17b046b92185c8957eab1db8372e50772b630238ff703f1",
+      "original": "072e53a8829878a30a8956c6a08321dabb91f06c7a9d5ead49c0deeaf3a6ec90"
+    },
+    {
+      "path": "tests/application/imported-advert-inbox.test.js",
+      "before": null,
+      "beforeNormalized": null,
+      "after": "73dd22e25621e3586fe412ce41808db2fbd8f350ddcb11e2316cc3a61ede0a79",
+      "original": null
+    },
+    {
+      "path": "tests/application/job-import-form-controls.test.js",
+      "before": "09f7f7267a709760f167d02979fa19a53fc485bed7fbaac6fd9d69ea7f10ad20",
+      "beforeNormalized": "09f7f7267a709760f167d02979fa19a53fc485bed7fbaac6fd9d69ea7f10ad20",
+      "after": "7be07c827fa01fe21b22532d0c6bdaf6030ccd03a4baac41996db6c38909d8cc",
+      "original": "09f7f7267a709760f167d02979fa19a53fc485bed7fbaac6fd9d69ea7f10ad20"
+    }
+  ]
+}

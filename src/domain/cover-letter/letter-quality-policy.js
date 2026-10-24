@@ -6,7 +6,7 @@ export function normalizeLengthMode(value='standard'){
 }
 export function lengthPolicy(mode='standard',cap=500){
  mode=normalizeLengthMode(mode);const n=Number(cap),maximumWords=Math.min(mode==='extended'?500:400,Number.isInteger(n)?Math.max(120,n):500);
- return {version:QUALITY_VERSION,mode,maximumWords,targetMinimum:Math.min(mode==='extended'?400:300,maximumWords)};
+ return {version:QUALITY_VERSION,mode,maximumWords,targetMinimum:Math.min(mode==='extended'?450:300,maximumWords)};
 }
 export function visibleLetterText(text='',{advertUrl=''}={}){
  let value=String(text||'').replace(/\r\n?/g,'\n'),url;

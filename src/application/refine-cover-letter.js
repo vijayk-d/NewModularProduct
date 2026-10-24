@@ -155,7 +155,8 @@ function normalizeRefinementResult(result) {
     review: normalizeReview(normalized.review),
     proposedDraft: normalizeString(normalized.proposedDraft),
     ...(normalized.quality?{quality:normalized.quality,letterLengthMode:normalized.letterLengthMode,qualityAdvertUrl:normalized.qualityAdvertUrl||''}:{}),
-    highlightPhrases: normalizeStringArray(normalized.highlightPhrases).filter(phrase => normalizeString(normalized.proposedDraft).toLowerCase().includes(phrase.toLowerCase())).slice(0, 8),
+    highlightSelections:Array.isArray(normalized.highlightSelections)?normalized.highlightSelections.filter(s=>Number.isInteger(s?.start)&&Number.isInteger(s?.end)&&s.start>=0&&s.end>s.start&&String(normalized.proposedDraft||'').slice(s.start,s.end)===s.text).slice(0,8):[],
+    highlightPhrases: normalizeStringArray(normalized.highlightPhrases).filter(phrase => normalizeString(normalized.proposedDraft).toLowerCase().includes(phrase.toLowerCase())).slice(0, 16),
     warnings: normalizeStringArray(normalized.warnings),
     appliedResearchPointIds: normalizeStringArray(
       normalized.appliedResearchPointIds

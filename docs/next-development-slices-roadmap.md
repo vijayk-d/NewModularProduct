@@ -108,3 +108,33 @@ Do not rerun the older Perplexity-enablement utility after Gmail is enabled with
 - Gmail enablement: pending explicit capability choice and mailbox verification.
 
 At each slice completion, update planned/in-progress/verified/released status, record test results and commit ID, and keep production release approval separate from development verification.
+
+
+## Agreed addition — Assignment evidence library (23 October 2026)
+
+Status: PLANNED. This patch adds the roadmap specification only; no library UI, database, CV ingestion or paid extraction is implemented.
+
+Purpose: Build one comprehensive evidence-backed record for each assignment/contract/role, containing multiple challenge, opportunity, decision and learning scenarios. Reuse approved scenarios for vacancy-specific cover letters, CV proposals and interview preparation.
+
+Assignment overview: separate employer, contracting entity and end client; record title, dates, mandate, authority, starting position, organisational roadmap, delivery landscape, stakeholders, overall contribution and confidentiality.
+
+Scenario fields: situation and business impact; diagnosis and evidence; options considered and trade-offs; personal decision/contribution versus team ownership; actions, techniques and mechanisms with reasons for their selection; tactical intervention; documented strategic objective and connecting mechanism; outcomes with baseline, measure, scope and measurement period; setbacks, adaptations, sustainability and lessons. Link every material claim to a source/version or explicit user confirmation. Contract duration is not delivery duration.
+
+Evidence states: source-supported, user-confirmed, needs clarification, restricted, unsupported. Missing SMART details stay missing. Never transfer outcomes across engagements, infer causation from nearby facts, invent organisational strategy, inflate ownership, or infer current employment. Private evidence stays outside Git/release archives; confidential details must be excluded or anonymised before provider submission. Preserve immutable approved scenario versions.
+
+Outputs: approved short cover-letter paragraphs, concise CV bullet proposals, interview summaries and deeper explanations, follow-up questions covering diagnosis, alternatives, resistance, personal contribution, outcomes and learning. A send is not evidence of ATS submission.
+
+Delivery sequence:
+1. Define the assignment/scenario template and evidence/approval rules.
+2. Pilot one assignment with source passages and user recollections; flag unanswered questions instead of filling gaps.
+3. Validate cover-letter and interview outputs against that record.
+4. Populate further assignments in batches.
+5. Integrate explicit scenario selection into polishing; send only relevant approved excerpts after existing cost approval.
+6. Add interview preparation and evidence-gap views.
+
+Acceptance: correct engagement attribution, traceable approved wording, preserved uncertainty/confidentiality, separate personal/team outcomes and tactical/strategic scope, no paid call on browsing/selecting, no rewriting saved letters/queue/history, no automatic CV update or sending.
+
+
+## Assignment Evidence Library MVP — development candidate (23 October 2026)
+
+Manual assignment/scenario editor, separate development-only SQLite storage, explicit evidence/approval states, revision-conflict checks, retained versions, private dossier/interview-outline export and approved-extract export implemented in the candidate package. No paid calls or automatic polishing integration. Source tests and isolated browser acceptance are separate from user acceptance, Git checkpoint and production release. See docs/assignment-evidence-library-mvp.md. Next: pilot one real assignment locally, validate source attribution/confidentiality, then design explicit approved-scenario selection for polishing. Do not mark the full library roadmap complete.

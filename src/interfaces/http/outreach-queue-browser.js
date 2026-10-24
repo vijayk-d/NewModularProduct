@@ -4,6 +4,11 @@ import {partitionQueueSelection,executeBulkSend,showBulkConfirmation,shortSendLa
 import { createQueueMessageControl, saveQueuedMessageBeforeDraft } from './queue-message-editor.js';
 import { attachSimpleContacts } from './outreach-simple-contacts.js';
 function startOutreachQueue() {
+  const scopeReviewId=document.querySelector('input[name="reviewId"]')?.value||'';
+  const standalone=window.location.pathname==='/outreach-queue';
+  if(!scopeReviewId&&!standalone)return;
+  const queueListUrl='/api/outreach-queue'+(scopeReviewId?'?reviewId='+encodeURIComponent(scopeReviewId):'');
+  let refreshGeneration=0,leaving=false;
   if (document.__outreachQueueAttached) return;
   document.__outreachQueueAttached = true;
   const main = document.querySelector('main');
@@ -54,8 +59,11 @@ function startOutreachQueue() {
     if (!response.ok || !result.ok) {const error=new Error(result.error || 'Queue request failed.');error.data=result;throw error;}
     return result;
   }
+  window.addEventListener('pagehide',()=>{leaving=true;refreshGeneration++;stopBulk=true;});
   async function refresh() {
-    const { items } = await request('/api/outreach-queue');
+    const generation=++refreshGeneration;
+    const { items } = await request(queueListUrl);
+    if(leaving||generation!==refreshGeneration||(!standalone&&document.querySelector('input[name="reviewId"]')?.value!==scopeReviewId))return 0;
     const previousSelection=new Set([...tbody.querySelectorAll('.outreach-queue-checkbox:checked')].map(b=>b.value));
     bulkQueueItems=items;
     tbody.replaceChildren();
@@ -256,9 +264,9 @@ function startOutreachQueue() {
     const controls=[...section.querySelectorAll('[data-queue-action],[data-direct-queue-id],[data-send-queue-id]')];controls.forEach(b=>b.disabled=true);syncBulkControls();
     try{
       await refreshSendFeature();if(!sendConfiguration?.sendingEnabled)throw new Error(sendConfiguration?.reason||'Sending unavailable.');
-      const items=(await request('/api/outreach-queue')).items;
+      const items=(await request(queueListUrl)).items;
       const batch=await executeBulkSend({items,ids,api:request,save:saveQueuedMessageBeforeDraft,confirm:data=>showBulkConfirmation(data),isStopped:()=>stopBulk,
-        onProgress:p=>status.textContent=`${p.stage==='preparing'?'Preparing':'Sending'} ${p.index}/${p.total}: ${p.email}. No automatic retries.`});
+        onProgress:p=>status.textContent=`${p.stage==='preparing'?'Preparing':'Sending'} ${p.index}/${p.total} · batch ${p.batchIndex}/${p.batchCount}: ${p.email}. One-second spacing; no automatic retries.`});
       renderBulkResults(batch.results);
       const sent=batch.results.filter(r=>['sent','sent_attention'].includes(r.kind)),uncertain=batch.results.filter(r=>r.kind==='uncertain').length;
       const completed=new Set(sent.map(r=>r.id));tbody.querySelectorAll('.outreach-queue-checkbox').forEach(b=>{if(completed.has(b.value))b.checked=false;});
@@ -299,11 +307,11 @@ function startOutreachQueue() {
     let saved = false; let message = '';
     try {
       const action = button.dataset.queueAction;
-      if (action === 'clear' && !window.confirm('Clear all queue items? Sent-email history will be kept.')) return;
+      if (action === 'clear' && !window.confirm(scopeReviewId?'Remove this application’s displayed queue rows? Other applications and sent history will be kept.':'Clear all queue items? Sent-email history will be kept.')) return;
       const ids = [...tbody.querySelectorAll('.outreach-queue-checkbox:checked')].map(box => box.value);
       if (['delete','prepare-drafts','draft-direct','send-selected'].includes(action) && !ids.length) throw new Error('Select at least one queue item.');
       if(action==='draft-direct'){
-        const items=(await request('/api/outreach-queue')).items;
+        const items=(await request(queueListUrl)).items;
         const picked=partitionQueueSelection(items,ids,'draft');
         if(!picked.eligible.length)throw new Error('No selected rows are eligible for drafting.');
         await directDraft(picked.eligible.map(item=>({id:item.id,retryFailed:item.status==='draft_failed'})));
@@ -320,7 +328,7 @@ function startOutreachQueue() {
       }
       section.querySelector('.prepared-draft-payloads').hidden=true;
       if (action !== 'refresh') {
-        const result = await request(`/api/outreach-queue/${action}`, action === 'clear' ? { confirmed: true } : { ids });
+        const result = await request(`/api/outreach-queue/${action==='clear'&&scopeReviewId?'delete':action}`, action==='clear'&&scopeReviewId?{ids:bulkQueueItems.map(i=>i.id)}:action === 'clear' ? { confirmed: true } : { ids });
         saved = true; message = `${result.deleted} queue item(s) removed. Sent history kept.`;
       }
       const count = await refresh(); status.textContent = message || `${count} queued recipient(s).`;

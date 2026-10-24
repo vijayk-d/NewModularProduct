@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {messageEditVersion} from './queue-message-editor.js';
 const fail=m=>{const e=new Error(m);e.statusCode=409;throw e;};
-export function createSendLedger(db){
+export function createSendLedger(db,{additionalBlocker=()=>false}={}){
  db.exec(`CREATE TABLE IF NOT EXISTS outreach_gmail_send_attempts(id TEXT PRIMARY KEY,application_key TEXT NOT NULL,recipient_key TEXT NOT NULL,sending_account TEXT NOT NULL,status TEXT NOT NULL,payload TEXT NOT NULL);
  CREATE UNIQUE INDEX IF NOT EXISTS outreach_one_active_send ON outreach_gmail_send_attempts(application_key,recipient_key,sending_account) WHERE status IN ('reserved','unknown');`);
  const decode=r=>r?JSON.parse(r.payload):null;
@@ -10,7 +10,7 @@ export function createSendLedger(db){
  function state(item,account){
   const records=db.prepare('SELECT payload FROM outreach_gmail_send_attempts WHERE application_key=? AND recipient_key=? AND sending_account=? ORDER BY rowid DESC').all(item.applicationKey,item.email.toLowerCase(),account.toLowerCase()).map(decode);
   const legacy=db.prepare(`SELECT id FROM outreach_sent_emails WHERE sending_account=? AND json_extract(payload,'$.applicationKey')=? AND lower(json_extract(payload,'$.email'))=? LIMIT 1`).get(account.toLowerCase(),item.applicationKey,item.email.toLowerCase());
-  return {blocked:records.some(r=>['reserved','unknown'].includes(r.status)),hasSent:Boolean(legacy)||records.some(r=>r.status==='sent'),retryAllowed:records[0]?.status==='failed'&&records[0].safeToRetry===true,last:records[0],count:records.length};
+  return {blocked:records.some(r=>['reserved','unknown'].includes(r.status))||additionalBlocker(item),hasSent:Boolean(legacy)||records.some(r=>r.status==='sent'),retryAllowed:records[0]?.status==='failed'&&records[0].safeToRetry===true,last:records[0],count:records.length};
  }
  return {state,list:()=>db.prepare('SELECT payload FROM outreach_gmail_send_attempts ORDER BY rowid DESC').all().map(decode),
  claim({queueId,account,version,mode,summary}){

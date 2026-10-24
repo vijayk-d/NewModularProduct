@@ -1,8 +1,13 @@
 export const LETTER_TONES = Object.freeze([
+  {value:'problem-solver',label:'Problem solver',instruction:'Use a practical, analytical, outcome-focused first-person voice. Show a relevant evidenced challenge or opportunity, the candidate\'s diagnosis and judgement, chosen actions and mechanisms, and supported outcomes. Connect tactical execution to documented strategic priorities where supported. Do not invent a problem-action-result chain, causation, metrics, current responsibilities or ownership. Distinguish demonstrated past experience from prospective approaches; keep evidence commentary outside the letter.'},
   { value: 'professional', label: 'Professional and evidence-led', instruction: 'Use clear, professional, evidence-led prose with restrained confidence.' },
   { value: 'confident', label: 'Confident and direct', instruction: 'Use confident, direct prose without exaggeration or unsupported claims.' },
   { value: 'warm', label: 'Warm and conversational', instruction: 'Use approachable, conversational prose while remaining professional and specific.' },
-  { value: 'concise', label: 'Concise and understated', instruction: 'Use concise, understated prose, short sentences and minimal rhetorical flourishes.' }
+  { value: 'concise', label: 'Concise and understated', instruction: 'Use concise, understated prose, short sentences and minimal rhetorical flourishes.' },
+ {value:'executive',label:'Executive and strategic',instruction:'Connect documented leadership and delivery evidence to organisational priorities and business outcomes. Never inflate ownership or invent strategic responsibility.'},
+ {value:'consultative',label:'Consultative and problem-solving',instruction:'Explain vacancy challenges and credible evidence-led contributions in thoughtful, practical language. Distinguish past achievements from prospective approaches.'},
+ {value:'collaborative',label:'Collaborative leadership',instruction:'Emphasise documented stakeholder alignment, cross-functional collaboration and team enablement while preserving actual ownership and contribution.'},
+ {value:'technical',label:'Technical and delivery-focused',instruction:'Use precise technical and delivery language grounded in supplied evidence. Explain execution and outcomes without dense jargon or unsupported expertise.'}
 ]);
 export function normalizeLetterTone(value = 'professional') {
   const tone = String(value || 'professional').trim();
@@ -15,8 +20,14 @@ export function normalizeExcludedEmployers(value) {
   return [...new Set(['micro1', ...(Array.isArray(value) ? value : [])]
     .map(item => String(item || '').trim().toLowerCase()).filter(Boolean))];
 }
+export function assertNoSourceCommentary(body){
+ const text=String(body||'').replace(/\s+/g,' ');
+ const pattern=/\b(?:(?:the|my|your|the supplied|the provided|the candidate['’]s)\s+(?:cv|curriculum vitae|r[eé]sum[eé]|profile)\s+(?:records?|states?|shows?|indicates?|mentions?|reports?|documents?|confirms?|demonstrates?|highlights?|lists?|notes?|describes?|suggests?)|(?:the supplied|the provided|the available)\s+evidence\s+(?:shows?|indicates?|records?|confirms?|suggests?)|according to\s+(?:(?:the|my|your|the supplied|the provided)\s+)?(?:cv|curriculum vitae|r[eé]sum[eé]|profile))\b/iu;
+ if(pattern.test(text))throw Object.assign(new Error('Source commentary appeared in the proposed letter. Write supported experience directly in the candidate\'s voice; put evidence limitations in separate warnings. Current letter unchanged. No automatic paid retry.'),{code:'REFINEMENT_SOURCE_COMMENTARY_REJECTED',statusCode:400});
+}
 export function assertLetterBodySafe(body, excludedEmployers = ['micro1']) {
   const text = String(body || '');
+  assertNoSourceCommentary(text);
   const fail = (message, code, diagnostics) => { const error = new Error(message); error.code = code; error.statusCode = 400; if(diagnostics)error.safeDiagnostics=diagnostics; throw error; }; // outreach-content-diagnostics-v1
   if (/<\/?[a-z][^>]*>/i.test(text)) {
     const known=new Set(['a','p','br','div','span','strong','b','em','i','u','mark','ul','ol','li','table','tr','td','th','html','body','font','h1','h2','h3','http','https']);
@@ -38,16 +49,12 @@ export function assertLetterBodySafe(body, excludedEmployers = ['micro1']) {
 }
 const words = text => String(text || '').toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
 const filler = new Set('a an the and or of to in at for with on by from across my i we our their your led lead leading delivered delivering managed managing improved achieved supported experience working work'.split(' '));
-export function selectAlignedHighlights(phrases, body, request = {}) {
-  const jd = new Set(words(request.jobDescriptionText));
-  const evidenceText = [request.selectedCvText, request.candidateLinkedInText, ...(request.selectedCvHighlights || [])].filter(Boolean).join(' ');
-  const evidence = new Set(words(evidenceText));
-  const candidates = [...new Set((Array.isArray(phrases) ? phrases : []).map(item => String(item || '').trim()).filter(Boolean))];
-  return candidates.filter(phrase => {
-    if (phrase.length > 120 || /[<>\r\n{}]/.test(phrase) || !String(body).toLowerCase().includes(phrase.toLowerCase())) return false;
-    const significant = words(phrase).filter(word => !filler.has(word));
-    if (!significant.length) return false;
-    return (!jd.size || significant.every(word => jd.has(word))) &&
-      (!evidence.size || significant.every(word => evidence.has(word)));
-  }).slice(0, 8);
+
+export function highlightPhrasePatternSource(phrase){return String(phrase).normalize('NFKC').trim().split(/[\s\u2010-\u2015-]+/u).filter(Boolean).map(s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('[ \\t\\u00a0\\u2010-\\u2015-]+');}
+export function selectAlignedHighlights(phrases,body,request={}){
+ const jd=String(request.jobDescriptionText||'');if(!jd.trim())return [];
+ const evidence=new Set(words([request.selectedCvText,request.candidateLinkedInText,...(request.selectedCvHighlights||[])].filter(Boolean).join(' ')));
+ const valid=p=>{if(p.length>120||/[<>\r\n{}]/.test(p))return false;const tokens=words(p).filter(w=>!filler.has(w)),pattern=highlightPhrasePatternSource(p);if(!tokens.length||!pattern)return false;const regex=new RegExp('(?<![\\p{L}\\p{N}_])(?:'+pattern+')(?![\\p{L}\\p{N}_])','iu');return regex.test(String(body))&&regex.test(jd)&&(!evidence.size||tokens.every(w=>evidence.has(w)));};
+ let result=[...new Set((Array.isArray(phrases)?phrases:[]).map(v=>String(v||'').trim()).filter(Boolean))].filter(valid);
+ return result.slice(0,16);
 }

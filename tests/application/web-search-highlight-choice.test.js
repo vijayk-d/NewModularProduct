@@ -21,6 +21,6 @@ test('normalization preserves an explicit false search choice', async()=>{
 });
 test('job-aligned phrases use highlight markup, not automatic bold',()=>{
   const html=renderCoverLetterHtml('I led delivery dependencies.', ['delivery dependencies']);
-  assert.ok(html.includes('<mark data-job-aligned="true" data-highlight="true">delivery dependencies</mark>'));
+  assert.match(html,/<mark\b[^>]*>delivery dependencies<\/mark>/);
   assert.ok(!html.includes('<strong'));
 });

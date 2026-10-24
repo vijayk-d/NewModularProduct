@@ -62,3 +62,6 @@ __pycache__/
 /tools/maintenance/*-source.json
 /tools/maintenance/local-production-audit-*.json
 /recipient-package-before-newline-repair-*/
+
+# Private assignment evidence
+/evidence/

@@ -1,3 +1,10 @@
+export function restoreReviewActionSection(doc=document){
+ const route=doc.defaultView?.location?.pathname;
+ const selectors={'/cover-letter-refinement':'.refinement-panel','/cover-letter-refinement/apply':'.panel--current','/cover-letter-refinement/reassess-length':'.refinement-panel','/organisation-research':'.panel--research','/review-cv-selection':'.panel--decision','/review-role-title':'.panel--vacancy'};
+ const selector=selectors[route];if(!selector)return false;
+ const section=doc.querySelector(selector);if(!section)return false;
+ const target=section.querySelector('h2')||section;target.setAttribute('tabindex','-1');target.focus({preventScroll:true});section.scrollIntoView({block:'start',behavior:'instant'});return true;
+}
 import {enhanceWorkspaceV2} from './workspace-review-v2.js';
 import {createLinkedInIcon,historyDate} from './contact-history-display.js';
 // review-ui-v1: presentation only; no fetch, API actions or stored-data rewrites.
@@ -44,11 +51,11 @@ export function enhanceReview(doc=document){
  for(const field of doc.querySelectorAll('textarea.subject-editor-input'))bindSubject(field,doc);
  for(const button of doc.querySelectorAll('button,input[type="submit"]'))button.dataset.uiAction=actionStyle(button);
  const main=doc.querySelector('main'),current=doc.querySelector('.panel--current'),decision=doc.querySelector('.panel--decision');if(current&&decision&&current.parentElement===decision.parentElement&&!doc.documentElement?.dataset?.uiEditorPromoted){decision.before(current);if(doc.documentElement)doc.documentElement.dataset.uiEditorPromoted='true';}
- if(main&&!doc.querySelector('.workspace-nav')){const nav=doc.createElement('nav');nav.className='workspace-nav';nav.setAttribute('aria-label','Application workspaces');for(const [href,label] of [['/','New application'],['/applications','Saved applications'],['/outreach-queue','Outreach queue']]){const a=doc.createElement('a');a.href=href;a.textContent=label;if(doc.defaultView?.location.pathname===href||(href==='/applications'&&doc.defaultView?.location.pathname.startsWith('/applications/')))a.setAttribute('aria-current','page');nav.appendChild(a);}main.prepend(nav);}
+ if(main&&!doc.querySelector('.workspace-nav')){const nav=doc.createElement('nav');nav.className='workspace-nav';nav.setAttribute('aria-label','Application workspaces');for(const [href,label] of [['/','New application'],['/applications','Saved applications'],['/maintenance','Maintenance & Commands'],['/evidence-library','Evidence library (development)'],['/outreach-queue','Outreach queue']]){const a=doc.createElement('a');a.href=href;a.textContent=label;if(doc.defaultView?.location.pathname===href||(href==='/applications'&&doc.defaultView?.location.pathname.startsWith('/applications/')))a.setAttribute('aria-current','page');nav.appendChild(a);}main.prepend(nav);}
  enhanceWorkspaceV2(doc);
 }
 if(typeof document!=='undefined'){
- const boot=()=>{enhanceReview(document);let queued=false;const Observer=document.defaultView?.MutationObserver;if(Observer)new Observer(records=>{if(queued||!records.some(r=>!r.target.closest?.('[contenteditable="true"]')))return;queued=true;(document.defaultView.requestAnimationFrame?.bind(document.defaultView)||setTimeout)(()=>{queued=false;enhanceReview(document);});}).observe(document.body,{childList:true,subtree:true});};
+ const boot=()=>{enhanceReview(document);const restore=()=>{const frame=document.defaultView?.requestAnimationFrame?.bind(document.defaultView)||setTimeout;frame(()=>frame(()=>restoreReviewActionSection(document)));};if(document.readyState==='complete')restore();else document.defaultView?.addEventListener('load',restore,{once:true});let queued=false;const Observer=document.defaultView?.MutationObserver;if(Observer)new Observer(records=>{if(queued||!records.some(r=>!r.target.closest?.('[contenteditable="true"]')))return;queued=true;(document.defaultView.requestAnimationFrame?.bind(document.defaultView)||setTimeout)(()=>{queued=false;enhanceReview(document);});}).observe(document.body,{childList:true,subtree:true});};
  const safeBoot=()=>{try{boot();}catch(error){console.error('Review UI enhancement failed; existing application modules may continue.',error);}};
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',safeBoot,{once:true});else safeBoot();
 }

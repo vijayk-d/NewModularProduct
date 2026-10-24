@@ -1,33 +1,10 @@
-import {renderLinkedRoleOpening} from '../../domain/shared/linked-role-opening.js';
-function escape(value) {
-  return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
-}
-export function renderCoverLetterHtml(text = '', highlightPhrases = []) {
-  const phrases = [...new Set((Array.isArray(highlightPhrases) ? highlightPhrases : [])
-    .map(value => String(value || '').trim()).filter(value => value && value.length <= 120 && !/[<>\r\n{}]/.test(value)))].slice(0, 8).sort((a,b) => b.length-a.length);
-  const pattern = phrases.length ? new RegExp(phrases.map(phrase => phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'gi') : null;
-  const highlight = line => {
-    if (!pattern || /^(?:Dear\b|I am applying\b|I appreciate the convenience of ATS-based applications\b|Warm regards|Vijay DAFAL)/i.test(line)) return escape(line);
-    let result = '', cursor = 0;
-    for (const match of line.matchAll(pattern)) {
-      const left = line[match.index-1] || '', right = line[match.index+match[0].length] || '';
-      if (/[\p{L}\p{N}_]/u.test(left) || /[\p{L}\p{N}_]/u.test(right)) continue;
-      result += escape(line.slice(cursor,match.index)) + `<mark data-job-aligned="true" data-highlight="true">${escape(match[0])}</mark>`;
-      cursor = match.index+match[0].length;
-    }
-    return result+escape(line.slice(cursor));
-  };
-  const linked=renderLinkedRoleOpening(text,highlight);
-  if(linked!==null)return linked;
-  return String(text).replace(/\r\n/g, '\n').split('\n').map(line => {
-    const match = line.match(/^Job advert:\s*(https?:\/\/\S+)\s*$/i);
-    if (match) {
-      try {
-        const url = new URL(match[1]);
-        if (['http:', 'https:'].includes(url.protocol)) return `Job advert: <a href="${escape(url.href)}" target="_blank" rel="noopener noreferrer">Job advert</a>`;
-      } catch {}
-    }
-    return highlight(line);
-  }).join('<br>');
+import {highlightPhrasePatternSource} from '../../application/cover-letter-controls.js';import {linkedOpeningParts} from '../../domain/shared/linked-role-opening.js';
+const escape=v=>String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
+const generic=new Set('ai data delivery how where use using making helping team teams work learning risk solutions the and of to'.split(' '));
+export function renderCoverLetterHtml(text='',metadata=[]){
+ const value=String(text).replace(/\r\n/g,'\n'),entries=Array.isArray(metadata)?metadata:[],ranges=entries.filter(s=>s&&typeof s==='object'&&Number.isInteger(s.start)&&Number.isInteger(s.end)&&s.start>=0&&s.end>s.start&&s.text?.length<=240&&value.slice(s.start,s.end)===s.text).sort((a,b)=>a.start-b.start),legacy=[...new Set(entries.filter(s=>typeof s==='string').map(s=>s.trim()).filter(s=>s&&s.length<=120&&!/[<>\r\n{}]/.test(s)&&!s.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).every(w=>generic.has(w))))].slice(0,16).sort((a,b)=>b.length-a.length),pattern=legacy.length?new RegExp(legacy.map(highlightPhrasePatternSource).join('|'),'giu'):null,used=new Set();
+ function lineHtml(line,offset){if(/^(?:Dear\b|I am applying\b|I appreciate the convenience\b|Warm regards|Kind regards|Best regards|Regards|Sincerely|Role details:)/i.test(line.trim()))return escape(line);let pieces=ranges.filter(s=>s.start>=offset&&s.end<=offset+line.length).map(s=>({...s,start:s.start-offset,end:s.end-offset}));if(!ranges.length&&pattern)for(const m of line.matchAll(pattern)){const left=line[m.index-1]||'',right=line[m.index+m[0].length]||'',key=m[0].toLowerCase();if(used.has(key)||/[\p{L}\p{N}_]/u.test(left)||/[\p{L}\p{N}_]/u.test(right))continue;used.add(key);pieces.push({start:m.index,end:m.index+m[0].length,text:m[0],id:'legacy-'+offset+'-'+m.index});}pieces.sort((a,b)=>a.start-b.start);let html='',cursor=0;for(const s of pieces){if(s.start<cursor)continue;html+=escape(line.slice(cursor,s.start))+`<mark data-job-aligned="true" data-highlight="true" data-highlight-origin="auto" data-highlight-id="${escape(s.id||'ai-hl-'+(offset+s.start))}" data-highlight-quote="${escape(s.text)}">${escape(line.slice(s.start,s.end))}</mark>`;cursor=s.end;}return html+escape(line.slice(cursor));}
+ function segment(s,start){let offset=start;return s.split('\n').map(line=>{const out=lineHtml(line,offset);offset+=line.length+1;return out;}).join('<br>');}
+ const p=linkedOpeningParts(value);if(p){const prefix='I am applying for the ',first=value.slice(p.start,p.end),opening=escape(prefix)+`<a href="${escape(p.url)}" target="_blank" rel="noopener noreferrer">${escape(p.role)}</a>`+escape(first.slice(prefix.length+p.role.length));return segment(value.slice(0,p.start),0)+opening+segment(value.slice(p.fallbackEnd),p.fallbackEnd);}
+ let offset=0;return value.split('\n').map(line=>{const i=offset;offset+=line.length+1;const m=/^Job advert:\s*(https?:\/\/\S+)\s*$/i.exec(line);if(m){try{const u=new URL(m[1]);if(['http:','https:'].includes(u.protocol)&&!u.username&&!u.password)return `Job advert: <a href="${escape(u.href)}" target="_blank" rel="noopener noreferrer">Job advert</a>`;}catch{}}return lineHtml(line,i);}).join('<br>');
 }

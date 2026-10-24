@@ -5,6 +5,9 @@ import re
 import sys
 from email.message import EmailMessage
 from pathlib import Path
+import hashlib
+sys.path.insert(0,str(Path(__file__).resolve().parent))
+from cv_docx import MIME as DOCX_MIME,validate_docx
 
 
 def _build_message(draft, from_address):
@@ -30,18 +33,23 @@ def _build_message(draft, from_address):
         folder = os.getenv('CV_FOLDER', '').strip()
         relative = str(attachment.get('relativePath', '')).replace('\\', '/')
         if not folder or not relative or re.match(r'^(?:/|[A-Za-z]:)', relative):
-            raise ValueError('A configured CV_FOLDER and relative PDF attachment are required.')
+            raise ValueError('A configured CV_FOLDER and relative PDF/DOCX attachment are required.')
         root = Path(folder).resolve()
         path = (root / relative).resolve()
-        if not path.is_relative_to(root) or path.suffix.lower() != '.pdf' or not path.is_file():
-            raise ValueError('Selected CV must be an existing PDF beneath CV_FOLDER.')
+        if not path.is_relative_to(root) or path.suffix.lower() not in ['.pdf','.docx'] or not path.is_file():
+            raise ValueError('Selected CV must be an existing PDF/DOCX beneath CV_FOLDER.')
         if path.stat().st_size > 20 * 1024 * 1024:
             raise ValueError('Selected CV exceeds the worker attachment limit.')
         name = str(attachment.get('name') or path.name)
-        if (not name.strip() or len(name) > 180 or not name.lower().endswith('.pdf')
+        if (not name.strip() or len(name) > 180 or Path(name).suffix.lower()!=path.suffix.lower()
                 or re.search(r'[\x00-\x1f\x7f<>:"/\\|?*]', name)):
             raise ValueError('Attachment display name is invalid.')
-        message.add_attachment(path.read_bytes(), maintype='application', subtype='pdf', filename=name)
+        with path.open('rb') as source:data=source.read(20*1024*1024+1)
+        if len(data)>20*1024*1024:raise ValueError('Attachment size limit.')
+        if attachment.get('sha256') and hashlib.sha256(data).hexdigest()!=attachment['sha256']:raise ValueError('CV changed after approval.')
+        mime='application/pdf' if path.suffix.lower()=='.pdf' else DOCX_MIME
+        if mime==DOCX_MIME:validate_docx(data)
+        message.add_attachment(data,maintype='application',subtype=mime.split('/',1)[1],filename=name)
     return message
 
 

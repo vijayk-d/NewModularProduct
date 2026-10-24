@@ -1,12 +1,13 @@
+import {extname} from 'node:path';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
-const separator='\n\n-- \n';
+const separator='\n-- \n';
 const marker='<!-- application-gmail-signature:v1 -->';
 function fail(message){throw Object.assign(new Error(message),{code:'GMAIL_PRESENTATION_BLOCKED',statusCode:400});}
-export function cvDisplayName(candidate,role){
+export function cvDisplayName(candidate,role,source='.pdf'){const ext=['.pdf','.docx'].includes(String(source).toLowerCase())?String(source).toLowerCase():extname(String(source)).toLowerCase();if(!['.pdf','.docx'].includes(ext))fail('CV must use PDF or DOCX.');
  const part=(value,fallback)=>String(value||fallback).normalize('NFKC').replace(/[^\p{L}\p{N} _-]/gu,' ').trim().replace(/[\s_-]+/gu,'_').slice(0,70).replace(/_+$/,'')||fallback;
- return `${part(candidate,'Candidate')}_${part(role,'Application')}_CV.pdf`;
+ return `${part(candidate,'Candidate')}_${part(role,'Application')}_CV${ext}`;
 }
 export function letterWithoutSignature(plain,html=''){
  const value=String(plain||'').replace(/\r\n/g,'\n').trim();
@@ -37,6 +38,17 @@ export function readGmailSignature({expectedAddress,env=process.env,spawnImpl=sp
   child.stdin.end(JSON.stringify({expectedAddress}),'utf8');
  });
 }
+export function compactSignatureBoundary(letterHtml,signatureHtml){
+ const empty=String.raw`(?:\s|&nbsp;|&#160;|&#x0*a0;|<br\s*\/?\s*>)*`;
+ const trailing=new RegExp(`(?:${empty}<(?:(?:p)|(?:div))(?:\\s[^>]*)?>${empty}<\\/(?:p|div)>${empty}|${empty})$`,'i');
+ const leading=new RegExp(`^(?:${empty}<(?:(?:p)|(?:div))(?:\\s[^>]*)?>${empty}<\\/(?:p|div)>${empty}|${empty})`,'i');
+ let body=String(letterHtml).trimEnd(),signature=String(signatureHtml).trimStart(),before;
+ do{before=body;body=body.replace(trailing,'');}while(body!==before);
+ do{before=signature;signature=signature.replace(leading,'');}while(signature!==before);
+ if(!body||!signature)fail('Signature or letter is empty after boundary cleanup.');
+ const breakHtml=/<\/(?:p|div|table|ul|ol|blockquote)>$/i.test(body)?'':'<br>';
+ return body+breakHtml+marker+signature;
+}
 export async function applyGmailSignature(draft,{account,env=process.env,signatureReader=readGmailSignature}={}){
  if(draft.bodyPlainText.includes(separator)||draft.bodyHtml.includes(marker))fail('This queued letter already contains an application signature. Review and requeue without a duplicate.');
  if(String(env.ENABLE_GMAIL_SIGNATURE||'').trim().toLowerCase()!=='true')return draft;
@@ -44,7 +56,7 @@ export async function applyGmailSignature(draft,{account,env=process.env,signatu
  if(sig.ok!==true||String(sig.mailbox).toLowerCase()!==String(account).toLowerCase()||!sig.html?.trim()||!sig.plainText?.trim())fail('A non-empty signature from the verified sending mailbox is required.');
  if(sig.html.length>100000||sig.plainText.length>20000||/\{\{|\}\}/.test(sig.html+sig.plainText)||sig.plainText.includes(separator)||sig.html.includes(marker))fail('Signature size or placeholders are invalid.');
  const bodyPlainText=draft.bodyPlainText.trimEnd()+separator+sig.plainText.trim();
- const bodyHtml=draft.bodyHtml+`<br><br>${marker}`+sig.html;
+ const bodyHtml=compactSignatureBoundary(draft.bodyHtml,sig.html);
  if(bodyPlainText.length>100000||bodyHtml.length>300000)fail('Signed message exceeds body limits.');
  return {...draft,bodyPlainText,bodyHtml,signature:{source:'gmail-send-as',mailbox:sig.mailbox,sha256:createHash('sha256').update(sig.html+'\n'+sig.plainText).digest('hex'),containsImages:sig.containsImages===true}};
 }

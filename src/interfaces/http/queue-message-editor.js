@@ -46,3 +46,5 @@ export function createQueueMessageControl(item){
  discard.addEventListener('click',()=>{state.dirty=false;state.version=state.latest.editVersion;state.html=state.latest.editorHtml;state.plain=state.latest.bodyPlainText;editor.innerHTML=state.html;status.textContent=state.latest.canEditMessage?'Saved version restored.':state.latest.messageReadOnlyReason;state.updateButtons();});
  state.updateButtons();return details;
 }
+
+export function hasPendingQueueMessageEdits(reviewId){return [...edits.values()].some(s=>(!reviewId||s.latest?.reviewId===reviewId)&&(s.dirty||s.saving));}

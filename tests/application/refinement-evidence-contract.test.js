@@ -36,8 +36,10 @@ test('provider request includes evidence and highlight schema; warnings survive 
   assert.equal(prompt.selectedCvText, 'CV evidence: led delivery at Example');
   assert.equal(prompt.fullJobDescription, 'Full JD: led delivery');
   assert.equal(prompt.candidateLinkedInText, 'Profile evidence');
-  assert.ok(sent.response_format.json_schema.schema.required.includes('highlightPhrases'));
-  assert.deepEqual(result.highlightPhrases, ['led delivery']);
+  assert.ok(sent.response_format.json_schema.schema.required.includes('highlightSelections'));
+  assert.ok(prompt.constraints.contextualHighlightPolicy.includes('PASSAGES'));
+  assert.deepEqual(result.highlightPhrases, []);
+  assert.deepEqual(result.highlightSelections, []);
   assert.deepEqual(result.warnings, ['Check profile dates']);
 });
 test('provider failure retains the caller draft and returns controlled failure', async () => {

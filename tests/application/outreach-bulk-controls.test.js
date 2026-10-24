@@ -12,7 +12,7 @@ function fixture({items=[item('a'),item('b')],confirm=true,prepareError,commitEr
   if(url.endsWith('send-commit')){if(stopAfterFirst)stopped=true;if(commitError===p.ticket){const e=new Error('uncertain send');e.data={code:'SEND_UNKNOWN'};throw e;}return {sent:true,messageId:'sent-'+p.ticket};}
   throw new Error('Unexpected API');
  };
- return {calls,saved,confirmations,run:()=>executeBulkSend({items,ids:items.map(i=>i.id),api,save:async id=>{saved.push(id);if(saveError===id)throw new Error('save failed');},confirm:async data=>{confirmations.push(data);return confirm;},isStopped:()=>stopped,now:()=>now})};
+ return {calls,saved,confirmations,run:()=>executeBulkSend({items,ids:items.map(i=>i.id),api,save:async id=>{saved.push(id);if(saveError===id)throw new Error('save failed');},confirm:async data=>{confirmations.push(data);return confirm;},isStopped:()=>stopped,now:()=>now,sleep:async()=>{}})};
 }
 test('mixed send selection excludes sent, uncertain and duplicate application/address',()=>{
  const rows=[item('a'),item('b',{status:'drafted',sendAction:{eligible:true,mode:'draft'}}),item('c',{status:'sent',sendAction:{eligible:true,mode:'repeat'}}),item('d',{status:'send_unknown',sendAction:{eligible:false,reason:'uncertain'}}),item('e',{email:'a@business.test'})];
@@ -28,7 +28,7 @@ test('concurrent change to repeat mode is never silently sent in bulk',async()=>
 test('expired preparations are not refreshed and silently sent',async()=>{const f=fixture({expires:true});const r=await f.run();assert.equal(f.confirmations.length,0);assert.equal(f.calls.filter(c=>c[0].endsWith('send-prepare')).length,2);assert.equal(r.results.filter(r=>r.kind==='not_prepared').length,2);});
 test('uncertain sends are reported once and never retried',async()=>{const f=fixture({commitError:'a'});const r=await f.run();assert.equal(r.results.find(r=>r.id==='a').kind,'uncertain');assert.equal(f.calls.filter(c=>c[0].endsWith('send-commit')&&c[1].ticket==='a').length,1);});
 test('stop after current completes no subsequent send',async()=>{const f=fixture({stopAfterFirst:true});const r=await f.run();assert.equal(r.results.filter(r=>r.kind==='sent').length,1);assert.equal(r.results.filter(r=>r.kind==='stopped').length,1);});
-test('oversized selection fails before any preparation',async()=>{const f=fixture({items:Array.from({length:26},(_,i)=>item(String(i)))});await assert.rejects(f.run(),/25/);assert.equal(f.calls.length,0);});
+test('selection above 25 is processed with separate approvals and no selection rejection',async()=>{const f=fixture({items:Array.from({length:26},(_,i)=>item(String(i)))});const result=await f.run();assert.equal(f.confirmations.length,2);assert.deepEqual(f.confirmations.map(c=>c.prepared.length),[25,1]);assert.equal(result.results.filter(r=>r.kind==='sent').length,26);});
 test('missing/duplicate row IDs do not cause extra sends',()=>{const r=partitionQueueSelection([item('a')],['a','a','missing'],'send');assert.equal(r.eligible.length,1);assert.equal(r.skipped.length,1);});
 
 import {showBulkConfirmation} from '../../src/interfaces/http/outreach-bulk.js';
@@ -52,11 +52,11 @@ test('only explicit Send confirmation resolves approval',async()=>{
  const p=showBulkConfirmation({prepared:[{item:item('a'),prepared:{mode:'draft',recipient:'a@business.test',subject:'Application'}}],results:[],items:[],selectedCount:1},doc);
  walk(doc.dialog).find(n=>n.textContent==='Send 1 emails').events.click();assert.equal(await p,true);
 });
-test('capacity error stops further preparation and sends only explicitly confirmed subset',async()=>{
+test('capacity error pauses preparation without opening confirmation',async()=>{
  const items=[item('a'),item('b'),item('c')],calls=[];let approved;
  const result=await executeBulkSend({items,ids:items.map(i=>i.id),save:async()=>{},now:()=>1000,confirm:async data=>{approved=data;return false;},api:async(url,p)=>{
   calls.push([url,p]);if(url.endsWith('send-cancel'))return {};
   if(p.queueId==='b')throw new Error('Too many pending confirmations');return {ticket:'a',expiresAt:999999,mode:'new',recipient:'a@business.test'};
  }});
- assert.equal(calls.some(c=>c[1].queueId==='c'),false);assert.equal(approved.prepared.length,1);assert.equal(result.confirmed,false);
+ assert.equal(calls.some(c=>c[1].queueId==='c'),false);assert.equal(approved,undefined);assert.equal(result.confirmed,false);assert.ok(result.results.some(r=>r.kind==='stopped'));
 });

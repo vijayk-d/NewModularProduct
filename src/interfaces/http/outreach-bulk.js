@@ -15,8 +15,8 @@ export function partitionQueueSelection(items,ids,kind){
  return {eligible,skipped};
 }
 export function shortSendLabel(label){return ({'Send email':'Send','Send draft':'Send draft','Send again':'Send again','Retry send':'Retry'})[label]||'Send';}
-export async function executeBulkSend({items,ids,api,save,confirm,onProgress=()=>{},isStopped=()=>false,now=()=>Date.now(),max=25}){
- const selected=partitionQueueSelection(items,ids,'send'),results=[...selected.skipped],prepared=[];
+async function executeSendBatch({items,ids,api,save,confirm,onProgress=()=>{},isStopped=()=>false,now=()=>Date.now(),max=25,beforeCommit=async()=>{}}){
+ const selected=partitionQueueSelection(items,ids,'send'),results=[...selected.skipped],prepared=[];let halted=false;
  if(selected.eligible.length>max)throw new Error(`Select at most ${max} eligible messages per send batch.`);
  try{
   for(const [index,item] of selected.eligible.entries()){
@@ -31,9 +31,11 @@ export async function executeBulkSend({items,ids,api,save,confirm,onProgress=()=
     }
     prepared.push({item,prepared:p});
    }catch(e){results.push({id:item.id,email:item.email,kind:'not_prepared',message:e.message});
+    if(/rate.?limit|quota|too many pending|confirmation capacity/i.test(String(e.message||''))){halted=true;results.push(...selected.eligible.slice(index+1).map(i=>({id:i.id,email:i.email,kind:'stopped',message:'Preparation capacity or provider limit reached; run paused.'})));break;}
     if(/too many pending|confirmation capacity/i.test(String(e.message||''))){results.push(...selected.eligible.slice(index+1).map(i=>({id:i.id,email:i.email,kind:'not_prepared',message:'Confirmation capacity reached; use a smaller batch.'})));break;}
    }
   }
+  if(halted){results.push(...prepared.map(p=>({id:p.item.id,email:p.item.email,kind:'stopped',message:'Run paused before confirmation; nothing sent.'})));return {results,confirmed:false,halted:true};}
   const fresh=[];
   for(const p of prepared){
    if(p.prepared.expiresAt<=now()+10000){results.push({id:p.item.id,email:p.item.email,kind:'not_prepared',message:'Confirmation expired or too near expiry; use a smaller fresh batch.'});try{await api('/api/outreach-queue/send-cancel',{ticket:p.prepared.ticket});}catch{}}
@@ -44,28 +46,53 @@ export async function executeBulkSend({items,ids,api,save,confirm,onProgress=()=
    results.push(...fresh.map(p=>({id:p.item.id,email:p.item.email,kind:'cancelled',message:'Nothing sent; confirmation cancelled.'})));return {results,confirmed:false};
   }
   for(const [index,p] of fresh.entries()){
-   if(isStopped()){results.push(...fresh.slice(index).map(x=>({id:x.item.id,email:x.item.email,kind:'stopped',message:'Not sent; stopped after the preceding operation.'})));break;}
+   if(!halted&&!isStopped())await beforeCommit();
+   if(isStopped()||halted){results.push(...fresh.slice(index).map(x=>({id:x.item.id,email:x.item.email,kind:'stopped',message:'Not sent; stopped after the preceding operation.'})));break;}
+   if(p.prepared.expiresAt<=now()+10000){results.push({id:p.item.id,email:p.item.email,kind:'not_prepared',message:'Approval expired or too near expiry before sending. Review a fresh batch explicitly.'});halted=true;continue;}
    onProgress({stage:'sending',index:index+1,total:fresh.length,email:p.item.email});
    try{
     const r=await api('/api/outreach-queue/send-commit',{ticket:p.prepared.ticket,confirmed:true,repeatApproved:false});
     if(r.sent!==true||!r.messageId)throw new Error('No confirmed send receipt. Check Gmail before retrying.');
     results.push({id:p.item.id,email:p.item.email,kind:'sent',message:`Sent messageId: ${r.messageId}`,messageId:r.messageId});
    }catch(e){
+    halted=true;
     if(e.data?.sent===true&&e.data.messageId)results.push({id:p.item.id,email:p.item.email,kind:'sent_attention',message:`Gmail confirmed ${e.data.messageId}; persistence needs attention. Do not retry.`,messageId:e.data.messageId});
     else results.push({id:p.item.id,email:p.item.email,kind:e.data?.code==='SEND_NOT_ATTEMPTED'?'failed_before_send':'uncertain',message:e.message});
    }
   }
-  return {results,confirmed:true};
+  return {results,confirmed:true,halted};
  }finally{
   // Cancelling an already consumed ticket only frees cache; it never resets a ledger or retries a send.
   await Promise.allSettled(prepared.map(p=>api('/api/outreach-queue/send-cancel',{ticket:p.prepared.ticket})));
  }
 }
-export function showBulkConfirmation({prepared,results,items,selectedCount},doc=document){
+
+// Selection is independent of the internal preparation/confirmation batch size.
+export async function executeBulkSend({items,ids,api,save,confirm,onProgress=()=>{},isStopped=()=>false,now=()=>Date.now(),max=25,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))}){
+ if(!Number.isInteger(max)||max<1||max>25)throw new Error('Internal batch size must be between 1 and 25.');
+ const selected=partitionQueueSelection(items,ids,'send'),results=[...selected.skipped];
+ const batchCount=Math.ceil(selected.eligible.length/max);let confirmed=false,previousOperation=false;
+ for(let offset=0;offset<selected.eligible.length;offset+=max){
+  const batchIndex=Math.floor(offset/max)+1,rows=selected.eligible.slice(offset,offset+max);
+  if(isStopped()){results.push(...selected.eligible.slice(offset).map(i=>({id:i.id,email:i.email,kind:'stopped',message:'Not sent; run stopped.'})));break;}
+  const result=await executeSendBatch({items,ids:rows.map(i=>i.id),api,save,now,max,isStopped,
+   beforeCommit:async()=>{if(previousOperation)await sleep(1000);previousOperation=true;},
+   confirm:data=>confirm({...data,selectedCount:new Set(ids).size,batchIndex,batchCount}),
+   onProgress:p=>onProgress({...p,index:offset+p.index,total:selected.eligible.length,batchIndex,batchCount})});
+  results.push(...result.results);confirmed=confirmed||result.confirmed;
+  if(!result.confirmed||result.halted||isStopped()){
+   const cancelled=!result.confirmed&&result.results.some(r=>r.kind==='cancelled');
+   results.push(...selected.eligible.slice(offset+max).map(i=>({id:i.id,email:i.email,kind:cancelled?'cancelled':'stopped',message:cancelled?'Run cancelled; later batch was not prepared.':'Run paused/stopped; later batch was not prepared. Review results before continuing.'})));
+   break;
+  }
+ }
+ return {results,confirmed};
+}
+export function showBulkConfirmation({prepared,results,items,selectedCount,batchIndex=1,batchCount=1},doc=document){
  if(typeof doc.createElement('dialog').showModal!=='function')throw new Error('Bulk confirmation is unavailable in this browser. Use individual Send actions.');
  const dialog=doc.createElement('dialog');dialog.className='outreach-bulk-confirm';dialog.setAttribute('aria-labelledby','outreach-bulk-confirm-title');
  const title=doc.createElement('h2');title.id='outreach-bulk-confirm-title';title.textContent=`Send ${prepared.length} emails now?`;dialog.appendChild(title);
- const intro=doc.createElement('p');intro.textContent=`${selectedCount} selected; ${prepared.length} prepared. ${results.length} skipped/not prepared. No automatic retries. Already-sent rows are excluded.`;dialog.appendChild(intro);
+ const intro=doc.createElement('p');intro.textContent=`${selectedCount} selected; batch ${batchIndex} of ${batchCount}; ${prepared.length} prepared. ${results.length} skipped/not prepared. No automatic retries. Already-sent rows are excluded.`;dialog.appendChild(intro);
  const warning=doc.createElement('p');warning.className='outreach-bulk-warning';
  const unverified=prepared.filter(p=>!p.prepared.emailVerified).length;
  const contactKeys=prepared.map(p=>p.item.contactId||p.item.fullName||p.item.id),duplicates=contactKeys.length-new Set(contactKeys).size;

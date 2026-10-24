@@ -109,7 +109,7 @@ export function validateRuntimeConfig({
     env.COVER_LETTER_REFINEMENT_MAX_WORDS,
     'COVER_LETTER_REFINEMENT_MAX_WORDS',
     {
-      defaultValue: 450,
+      defaultValue: 500,
       minimum: 120,
       maximum: 500
     }

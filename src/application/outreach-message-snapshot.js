@@ -14,6 +14,20 @@ function decode(value) {
   });
 }
 const normalize = text => String(text).replace(/\s+/gu,' ').trim();
+
+function safeEditorStyle(value=''){
+ if(/url\s*\(|expression\s*\(|@import|javascript:|[<>]/i.test(value))invalid('Unsafe editor formatting.');
+ const output=[];for(const entry of String(value).split(';')){if(!entry.trim())continue;const i=entry.indexOf(':');if(i<1)invalid('Invalid editor style.');const key=entry.slice(0,i).trim().toLowerCase(),v=entry.slice(i+1).trim().toLowerCase();let ok=false;
+ if(key==='font-weight')ok=/^(?:normal|bold|bolder|[1-9]00)$/.test(v);
+ else if(key==='font-style')ok=/^(?:normal|italic|oblique)$/.test(v);
+ else if(['text-decoration','text-decoration-line'].includes(key))ok=/^(?:none|underline|line-through|underline line-through|line-through underline)$/.test(v);
+ else if(key==='text-align')ok=/^(?:left|right|center|justify|start|end)$/.test(v);
+ else if(['background-color','color'].includes(key))ok=/^(?:#[0-9a-f]{3}(?:[0-9a-f]{3})?|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)|black|white|yellow|red|blue|green|navy|gray|grey|maroon|purple)$/.test(v);
+ else if(key==='white-space')ok=/^(?:normal|pre-wrap)$/.test(v);
+ if(!ok)invalid('Unsupported editor style: '+key+'. Use supported formatting controls.');output.push(key+':'+v);
+ }return output.join(';');
+}
+
 export function sanitizeSnapshotHtml(value) {
   if(typeof value!=='string' || !value.trim() || value.length>300000) invalid('Formatted message must contain between 1 and 300000 characters.');
   const allowed=new Set(['p','div','br','b','strong','i','em','u','s','ul','ol','li','span','mark','a']);
@@ -50,7 +64,10 @@ export function sanitizeSnapshotHtml(value) {
       if(!['http:','https:'].includes(url.protocol) || url.username || url.password) invalid('Message link must use HTTP or HTTPS without embedded credentials.');
       links.push({href:url.href,textStart:plain.join('').length}); extra=` href="${escapeHtml(url.href)}" target="_blank" rel="noopener noreferrer"`;
     }
-    if(render==='mark') extra=' style="background-color:#fff2a8"';
+    const origin=attributes['data-highlight-origin']||(attributes['data-job-aligned']==='true'?'auto':attributes['data-highlight-manual']==='true'?'manual':'');
+    if(render==='mark'&&['auto','manual','legacy'].includes(origin)){extra+=' data-highlight-origin="'+origin+'"';if(origin==='auto'){extra+=' data-job-aligned="true" data-highlight="true"';const id=attributes['data-highlight-id'];if(id&&/^[A-Za-z0-9_-]{1,80}$/.test(id))extra+=' data-highlight-id="'+id+'"';const quote=attributes['data-highlight-quote'];if(quote&&quote.length<=240&&!/[{}]/.test(quote))extra+=' data-highlight-quote="'+escapeHtml(quote)+'"';}}
+    const styles=safeEditorStyle(attributes.style||'');
+    if(render==='mark')extra+=' style="'+escapeHtml(styles||'background-color:#fff2a8')+'"';else if(styles)extra+=' style="'+escapeHtml(styles)+'"';
     if(['p','div','li'].includes(tag)) plain.push('\n');
     output.push(`<${render}${extra}>`);
     if(tag==='br') plain.push('\n'); else stack.push({tag,render});
@@ -82,6 +99,7 @@ function personalize(text,values,html=false) {
   if(/\{\{|\}\}/.test(result)) invalid('Queued message contains an unsupported or unresolved placeholder.');
   return result;
 }
+export function stripEditorHighlightMetadata(html){return String(html).replace(/\sdata-(?:highlight-origin|highlight-id|highlight-quote|job-aligned|highlight|highlight-manual)="[^"]*"/g,'');}
 export function prepareDraftSnapshot(item) {
   if(!item || typeof item.id!=='string' || !item.id || item.status!=='new') invalid('Choose new queue items with valid string IDs.');
   if(!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(item.email||'')) invalid('Queued recipient email is invalid.');
@@ -94,7 +112,7 @@ export function prepareDraftSnapshot(item) {
   const attachment=item.attachment ? structuredClone(item.attachment) : null;
   if(item.application?.selectedCvRoleCode && !attachment) invalid('This queue item lacks selected-CV attachment metadata. Remove it and requeue the reviewed application.');
   return {queueId:item.id,recipient:{email:item.email,firstname:values.firstname,lastname:values.lastname},
-    subject:personalize(item.subject,values),bodyPlainText:body,bodyHtml:html,attachment};
+    subject:personalize(item.subject,values),bodyPlainText:body,bodyHtml:stripEditorHighlightMetadata(html),attachment};
 }
 
 

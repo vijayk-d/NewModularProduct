@@ -1,3 +1,21 @@
+function personalPolishingInstructions(values){const text=String(values.get('instructions')||'').replace(/\r\n?/g,'\n').trim();if(text.length>4000)throw Object.assign(new Error('Personal polishing instructions must not exceed 4000 characters.'),{statusCode:400,code:'POLISHING_INSTRUCTIONS_INVALID'});return text;}
+import {createAssignmentEvidenceHandler} from './assignment-evidence-http.js';
+import {inspectApplicationRole,requireConfirmedApplicationRole,confirmApplicationRole} from '../../application/application-role-review.js';
+import {snapshotMessage} from '../../application/outreach-message-snapshot.js';
+import {renderCoverLetterHtml} from './cover-letter-html.js';
+import {createMaintenanceHandler} from './maintenance-http.js';
+import {createUnsentLetterUpdateService} from '../../application/unsent-letter-update-service.js';
+import {createGmailDraftUpdatePort} from '../../application/gmail-draft-update-port.js';
+
+function confirmedRoleForRequest(review,values){const role=requireConfirmedApplicationRole(review.formData),posted=values.get('applicationRoleVersion');if((posted&&posted!==role.version)||(review.formData.applicationRoleConfirmation&&!posted))throw Object.assign(new Error('Application role choice changed or this page is stale. Reload and review before polishing.'),{statusCode:409,code:'APPLICATION_ROLE_CONFIRMATION_REQUIRED',roleReview:role});return role.applicationTitle;}
+function polishingReviewWithRelationship(review,values){
+ if(!values.has('advertiserRelationship'))return review;
+ const value=String(values.get('advertiserRelationship')||'').trim();
+ if(!['direct-employer','recruitment-intermediary','unknown'].includes(value))throw Object.assign(new Error('Choose a valid advertiser relationship.'),{statusCode:400});
+ return {...review,formData:{...review.formData,advertiserRelationship:value}};
+}
+import {createApplicationIntelligenceHttp} from './application-intelligence-http.js';
+import {createCvDocumentHandler} from './cv-document-http.js';
 import {lengthPolicy,normalizeLengthMode,assertLetterLength} from '../../domain/cover-letter/letter-quality-policy.js';
 import {newApplicationPolishingModel} from '../../application/new-review-defaults.js';
 import {createAchievementPreparationHandler} from './achievement-preparation-http.js';
@@ -23,7 +41,7 @@ import { renderApplicationReview, renderRefinementPanel, renderOrganisationResea
 import { readFormBody } from './form-body.js';
 import { sendText, sendHtml, sendJson } from './responses.js';
 import { createServer } from 'node:http';
-import { randomUUID, randomBytes } from 'node:crypto';
+import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { acceptRefinedCoverLetter } from '../../application/accept-refined-cover-letter.js';
 import { attachReviewPageListeners } from './review-page.js';
 import { readFile } from 'node:fs/promises';
@@ -169,17 +187,27 @@ export function createLocalServer({
   recruiterContactStore = null,
   outreachRepository = null,
   applicationReviewStore = null,
+  gmailDraftUpdatePort = null,
   jobImportService = null,
   applicationPackExporter = null,
   researchOrganization = null,
   coverLetterRefinementPort = null,
   cvEvidenceLoader = null,
+  applicationIntelligence = null,
+  assignmentEvidenceStore = null,
+  cvDocumentAdapter = null,
+  cvInventoryRepository = null,
   coverLetterRefinementMaxWords = 500,
   achievementEvidenceService = null,
   localDiagnosticsEnabled = false,
   diagnosticsWriter = process.stdout,
 } = {}) {
   const reviewStore=applicationReviewStore||new Map();
+  const handleMaintenance=createMaintenanceHandler();
+  const handleAssignmentEvidence=createAssignmentEvidenceHandler({store:assignmentEvidenceStore});
+  const roleReviewTickets=new Map();
+  function issueRoleTicket(id,version){for(const [key,value]of roleReviewTickets)if(value.expiresAt<=Date.now())roleReviewTickets.delete(key);if(roleReviewTickets.size>=100)roleReviewTickets.delete(roleReviewTickets.keys().next().value);const token=randomBytes(32).toString('hex');roleReviewTickets.set(token,{reviewId:id,version,expiresAt:Date.now()+20*60*1000});return token;}
+
   async function loadOrganisationContacts(formData) {
     if (!recruiterContactStore) {
       return [];
@@ -246,8 +274,13 @@ export function createLocalServer({
 
   async function renderCompleteReview(options) {
     const stored = reviewStore.get(options.reviewId);
+    const roleState=stored?.formData?.jobTitle?inspectApplicationRole(stored.formData):null;
+    const roleCsrfToken=roleState&&(roleState.conflict||roleState.staleConfirmation)?issueRoleTicket(options.reviewId,roleState.version):'';
     const base = stored ? {
       formData: stored.formData,
+      applicationRoleReview:roleState,
+      applicationRoleCsrfToken:roleCsrfToken,
+      applicationRoleMessage:stored.applicationRoleMessage||'',
       prepared: stored.prepared,
       research: stored.research,
       currentDraftPlainText: stored.currentDraftPlainText,
@@ -261,6 +294,7 @@ export function createLocalServer({
       qualityMaximumWords:coverLetterRefinementMaxWords,
       polishingModel: stored.polishingModel || DEFAULT_POLISHING_MODEL,
       polishingModelExplicit: Boolean(stored.polishingModel),
+      polishingInstructions:stored.polishingInstructions||'',
       refinementLastAttempt: stored.refinementLastAttempt || null,
       refinementProposal: stored.refinementProposal,
       selectedCvRoleCode: stored.selectedCvRoleCode,
@@ -335,10 +369,13 @@ export function createLocalServer({
   }
 
   const handleAchievementPreparation=createAchievementPreparationHandler({service:achievementEvidenceService,sendJson,sendText});
-  const handleJobs=createJobImportHandler({service:jobImportService,getReview:id=>reviewStore.get(id),contactStore:recruiterContactStore,sendJson,sendText});
+  const handleJobs=createJobImportHandler({service:jobImportService,getReview:id=>reviewStore.get(id),contactStore:recruiterContactStore,sendJson,sendText,reviews:reviewStore,outreach:outreachRepository});
   const handleSavedDelete=createSavedApplicationDeleteHandler({store:reviewStore,contactStore:recruiterContactStore,outreachRepository,sendJson,sendText});
   const handleOrganisationContacts=createOrganisationContactHandler({contactStore:recruiterContactStore,outreachRepository,getReview:id=>reviewStore.get(id),sendJson});
-  const handleApplications=createApplicationReviewHandler({store:reviewStore,renderReview:renderCompleteReview,sendJson,sendHtml,sendText,applicationPackExporter});
+  const letterUpdates=outreachRepository?createUnsentLetterUpdateService({getReview:id=>reviewStore.get(id),repository:outreachRepository,draftUpdates:gmailDraftUpdatePort||createGmailDraftUpdatePort()}):null;
+  const handleApplications=createApplicationReviewHandler({store:reviewStore,renderReview:renderCompleteReview,sendJson,sendHtml,sendText,applicationPackExporter,letterUpdates});
+  const handleCvDocument=createCvDocumentHandler({store:reviewStore,inventory:cvInventoryRepository,adapter:cvDocumentAdapter});
+  const handleIntelligence=createApplicationIntelligenceHttp({service:applicationIntelligence});
   const handleOutreach = createOutreachHttpHandler({
     repository: outreachRepository, contactStore: recruiterContactStore,
     getReview: (id) => reviewStore.get(id)
@@ -364,6 +401,10 @@ export function createLocalServer({
     if (await handleSavedDelete(request,response,url)) return;
     if (await handleApplications(request,response,url)) return;
     if (await handleOrganisationContacts(request,response,url)) return;
+    if(await handleCvDocument(request,response,url))return;
+    if(await handleIntelligence(request,response,url))return;
+    if(await handleMaintenance(request,response,url))return;
+    if(await handleAssignmentEvidence(request,response,url))return;
     if (await handleOutreach(request, response, url)) return;
     const requestId = randomUUID();
     const scriptNonce = randomBytes(16).toString("base64");
@@ -488,6 +529,7 @@ export function createLocalServer({
         cvSelectionMessage: '',
         createdAt: Date.now()
       });
+      if(applicationIntelligence){try{await applicationIntelligence.capture(reviewId);}catch{console.warn('[APPLICATION_INTELLIGENCE] ASSESSMENT_NOT_RECORDED');}}
       if(importedJob&&formData.importJobPosters){try{await importJobPosters({record:importedJob,contactStore:recruiterContactStore,reviewId});}catch{const r=reviewStore.get(reviewId);reviewStore.set(reviewId,{...r,jobPosterImportError:'Application saved, but optional poster import was not fully completed. Review/retry explicitly; no email was inferred or sent.'});}}
 
         sendHtml(
@@ -973,29 +1015,43 @@ export function createLocalServer({
       }catch(error){sendHtml(response,400,await renderCompleteReview({reviewId:id,rejectedRefinementProposal:{...candidate,warnings:[error.code==='REFINEMENT_LENGTH_EXCEEDED'?error.message:'Local reassessment failed. Current letter unchanged.']}}));}return;
     }
 
+    if(method==='POST'&&url.pathname==='/review-role-title'){
+      if((request.headers.origin&&request.headers.origin!=='null'&&![`http://${request.headers.host}`,`https://${request.headers.host}`].includes(request.headers.origin))||request.headers['sec-fetch-site']==='cross-site'||!['127.0.0.1','::1','::ffff:127.0.0.1'].includes(request.socket?.remoteAddress)){sendText(response,403,'Local same-origin role confirmation required.');return;}
+      const body=await readFormBody(request);if(body.error){sendText(response,body.error.statusCode,body.error.message);return;}
+      const id=String(body.values.get('reviewId')||'').trim(),current=reviewStore.get(id);if(!current){sendText(response,410,'Saved review expired.');return;}
+      const csrf=body.values.get('roleCsrfToken'),ticket=roleReviewTickets.get(csrf);if(!ticket||ticket.reviewId!==id||ticket.expiresAt<=Date.now()){sendText(response,403,'Role confirmation expired or missing. Reload the panel.');return;}if(ticket.version!==inspectApplicationRole(current.formData).version){sendText(response,409,'Role choice changed. Reload the panel.');return;}
+      try{const formData=confirmApplicationRole(current.formData,{binding:body.values.get('roleBinding'),expectedRoleVersion:body.values.get('expectedRoleVersion'),choice:body.values.get('roleChoice')});roleReviewTickets.delete(csrf);const beforeRole=inspectApplicationRole(current.formData);if(beforeRole.confirmationValid&&current.formData.applicationRoleConfirmation?.choice===body.values.get('roleChoice')&&current.formData.jobTitle===formData.jobTitle){sendHtml(response,200,await renderCompleteReview({reviewId:id,applicationRoleMessage:'Application role already confirmed. No letter or proposal changed.'}));return;}
+      const preservedSubject=currentReviewSubject(current);
+      reviewStore.set(id,{...current,formData,currentDraftSubject:preservedSubject,refinementProposal:null,rejectedRefinementProposal:null,applicationRoleMessage:'Application role confirmed locally. Current letter, effective subject, CV, queue and sent history were NOT changed. Earlier proposals were invalidated; request a new reviewed polish when ready.'});sendHtml(response,200,await renderCompleteReview({reviewId:id}));}
+      catch(error){if(isContactStoreLoadError(error))throw error;sendHtml(response,error.statusCode||400,await renderCompleteReview({reviewId:id,applicationRoleMessage:error.message}));}return;
+    }
+
     if (method === 'POST' && url.pathname === '/cover-letter-refinement/estimate') {
       const formBody = await readFormBody(request);
       if (formBody.error) {sendJson(response, formBody.error.statusCode, {ok:false,error:formBody.error.message});return;}
       const reviewId = String(formBody.values.get('reviewId') || '').trim();
-      const review = reviewStore.get(reviewId);
+      let review = reviewStore.get(reviewId);
       if (!review) {sendJson(response,410,{ok:false,error:'This review expired. Prepare it again; no provider call was made.'});return;}
       try {
+        review=polishingReviewWithRelationship(review,formBody.values);
+        const confirmedRole=confirmedRoleForRequest(review,formBody.values);
         const selectedModel = normalizePolishingModel(formBody.values.get('polishingModel') || review.polishingModel || DEFAULT_POLISHING_MODEL);
         const cvEvidence = cvEvidenceLoader ? await cvEvidenceLoader(review) : {};
         const ids = formBody.values.getAll('selectedResearchPointIds').map(value=>String(value).trim());
         const selectedResearchPoints = usesCandidateValues(review.formData)?[]:getSelectableCompanyValues(review.research).filter(point=>ids.includes(point.id));
         const requestForEstimate = {...cvEvidence,...(review.formData.achievementMode?{achievementSelectionExplicit:true,approvedAchievementEvidence:review.formData.achievementSelection}:{}),draftPlainText:review.currentDraftPlainText,
-          jobDescriptionSummary:review.formData.jobTitle,jobDescriptionText:review.formData.jobDescriptionText,
+          applicationJobTitle:confirmedRole,jobDescriptionSummary:confirmedRole,jobDescriptionText:review.formData.jobDescriptionText,
           selectedCvHighlights:Array.isArray(review.formData.cvHighlights)?review.formData.cvHighlights.map(value=>String(value||'').trim()).filter(value=>value&&value.toLowerCase()!=='null'):[],
           companyValues:selectedResearchPoints.map(point=>point.text),selectedResearchPoints,
           organisationName:review.formData.organisationName,advertiserRelationship:contextMode(review.formData),...(review.formData.professionalValues?{candidateProfessionalValues:review.formData.professionalValues}:{}),organisationUrl:review.formData.organisationUrl,
-          researchSources:!usesCandidateValues(review.formData)&&Array.isArray(review.research?.sources)?review.research.sources:[],instructions:'',letterLengthMode:normalizeLengthMode(formBody.values.get('letterLengthMode')||review.letterLengthMode||'standard'),maxWords:coverLetterRefinementMaxWords,
+          researchSources:!usesCandidateValues(review.formData)&&Array.isArray(review.research?.sources)?review.research.sources:[],instructions:personalPolishingInstructions(formBody.values),letterLengthMode:normalizeLengthMode(formBody.values.get('letterLengthMode')||review.letterLengthMode||'standard'),maxWords:coverLetterRefinementMaxWords,
           letterTone:normalizeLetterTone(formBody.values.get('letterTone')||review.letterTone||'professional'),excludedEmployers:['micro1'],
           webSearchEnabled:formBody.values.getAll('webSearchEnabled').includes('true')};
         const apiBody = buildPolishingApiRequest(requestForEstimate,selectedModel);
         sendJson(response,200,{ok:true,...estimatePolishingApiRequest(apiBody),letterLengthMode:requestForEstimate.letterLengthMode,fullLetterMaximumWords:lengthPolicy(requestForEstimate.letterLengthMode,coverLetterRefinementMaxWords).maximumWords});
       } catch(error) {
-        const known=['REFINEMENT_LENGTH_INVALID','REFINEMENT_MODEL_INVALID','REFINEMENT_TONE_INVALID','CV_EVIDENCE_UNAVAILABLE','LINKEDIN_EVIDENCE_UNAVAILABLE'].includes(error.code);
+        if(error.code==='APPLICATION_ROLE_CONFIRMATION_REQUIRED'){sendJson(response,409,{ok:false,code:error.code,error:error.message,roleReview:error.roleReview||null});return;}
+        const known=error.statusCode===400||['REFINEMENT_LENGTH_INVALID','REFINEMENT_MODEL_INVALID','REFINEMENT_TONE_INVALID','CV_EVIDENCE_UNAVAILABLE','LINKEDIN_EVIDENCE_UNAVAILABLE'].includes(error.code);
         sendJson(response,known?400:503,{ok:false,error:known?error.message:'Local cost estimation failed. No provider call was made.'});
       }
       return;
@@ -1028,7 +1084,7 @@ export function createLocalServer({
         formBody.values.get('reviewId') || ''
       ).trim();
 
-      const review = reviewStore.get(reviewId);
+      let review = reviewStore.get(reviewId);
 
       if (!review) {
         sendHtml(
@@ -1042,6 +1098,8 @@ export function createLocalServer({
         );
         return;
       }
+
+      try {review=polishingReviewWithRelationship(review,formBody.values);}catch(error){sendText(response,400,error.message);return;}
 
       const refinementReviewContacts =
         await loadReviewContacts(reviewId);
@@ -1059,6 +1117,7 @@ export function createLocalServer({
             research: review.research,
             currentDraftPlainText: review.currentDraftPlainText,
             refinementProposal,
+            polishingInstructions:String(formBody.values.get('instructions')||''),
             selectedCvRoleCode: review.selectedCvRoleCode,
             cvSelectionMessage: review.cvSelectionMessage,
             contacts: refinementReviewContacts,
@@ -1066,6 +1125,10 @@ export function createLocalServer({
           })
         );
       };
+
+      let personalInstructions;try{personalInstructions=personalPolishingInstructions(formBody.values);}catch(error){await renderReview(400,{...(review.refinementProposal||{}),warnings:[...(review.refinementProposal?.warnings||[]),error.message]});return;}
+      review={...review,polishingInstructions:personalInstructions};reviewStore.set(reviewId,{...reviewStore.get(reviewId),polishingInstructions:personalInstructions});
+      let confirmedRole;try{confirmedRole=confirmedRoleForRequest(review,formBody.values);}catch(error){await renderReview(error.statusCode||409,{...(review.refinementProposal||{}),warnings:[...(review.refinementProposal?.warnings||[]),error.message]});return;}
 
       if (typeof coverLetterRefinementPort?.refine !== 'function') {
         await renderReview(503, {
@@ -1089,12 +1152,16 @@ export function createLocalServer({
 
       if (formBody.values.get('polishingCostGuard') === 'required' &&
           (formBody.values.get('polishingCostConfirmed') !== 'true' ||
+           ((personalInstructions||formBody.values.has('polishingConfirmedInstructions'))&&String(formBody.values.get('polishingConfirmedInstructions')||'')!==personalInstructions) ||
+           (formBody.values.has('advertiserRelationship')&&formBody.values.get('polishingConfirmedRelationship')!==formBody.values.get('advertiserRelationship')) ||
            formBody.values.get('polishingConfirmedModel') !== formBody.values.get('polishingModel') ||
            (formBody.values.has('letterLengthMode')&&formBody.values.get('polishingConfirmedLengthMode')!==formBody.values.get('letterLengthMode')))) {
         await renderReview(409,retainSuccessfulProposal(review.refinementProposal,{proposedDraft:'',
           warnings:['Review and confirm the local cost estimate before polishing. No provider call was made.']}));
         return;
       }
+
+      if(formBody.values.has('advertiserRelationship'))reviewStore.set(reviewId,review);
 
       const selectedIds = formBody.values
         .getAll('selectedResearchPointIds')
@@ -1139,7 +1206,8 @@ export function createLocalServer({
         } : {}),
         jobDescriptionText: review.formData.jobDescriptionText,
         draftPlainText: review.currentDraftPlainText,
-        jobDescriptionSummary: review.formData.jobTitle,
+        applicationJobTitle:confirmedRole,
+        jobDescriptionSummary:confirmedRole,
         selectedCvHighlights: Array.isArray(review.formData.cvHighlights)
           ? review.formData.cvHighlights
               .map((highlight) => String(highlight ?? "").trim())
@@ -1157,7 +1225,7 @@ export function createLocalServer({
         researchSources: !usesCandidateValues(review.formData)&&Array.isArray(review.research?.sources)
           ? review.research.sources
           : [],
-        instructions: "",
+        instructions: personalInstructions,
         letterLengthMode,
         maxWords: coverLetterRefinementMaxWords
       });
@@ -1270,7 +1338,9 @@ export function createLocalServer({
         return;
       }
 
-      const proposedDraftPlainText = String(
+      try{requireConfirmedApplicationRole(review.formData);}catch(error){sendHtml(response,409,await renderCompleteReview({reviewId,applicationRoleMessage:error.message}));return;}
+
+      let proposedDraftPlainText = String(
         review.refinementProposal?.proposedDraft || ''
       ).trim();
 
@@ -1295,6 +1365,9 @@ export function createLocalServer({
         return;
       }
 
+      let editedProposalSnapshot=null;const hasEditedProposal=formBody.values.has('editedProposalHtml')||formBody.values.has('editedProposalPlainText');
+      if(hasEditedProposal){const expected=createHash('sha256').update(String(review.refinementProposal.proposedDraft||'')).digest('hex');if(formBody.values.get('proposalBodyVersion')!==expected){sendHtml(response,409,await renderCompleteReview({reviewId,refinementProposal:{...review.refinementProposal,warnings:[...(review.refinementProposal.warnings||[]),'Proposal changed after this page opened. Current letter was not changed; review the current proposal again.']}}));return;}
+      try{editedProposalSnapshot=snapshotMessage(String(formBody.values.get('editedProposalPlainText')||''),String(formBody.values.get('editedProposalHtml')||''),review.formData.jobAdvertLink||'');proposedDraftPlainText=editedProposalSnapshot.bodyPlainText;}catch(error){sendHtml(response,400,await renderCompleteReview({reviewId,refinementProposal:{...review.refinementProposal,warnings:[...(review.refinementProposal.warnings||[]),'Edited proposal not accepted: '+error.message]}}));return;}}
       let acceptedSubject;
       try {
         acceptedSubject=normalizeSubject(formBody.values.has('proposedSubject')
@@ -1323,6 +1396,7 @@ export function createLocalServer({
         });
       } catch (error) {
         if (isContactStoreLoadError(error)) throw error;
+        if(editedProposalSnapshot){const retained={...review.refinementProposal,proposedDraft:editedProposalSnapshot.bodyPlainText,proposedDraftHtml:editedProposalSnapshot.bodyHtml,highlightPhrases:[],highlightSelections:[],warnings:[...(review.refinementProposal.warnings||[]),formatRefinementFailure(error)]};reviewStore.set(reviewId,{...review,refinementProposal:retained});sendHtml(response,400,await renderCompleteReview({reviewId}));return;}
         sendHtml(
           response,
           400,
@@ -1349,9 +1423,10 @@ export function createLocalServer({
         ...review,
         currentLetterLengthMode:review.refinementProposal.letterLengthMode||'standard',
         currentDraftPlainText: acceptance.finalDraftPlainText,
-        currentDraftHtml: undefined,
+        currentDraftHtml:editedProposalSnapshot?.bodyHtml||renderCoverLetterHtml(acceptance.finalDraftPlainText,review.refinementProposal.highlightSelections?.length?review.refinementProposal.highlightSelections:review.refinementProposal.highlightPhrases),
         currentDraftSubject: acceptedSubject,
-        currentHighlightPhrases: review.refinementProposal.highlightPhrases || [],
+        currentHighlightPhrases: [],
+        currentHighlightSelections:hasEditedProposal?[]:review.refinementProposal.highlightSelections||[],
         refinementProposal: {
           appliedMessage:
             'Current draft updated from your approved refinement proposal.'

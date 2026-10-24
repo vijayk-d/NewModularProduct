@@ -803,7 +803,7 @@ test('returns a refinement proposal without changing the current draft', async (
   letterTone: 'professional',
   excludedEmployers: ['micro1'],
   jobDescriptionText: 'Delivery leadership',
-  draftPlainText: "Dear Hiring Manager,\nI am applying for the Project Manager role.", jobDescriptionSummary: "Project Manager",
+  draftPlainText: "Dear Hiring Manager,\nI am applying for the Project Manager role.", applicationJobTitle:"Project Manager", jobDescriptionSummary: "Project Manager",
   selectedCvHighlights: [],
   companyValues: ["Delivery excellence"],
   selectedResearchPoints: [

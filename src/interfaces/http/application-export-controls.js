@@ -9,9 +9,9 @@ export async function exportFromEditor({save,getVersions,isDirty,getCvRoleCode,i
  if(!name)throw new Error('Invalid download receipt. Nothing downloaded.');await download(blob,name);
 }
 export function attachApplicationExportControls({doc,bar,save,getVersions,isDirty,reviewId,fetchImpl}){
- const button=doc.createElement('button');button.type='button';button.textContent='Export pack';button.title='Save current edits and download letter TXT/HTML; no paid or Gmail action.';
- const label=doc.createElement('label'),check=doc.createElement('input');check.type='checkbox';check.checked=false;check.setAttribute('aria-label','Include selected existing PDF CV in export');
- const caption=doc.createElement('span');caption.textContent=' Include selected PDF CV';label.append(check,caption);
+ const button=doc.createElement('button');button.type='button';button.textContent='Export pack';button.title='Save current edits and download letter TXT/HTML/DOCX; no paid or Gmail action.';
+ const label=doc.createElement('label'),check=doc.createElement('input');check.type='checkbox';check.checked=false;check.setAttribute('aria-label','Include selected existing PDF/DOCX CV in export');
+ const caption=doc.createElement('span');caption.textContent=' Include selected PDF/DOCX CV';label.append(check,caption);
  const message=doc.createElement('span');message.setAttribute('role','status');message.setAttribute('aria-live','polite');bar.append(button,label,message);
  button.addEventListener('click',async()=>{
   if(button.disabled)return;button.disabled=true;check.disabled=true;message.textContent='Saving and preparing local download…';

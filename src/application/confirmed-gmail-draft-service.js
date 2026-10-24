@@ -55,7 +55,7 @@ export function createConfirmedGmailDraftService({repository,mailboxPort,env=pro
     const root=await realpath(path.resolve(String(env.CV_FOLDER)));
     const file=await realpath(path.resolve(root,relative));
     const within=path.relative(root,file);
-    if(!within||within==='..'||within.startsWith('..'+path.sep)||path.isAbsolute(within)||path.extname(file).toLowerCase()!=='.pdf')fail('Selected CV is outside CV_FOLDER or is not a PDF.','GMAIL_DRAFT_ATTACHMENT');
+    if(!within||within==='..'||within.startsWith('..'+path.sep)||path.isAbsolute(within)||!['.pdf','.docx'].includes(path.extname(file).toLowerCase()))fail('Selected CV is outside CV_FOLDER or is not a PDF/DOCX.','GMAIL_DRAFT_ATTACHMENT');
     const info=await stat(file);if(!info.isFile()||info.size>20*1024*1024)fail('Selected CV is missing or exceeds 20 MiB.','GMAIL_DRAFT_ATTACHMENT');
     const bytes=await readFile(file);if(bytes.length>20*1024*1024)fail('Selected CV exceeds 20 MiB.','GMAIL_DRAFT_ATTACHMENT');draft.attachment={...draft.attachment,sha256:hash(bytes),sizeBytes:bytes.length};
     const signed=await applyGmailSignature(draft,{account:getStatus().configuredMailbox,env,signatureReader});

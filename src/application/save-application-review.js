@@ -12,6 +12,6 @@ export function saveApplicationReview(store,{reviewId,expectedBodyVersion,expect
  const desiredSubject=saveSubject?normalizeSubject(subject):state.subject;
  if(expectedBodyVersion!==state.bodyVersion&&hash([snapshot.bodyPlainText,snapshot.bodyHtml||''])!==state.bodyVersion)bad('The letter changed in another tab. Your local edit was not saved; copy/review it before reloading.',409);
  if(saveSubject&&expectedSubjectVersion!==state.subjectVersion&&hash(desiredSubject)!==state.subjectVersion)bad('The subject changed elsewhere. Review it before saving.',409);
- store.set(reviewId,{...review,currentDraftPlainText:snapshot.bodyPlainText,currentDraftHtml:snapshot.bodyHtml,currentDraftSubject:desiredSubject});
+ store.set(reviewId,{...review,currentDraftPlainText:snapshot.bodyPlainText,currentDraftHtml:snapshot.bodyHtml,currentDraftSubject:desiredSubject,currentHighlightPhrases:[],currentHighlightSelections:[]});
  const saved=store.get(reviewId);return {saved:true,reviewId,durable:store.durable===true,...reviewEditorState(saved)};
 }

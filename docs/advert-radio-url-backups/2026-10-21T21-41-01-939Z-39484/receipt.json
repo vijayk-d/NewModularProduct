@@ -1,0 +1,20 @@
+{
+  "id": "advert-radio-url-20261021",
+  "root": "D:\\monorepo\\NewModularProduct",
+  "files": [
+    {
+      "path": "src/interfaces/http/job-import-controls.js",
+      "before": "51bca707ab0ca8eeecb5c3c29e4774294e1f059498bb17b1dc95e12ad477379d",
+      "beforeNormalized": "51bca707ab0ca8eeecb5c3c29e4774294e1f059498bb17b1dc95e12ad477379d",
+      "after": "0ea7f90f4574a880660db955eeef01e9bafffe254b520b3347570eeaf5a02706",
+      "original": "51bca707ab0ca8eeecb5c3c29e4774294e1f059498bb17b1dc95e12ad477379d"
+    },
+    {
+      "path": "tests/application/advert-inbox-radio-url.test.js",
+      "before": null,
+      "beforeNormalized": null,
+      "after": "2080fbe6aa70ce4b5e51159c7c47ffb7df8b77be18009cba64a5c805bacc4af2",
+      "original": null
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "id": "advert-status-20261021",
+  "root": "D:\\monorepo\\NewModularProduct",
+  "files": [
+    {
+      "path": "src/application/advert-workflow-status.js",
+      "before": null,
+      "beforeNormalized": null,
+      "after": "dbb0d350fb5cf94ff70fb1f289d15abbdb8f408e52c33841edc9493795db1f50",
+      "original": null
+    },
+    {
+      "path": "src/interfaces/http/job-import-http.js",
+      "before": "494b0043e57327f5f00039adc7eb9522b129c00555fc3b87c39c4235c3a7d90e",
+      "beforeNormalized": "494b0043e57327f5f00039adc7eb9522b129c00555fc3b87c39c4235c3a7d90e",
+      "after": "fc2b4d3a6b8d8e039cb299a7cbce8b7704256f6905171ecd8da0e8e32edeeddc",
+      "original": "494b0043e57327f5f00039adc7eb9522b129c00555fc3b87c39c4235c3a7d90e"
+    },
+    {
+      "path": "src/interfaces/http/create-local-server.js",
+      "before": "2f4bfa13cb2a831945dfd5f53dbb9f2aef71438b88220858c16bb8b309b0dfbb",
+      "beforeNormalized": "2f4bfa13cb2a831945dfd5f53dbb9f2aef71438b88220858c16bb8b309b0dfbb",
+      "after": "61c8e4e68dd24785ee6219ba426fb1e5ed080f52ff29db1caec1cb5cd574cf4c",
+      "original": "2f4bfa13cb2a831945dfd5f53dbb9f2aef71438b88220858c16bb8b309b0dfbb"
+    },
+    {
+      "path": "src/interfaces/http/job-import-controls.js",
+      "before": "ebac94388ab90ac7d17b046b92185c8957eab1db8372e50772b630238ff703f1",
+      "beforeNormalized": "ebac94388ab90ac7d17b046b92185c8957eab1db8372e50772b630238ff703f1",
+      "after": "51bca707ab0ca8eeecb5c3c29e4774294e1f059498bb17b1dc95e12ad477379d",
+      "original": "ebac94388ab90ac7d17b046b92185c8957eab1db8372e50772b630238ff703f1"
+    },
+    {
+      "path": "tests/application/advert-workflow-status.test.js",
+      "before": null,
+      "beforeNormalized": null,
+      "after": "a97cc4a2c566c7ba6dc9160e51cdf7cd31ff17111259151a8bacf3e50af0af55",
+      "original": null
+    }
+  ]
+}

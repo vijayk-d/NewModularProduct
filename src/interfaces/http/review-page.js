@@ -408,6 +408,8 @@ export async function refreshImportedContacts(reviewId) {
     );
   }
 
+  if(document.querySelector('input[name="reviewId"]')?.value!==reviewId||document.querySelector('#application-form'))return;
+
   const unlinkedContacts =
     payload.unlinked ||
     payload.unlinkedContacts ||

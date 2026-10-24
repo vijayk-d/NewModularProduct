@@ -1,3 +1,4 @@
+import {createUnsentLetterUpdateStore} from '../../application/unsent-letter-update-store.js';
 import {createSendLedger} from '../../application/gmail-send-ledger.js';
 import { messageEditVersion } from '../../application/queue-message-editor.js';
 import { createDraftAttemptLedger, draftSnapshotFingerprint } from '../../application/gmail-draft-state-ledger.js';
@@ -30,7 +31,8 @@ export function createOutreachRepository({ filePath }) {
       UNIQUE(sending_account, message_id)
     );
   `);
-  const sendLedger=createSendLedger(db);
+  const letterUpdates=createUnsentLetterUpdateStore(db);
+ const sendLedger=createSendLedger(db,{additionalBlocker:item=>letterUpdates.isBlocked(item)});
   const draftLedger = createDraftAttemptLedger(db, (operation) => {
     const row = db.prepare('SELECT payload FROM outreach_queue WHERE id = ?').get(operation.queueId);
     if (!row) return;
@@ -139,6 +141,7 @@ export function createOutreachRepository({ filePath }) {
       let deleted = 0;
       db.exec('BEGIN IMMEDIATE');
       try {
+        letterUpdates.assertDeletable(ids);
         const remove = db.prepare('DELETE FROM outreach_queue WHERE id = ?');
         for (const id of new Set(ids)) deleted += Number(remove.run(id).changes);
         db.exec('COMMIT');
@@ -149,7 +152,7 @@ export function createOutreachRepository({ filePath }) {
       }
     },
     clearQueue() {
-      return Number(db.prepare('DELETE FROM outreach_queue').run().changes);
+      db.exec('BEGIN IMMEDIATE');try{letterUpdates.assertDeletable();const n=Number(db.prepare('DELETE FROM outreach_queue').run().changes);db.exec('COMMIT');return n;}catch(e){db.exec('ROLLBACK');throw e;}
     },
     claimDraftOperation({queueId,sendingAccount,retryFailed=false}={}) {
       const item=get(required(queueId,'Queue ID'));
@@ -189,6 +192,11 @@ export function createOutreachRepository({ filePath }) {
         throw error;
       }
     },
+    inspectLetterUpdate:letterUpdates.inspect,
+    applyLocalLetterUpdate:letterUpdates.applyLocal,
+    claimDraftLetterUpdate:letterUpdates.claimDraft,
+    finishDraftLetterUpdate:letterUpdates.finishDraft,
+    listLetterUpdates:letterUpdates.list,
     getSendState:sendLedger.state,
     listSendAttempts:sendLedger.list,
     claimSendAttempt:sendLedger.claim,

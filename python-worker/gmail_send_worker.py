@@ -1,3 +1,7 @@
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0,str(_Path(__file__).resolve().parent))
+from cv_docx import MIME as DOCX_MIME,validate_docx
 import base64
 import hashlib
 import json
@@ -73,14 +77,17 @@ def process_send(request, service_factory=None, env=None):
         for part in message.iter_attachments():
             content = part.get_payload(decode=True) or b''
             attachments.append({'name': part.get_filename() or 'attachment', 'sizeBytes': len(content), 'sha256': hashlib.sha256(content).hexdigest(), 'type': part.get_content_type()})
-        if len(attachments) != 1 or attachments[0]['type'] != 'application/pdf' or attachments[0]['sizeBytes'] > 20 * 1024 * 1024:
-            return failed('ONE_PDF_CV_REQUIRED')
+        if len(attachments) != 1 or attachments[0]['type'] not in ['application/pdf',DOCX_MIME] or attachments[0]['sizeBytes'] > 20 * 1024 * 1024:
+            return failed('ONE_PDF_OR_DOCX_CV_REQUIRED')
         plain, html = message.get_body(preferencelist=('plain',)), message.get_body(preferencelist=('html',))
         if plain is None or html is None:
             return failed('BOTH_BODIES_REQUIRED')
         plain_text, html_text = plain.get_content(), html.get_content()
         if len(plain_text) > 100000 or len(html_text) > 300000:
             return failed('BODY_TOO_LARGE')
+        extension='.docx' if attachments[0]['type']==DOCX_MIME else '.pdf'
+        if not attachments[0]['name'].lower().endswith(extension):return failed('CV_FILENAME_MISMATCH')
+        if extension=='.docx':validate_docx(list(message.iter_attachments())[0].get_payload(decode=True))
         summary = {'recipient': recipient, 'subject': subject, 'attachments': attachments, 'contentHash': digest, 'bodyPlainText': plain_text, 'bodyHtml': html_text}
         if request['action'] == 'prepare':
             return {'ok': True, 'sent': False, 'sendingAttempted': False, 'sendingAccount': mailbox, 'raw': raw, 'summary': summary}

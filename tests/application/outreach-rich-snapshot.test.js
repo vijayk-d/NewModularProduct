@@ -18,17 +18,14 @@ function fixture(){
 }
 test('sanitizer retains highlight and advert URL but discards event attributes',()=>{
   const clean=sanitizeSnapshotHtml(html);
-  assert.ok(clean.html.includes('<mark style="background-color:#fff2a8">'));
+  assert.match(clean.html,/<mark\b[^>]*style="background-color:#fff2a8"[^>]*>/);assert.ok(clean.html.includes('data-highlight-origin="auto"'));
   assert.ok(clean.html.includes('a=1&amp;b=2'));
   assert.ok(!clean.html.includes('onclick'));
 });
 test('unsafe tags, links and recipient tokens in attributes are rejected',()=>{
   for(const source of ['<script>bad()</script>','<img src=x>','<a href="javascript:bad()">X</a>','<a href="https://example.test/{{firstname}}">X</a>'])assert.throws(()=>sanitizeSnapshotHtml(source));
 });
-test('span highlighting is reduced to fixed safe highlight styling',()=>{
-  const clean=sanitizeSnapshotHtml('<span style="background-color: red; background-image:url(https://evil.test)">Evidence</span>');
-  assert.equal(clean.html,'<mark style="background-color:#fff2a8">Evidence</mark>');
-});
+test('safe highlight styling is preserved and active CSS is rejected',()=>{assert.equal(sanitizeSnapshotHtml('<span style="background-color: red">Evidence</span>').html,'<mark style="background-color:red">Evidence</mark>');assert.throws(()=>sanitizeSnapshotHtml('<span style="background-color: red; background-image:url(https://evil.test)">Evidence</span>'),/Unsafe editor formatting/);});
 test('text disagreement and malformed tags are rejected',()=>{
   assert.throws(()=>snapshotMessage('Different',html), /disagree/);
   assert.throws(()=>sanitizeSnapshotHtml('<p><b>Evidence</p>'), /mismatched/);

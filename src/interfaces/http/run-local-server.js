@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import {createAssignmentEvidenceStore} from '../../infrastructure/applications/sqlite-assignment-evidence.js';
+import {createApplicationIntelligenceStore} from '../../infrastructure/applications/sqlite-application-intelligence.js';
+import {createApplicationIntelligence} from '../../application/application-intelligence.js';
 import {createApplicationPackExporter} from '../../infrastructure/applications/application-pack-exporter.js';
 import {createSqliteJobImportStore} from '../../infrastructure/applications/sqlite-job-import-store.js';
 import { gmailLoadedEnvironment } from '../../application/gmail-runtime-diagnostics.js';
@@ -28,7 +31,7 @@ import {
 import {
   createPerplexityCoverLetterRefinementAdapter
 } from '../../infrastructure/refinement/perplexity-cover-letter-refinement-adapter.js';
-import { createPdfTextExtractor } from '../../infrastructure/documents/pdf-text-extractor.js';
+import { createCvDocumentAdapter } from '../../infrastructure/documents/cv-document-adapter.js';
 import { createSelectedCvEvidenceLoader } from '../../application/selected-cv-evidence-loader.js';
 import { createLocalServer } from './create-local-server.js';
 
@@ -94,21 +97,34 @@ const outreachRepository = createOutreachRepository({
   filePath: deployment.outreach
 });
 
-const achievementEvidenceService=createAchievementEvidenceService({inventoryRepository:cvInventoryRepository,documentExtractor:createPdfTextExtractor({cvFolder:process.env.CV_FOLDER})});
+const achievementEvidenceService=createAchievementEvidenceService({inventoryRepository:cvInventoryRepository,documentExtractor:createCvDocumentAdapter({cvFolder:process.env.CV_FOLDER})});
 const cvEvidenceLoader = createSelectedCvEvidenceLoader({
   inventoryRepository: cvInventoryRepository,
   linkedinRelativePath: String(process.env.CANDIDATE_LINKEDIN_PDF || '').trim(),
-  documentExtractor: createPdfTextExtractor({ cvFolder: process.env.CV_FOLDER })
+  documentExtractor: createCvDocumentAdapter({ cvFolder: process.env.CV_FOLDER })
 });
 
 const applicationReviewStore=createSqliteReviewStore({filePath:deployment.reviews});
 const jobImportService=createSqliteJobImportStore({filePath:deployment.imports});
+let applicationIntelligence=null,applicationIntelligenceStore=null;
+if(deployment.mode==='development'){
+ try{applicationIntelligenceStore=createApplicationIntelligenceStore({filePath:path.join(deployment.state,'application-intelligence-v1.db')});applicationIntelligence=createApplicationIntelligence({reviews:applicationReviewStore,outreach:outreachRepository,store:applicationIntelligenceStore,inventory:cvInventoryRepository,documentExtractor:createCvDocumentAdapter({cvFolder:config.storage.cvFolder})});}
+ catch{applicationIntelligenceStore?.close();applicationIntelligenceStore=null;console.warn('[APPLICATION_INTELLIGENCE] LOCAL_STORE_UNAVAILABLE');}
+}
+
+let assignmentEvidenceStore=null;
+if(deployment.mode==='development'){try{assignmentEvidenceStore=createAssignmentEvidenceStore({filePath:path.join(deployment.state,'assignment-evidence-library-v1.db')});}catch{console.warn('[ASSIGNMENT_EVIDENCE] LOCAL_STORE_UNAVAILABLE');}}
+
 const server = createLocalServer({
+  assignmentEvidenceStore,
+  applicationIntelligence,
   coverLetterRefinementMaxWords:config.application.coverLetterRefinementMaxWords,
   jobImportService,
   applicationReviewStore,
   applicationPackExporter:createApplicationPackExporter({cvFolder:config.storage.cvFolder}),
   cvEvidenceLoader,
+  cvDocumentAdapter:createCvDocumentAdapter({cvFolder:config.storage.cvFolder}),
+  cvInventoryRepository,
   achievementEvidenceService,
   outreachRepository,
   recruiterContactImportService,
@@ -169,7 +185,7 @@ server.listen(config.server.port, config.server.host, () => {
   );
 });
 
-server.on("close", () => {outreachRepository.close();applicationReviewStore.close();jobImportService.close();});
+server.on("close", () => {outreachRepository.close();applicationReviewStore.close();jobImportService.close();applicationIntelligenceStore?.close();assignmentEvidenceStore?.close();});
 
 
 

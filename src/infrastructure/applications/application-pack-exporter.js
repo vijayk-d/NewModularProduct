@@ -1,3 +1,4 @@
+import {createCvDocumentAdapter} from '../documents/cv-document-adapter.js';
 import {realpath,open,stat} from 'node:fs/promises';
 import path from 'node:path';
 import {exportApplicationPack} from '../../application/export-application-pack.js';
@@ -5,6 +6,7 @@ const limit=20*1024*1024;
 const blocked=message=>Object.assign(new Error(message),{statusCode:400,code:'APPLICATION_EXPORT_CV'});
 export function createExportCvReader(cvFolder){return async relative=>{
  if(typeof cvFolder!=='string'||!cvFolder.trim())throw blocked('CV_FOLDER is not configured.');
+ if(path.extname(String(relative)).toLowerCase()==='.docx'){const r=await createCvDocumentAdapter({cvFolder}).read(relative,{includeBytes:true});return Buffer.from(r.data,'base64');}
  if(typeof relative!=='string'||!relative||/[\x00-\x1f:]/.test(relative)||path.win32.isAbsolute(relative)||path.posix.isAbsolute(relative)||relative.replaceAll('\\','/').split('/').some(p=>p==='..')||path.extname(relative).toLowerCase()!=='.pdf')throw blocked('Selected CV must be a relative PDF inside CV_FOLDER.');
  let fd;try{
   const root=await realpath(path.resolve(cvFolder)),file=await realpath(path.resolve(root,relative.replaceAll('\\','/'))),within=path.relative(root,file);
@@ -31,5 +33,5 @@ export function zipStored(files){
 }
 export function createApplicationPackExporter({cvFolder}={}){
  const readCv=createExportCvReader(cvFolder);let busy=false;
- return async({store,request})=>{if(busy)throw Object.assign(new Error('Another pack is exporting. Wait, then retry.'),{statusCode:409,code:'APPLICATION_EXPORT_BUSY'});busy=true;try{return await exportApplicationPack({store,request,readCv,pack:zipStored});}finally{busy=false;}};
+ return async({store,request})=>{if(busy)throw Object.assign(new Error('Another pack is exporting. Wait, then retry.'),{statusCode:409,code:'APPLICATION_EXPORT_BUSY'});busy=true;try{return await exportApplicationPack({store,request,readCv,pack:zipStored,word:text=>createCvDocumentAdapter({cvFolder}).word(text)});}finally{busy=false;}};
 }

@@ -7,8 +7,8 @@ import { renderRefinementPanel, renderApplicationReview } from '../../src/interf
 import { refineCoverLetter } from '../../src/application/refine-cover-letter.js';
 import { createPerplexityCoverLetterRefinementAdapter } from '../../src/infrastructure/refinement/perplexity-cover-letter-refinement-adapter.js';
 const context={ jobTitle:'Delivery Manager', organisationName:'Ageas', advertUrl:'https://example.test/job', candidateName:'Vijay DAFAL' };
-test('all four tone options are allowlisted and invalid values rejected',()=>{
-  assert.equal(LETTER_TONES.length,4);
+test('all nine tone options are allowlisted and invalid values rejected',()=>{
+  assert.equal(LETTER_TONES.length,9);
   assert.equal(normalizeLetterTone(), 'professional');
   for (const tone of LETTER_TONES) assert.equal(normalizeLetterTone(tone.value),tone.value);
   assert.throws(()=>normalizeLetterTone('<script>'), /supported/);
@@ -44,7 +44,7 @@ test('rich rendering embeds advert, highlights safely and leaves source text unc
   const text='Dear {{firstname}},\n\nJob advert: https://example.test/job?a=1&b=2\n\nI led dependency management & delivery.';
   const result=renderCoverLetterHtml(text,['dependency management','<img src=x>']);
   assert.match(result,/href="https:\/\/example.test\/job\?a=1&amp;b=2"/);
-  assert.ok(result.includes('<mark data-job-aligned="true" data-highlight="true">dependency management</mark>'));
+  assert.match(result,/<mark\b[^>]*>dependency management<\/mark>/);
   assert.ok(result.includes('&amp; delivery.'));
   assert.ok(!result.includes('<img'));
   assert.ok(!text.includes('<strong'));
@@ -57,9 +57,9 @@ test('tone selector persists selected value and exposes micro1 exclusion notice'
 });
 test('proposed and current editors both render their own phrase metadata',()=>{
   const proposal=renderRefinementPanel({research:{status:'found'}, refinementProposal:{proposedDraft:'I led delivery dependencies.',highlightPhrases:['delivery dependencies']}});
-  assert.ok(proposal.includes('<mark data-job-aligned="true" data-highlight="true">delivery dependencies</mark>'));
+  assert.match(proposal,/<mark\b[^>]*>delivery dependencies<\/mark>/);
   const current=renderApplicationReview({formData:{jobTitle:'Delivery Manager'},prepared:{coverLetter:{plainText:'Original'}}, currentDraftPlainText:'I led delivery dependencies.',currentHighlightPhrases:['delivery dependencies']});
-  assert.ok(current.includes('<mark data-job-aligned="true" data-highlight="true">delivery dependencies</mark>'));
+  assert.match(current,/<mark\b[^>]*>delivery dependencies<\/mark>/);
 });
 test('normalization passes tone, exclusion and protected composition fields through',async()=>{
   let received;
@@ -74,11 +74,11 @@ test('normalization passes tone, exclusion and protected composition fields thro
 test('provider payload contains tone and explicit exclusion policy',async()=>{
   let sent;
   const adapter=createPerplexityCoverLetterRefinementAdapter({apiKey:'synthetic',async fetchImpl(url,options){
-    sent=JSON.parse(options.body); return {ok:true,async json(){return{output_parsed:{proposedDraft:'I led delivery dependencies.',highlightPhrases:['delivery dependencies'],warnings:[],appliedResearchPointIds:[],omittedResearchPointIds:[],suggestedResearchPoints:[]}};}};
+    sent=JSON.parse(options.body); return {ok:true,async json(){return{output_parsed:{proposedDraft:'I led delivery dependencies.',highlightPhrases:[],highlightSelections:[{text:'delivery dependencies',context:'I led delivery dependencies.',jdRequirement:'Manage delivery dependencies.',evidenceQuote:'Led delivery dependencies.',reason:'Matches the dependency-management requirement with documented delivery evidence.'}],warnings:[],appliedResearchPointIds:[],omittedResearchPointIds:[],suggestedResearchPoints:[]}};}};
   }});
   const result=await adapter.refine({draftPlainText:'Original',letterTone:'concise',jobDescriptionText:'Manage delivery dependencies.',selectedCvText:'Led delivery dependencies.',maxWords:450});
   const prompt=JSON.parse(sent.input[1].content[0].text);
   assert.equal(prompt.tone,'concise');
   assert.deepEqual(prompt.excludedEmployers,['micro1']);
-  assert.deepEqual(result.highlightPhrases,['delivery dependencies']);
+  assert.deepEqual(result.highlightPhrases,[]);assert.equal(result.highlightSelections[0].text,'delivery dependencies');
 });

@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadRuntimeConfig } from '../../src/config/load-runtime-config.js';
 
@@ -41,7 +41,7 @@ test('uses safe defaults when no optional configuration is supplied', () => {
   );
   assert.equal(
     config.application.coverLetterRefinementMaxWords,
-    450
+    500
   );
 
   assert.equal(
@@ -230,7 +230,7 @@ test('redacts API keys and OAuth secrets from configuration diagnostics', () => 
   );
   assert.equal(
     redacted.application.coverLetterRefinementMaxWords,
-    450
+    500
   );
   assert.equal(redacted.integrations.gmail.clientId, '[redacted]');
   assert.equal(redacted.integrations.gmail.clientSecret, '[redacted]');
