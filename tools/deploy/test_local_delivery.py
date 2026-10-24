@@ -247,4 +247,46 @@ class BomCheckpointRegressionTests(unittest.TestCase):
    self.assertEqual(git('show','HEAD:src/app.js'),original.replace(b'\r\n',b'\n'))
    self.assertEqual(git('diff','--cached','--name-only').strip(),b'')
 
+
+
+class CaptureScopeRegressionTests(unittest.TestCase):
+ def test_capture_paths_are_not_release_source(self):
+  paths=['docs/workflow-stabilisation-source-20261024T015001Z.json','docs/workflow-stabilisation-source-20261024T114514Z.json','docs/future-source-20271024T114514Z.json','tools/maintenance/future-source-20271024T114514Z.json','docs/scenario-polishing-source.json','docs/scenario-source-text/scenario-source-001-of-019.txt','DOCS/SCENARIO-SOURCE-TEXT/part.txt','docs/scenario-polishing-source.zip']
+  for path in paths:
+   with self.subTest(path=path):self.assertFalse(d.safe_source(path))
+ def test_real_source_and_documentation_remain_allowed(self):
+  for path in ['src/application/scenario-polishing.js','tests/ui/scenario-polishing.spec.js','docs/scenario-polishing-integration.md','docs/source-format.json','docs/source-example.txt','tools/deploy/test_local_delivery.py']:
+   with self.subTest(path=path):self.assertTrue(d.safe_source(path))
+ def test_selection_plan_and_extract_exclude_even_force_tracked_captures(self):
+  with tempfile.TemporaryDirectory() as folder:
+   root=Path(folder)/'repo';root.mkdir()
+   def git(*args):return subprocess.run(['git',*args],cwd=root,check=True,capture_output=True).stdout
+   git('init','-q')
+   for key,value in [('user.email','fixture@example.invalid'),('user.name','Fixture'),('commit.gpgsign','false'),('core.hooksPath',str(root/'empty-hooks'))]:git('config',key,value)
+   captured=['docs/workflow-source-20261024T015001Z.json','docs/scenario-source-text/scenario-source-001-of-019.txt']
+   for path in captured:
+    p=root/path;p.parent.mkdir(parents=True,exist_ok=True);p.write_text('synthetic capture',encoding='utf-8')
+   (root/'package.json').write_text('{}',encoding='utf-8')
+   git('add','-f','--','package.json',*captured);git('commit','-qm','Synthetic capture fixture')
+   source=root/'src/app.js';source.parent.mkdir();source.write_text('export const value=1;\n',encoding='utf-8')
+   extra=root/'docs/future-source-20271024T114514Z.json';extra.write_text('{}',encoding='utf-8')
+   with patch.object(d,'ROOT',root),patch.object(d,'prepare',lambda:None),contextlib.redirect_stdout(io.StringIO()):
+    selected=d.source_files()
+    for path in captured+[extra.relative_to(root).as_posix()]:self.assertNotIn(path,selected)
+    d.plan();plan=d.read(next((root/'var/maintenance/delivery').glob('checkpoint-plan-*.json')))
+    self.assertEqual(plan['paths'],['src/app.js'])
+    git('add','src/app.js');git('commit','-qm','Synthetic source')
+    target=root/'artifact';target.mkdir();d.extract(d.git('rev-parse','HEAD'),target)
+    self.assertTrue((target/'src/app.js').is_file())
+    for path in captured:self.assertFalse((target/path).exists())
+ def test_capture_ignore_rules_keep_local_copies_out_of_new_staging(self):
+  with tempfile.TemporaryDirectory() as folder:
+   root=Path(folder);subprocess.run(['git','init','-q',str(root)],check=True,capture_output=True)
+   rules=(Path(__file__).resolve().parents[2]/'.gitignore').read_text(encoding='utf-8-sig')
+   (root/'.gitignore').write_text(rules,encoding='utf-8')
+   names=['docs/workflow-stabilisation-source-20261024T015001Z.json','docs/scenario-source-text/scenario-source-001-of-019.txt','docs/scenario-polishing-source.json','docs/scenario-polishing-source.zip']
+   for name in names:
+    result=subprocess.run(['git','check-ignore','--no-index','--',name],cwd=root,capture_output=True)
+    self.assertEqual(result.returncode,0,name)
+
 if __name__=='__main__':unittest.main()

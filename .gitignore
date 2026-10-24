@@ -65,3 +65,9 @@ __pycache__/
 
 # Private assignment evidence
 /evidence/
+
+# Source-capture transport artifacts: not checkpoint or release source
+/docs/*-source.json
+/docs/*-source-????????T??????Z.json
+/docs/scenario-source-text/
+/docs/scenario-polishing-source.zip

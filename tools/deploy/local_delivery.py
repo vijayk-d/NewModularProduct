@@ -57,6 +57,8 @@ def npm_cli(n):
  fail('Cannot find npm-cli.js for the installed Node/npm.')
 def safe_source(name):
  p=PurePosixPath(name);parts=p.parts;low=name.lower()
+ if 'scenario-source-text' in [x.lower() for x in parts]:return False
+ if re.search(r'(^|/)[^/]*-source-[0-9]{8}t[0-9]{6}z\.json$',low):return False
  if p.is_absolute() or '..' in parts or '\\' in name:return False
  if any(x.lower() in ['node_modules','__pycache__','.git','output','data','var','.venv','backups','test-results','playwright-report','blob-report'] for x in parts):return False
  if any(x in low for x in ['.before-','.bak','.backup','-source.json','local-production-audit-','payload.json','recipient-package-before-']):return False
