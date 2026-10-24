@@ -1,4 +1,6 @@
 function personalPolishingInstructions(values){const text=String(values.get('instructions')||'').replace(/\r\n?/g,'\n').trim();if(text.length>4000)throw Object.assign(new Error('Personal polishing instructions must not exceed 4000 characters.'),{statusCode:400,code:'POLISHING_INSTRUCTIONS_INVALID'});return text;}
+import {createScenarioPolishingHandler} from './scenario-polishing-http.js';
+import {resolveScenarioSelection,scenarioCostProof,requireScenarioCostApproval,approvedScenarioRequest} from '../../application/scenario-polishing.js';
 import {createAssignmentEvidenceHandler} from './assignment-evidence-http.js';
 import {inspectApplicationRole,requireConfirmedApplicationRole,confirmApplicationRole} from '../../application/application-role-review.js';
 import {snapshotMessage} from '../../application/outreach-message-snapshot.js';
@@ -205,6 +207,8 @@ export function createLocalServer({
   const reviewStore=applicationReviewStore||new Map();
   const handleMaintenance=createMaintenanceHandler();
   const handleAssignmentEvidence=createAssignmentEvidenceHandler({store:assignmentEvidenceStore});
+  const handleScenarioPolishing=createScenarioPolishingHandler({library:assignmentEvidenceStore,reviews:reviewStore});
+  const scenarioInput=(values,review)=>values.has('scenarioSelections')?values.get('scenarioSelections'):JSON.stringify(review.polishingScenarios?.references||[]);
   const roleReviewTickets=new Map();
   function issueRoleTicket(id,version){for(const [key,value]of roleReviewTickets)if(value.expiresAt<=Date.now())roleReviewTickets.delete(key);if(roleReviewTickets.size>=100)roleReviewTickets.delete(roleReviewTickets.keys().next().value);const token=randomBytes(32).toString('hex');roleReviewTickets.set(token,{reviewId:id,version,expiresAt:Date.now()+20*60*1000});return token;}
 
@@ -295,6 +299,7 @@ export function createLocalServer({
       polishingModel: stored.polishingModel || DEFAULT_POLISHING_MODEL,
       polishingModelExplicit: Boolean(stored.polishingModel),
       polishingInstructions:stored.polishingInstructions||'',
+      scenarioSelectionReferences:stored.polishingScenarios?.references||[],
       refinementLastAttempt: stored.refinementLastAttempt || null,
       refinementProposal: stored.refinementProposal,
       selectedCvRoleCode: stored.selectedCvRoleCode,
@@ -405,6 +410,7 @@ export function createLocalServer({
     if(await handleIntelligence(request,response,url))return;
     if(await handleMaintenance(request,response,url))return;
     if(await handleAssignmentEvidence(request,response,url))return;
+    if(await handleScenarioPolishing(request,response,url))return;
     if (await handleOutreach(request, response, url)) return;
     const requestId = randomUUID();
     const scriptNonce = randomBytes(16).toString("base64");
@@ -1035,11 +1041,13 @@ export function createLocalServer({
       try {
         review=polishingReviewWithRelationship(review,formBody.values);
         const confirmedRole=confirmedRoleForRequest(review,formBody.values);
+        resolveScenarioSelection(assignmentEvidenceStore,scenarioInput(formBody.values,review));
         const selectedModel = normalizePolishingModel(formBody.values.get('polishingModel') || review.polishingModel || DEFAULT_POLISHING_MODEL);
         const cvEvidence = cvEvidenceLoader ? await cvEvidenceLoader(review) : {};
         const ids = formBody.values.getAll('selectedResearchPointIds').map(value=>String(value).trim());
         const selectedResearchPoints = usesCandidateValues(review.formData)?[]:getSelectableCompanyValues(review.research).filter(point=>ids.includes(point.id));
-        const requestForEstimate = {...cvEvidence,...(review.formData.achievementMode?{achievementSelectionExplicit:true,approvedAchievementEvidence:review.formData.achievementSelection}:{}),draftPlainText:review.currentDraftPlainText,
+        const scenarioState=resolveScenarioSelection(assignmentEvidenceStore,scenarioInput(formBody.values,review));
+        const requestForEstimate = {...cvEvidence,...approvedScenarioRequest(scenarioState),...(review.formData.achievementMode?{achievementSelectionExplicit:true,approvedAchievementEvidence:review.formData.achievementSelection}:{}),draftPlainText:review.currentDraftPlainText,
           applicationJobTitle:confirmedRole,jobDescriptionSummary:confirmedRole,jobDescriptionText:review.formData.jobDescriptionText,
           selectedCvHighlights:Array.isArray(review.formData.cvHighlights)?review.formData.cvHighlights.map(value=>String(value||'').trim()).filter(value=>value&&value.toLowerCase()!=='null'):[],
           companyValues:selectedResearchPoints.map(point=>point.text),selectedResearchPoints,
@@ -1048,8 +1056,9 @@ export function createLocalServer({
           letterTone:normalizeLetterTone(formBody.values.get('letterTone')||review.letterTone||'professional'),excludedEmployers:['micro1'],
           webSearchEnabled:formBody.values.getAll('webSearchEnabled').includes('true')};
         const apiBody = buildPolishingApiRequest(requestForEstimate,selectedModel);
-        sendJson(response,200,{ok:true,...estimatePolishingApiRequest(apiBody),letterLengthMode:requestForEstimate.letterLengthMode,fullLetterMaximumWords:lengthPolicy(requestForEstimate.letterLengthMode,coverLetterRefinementMaxWords).maximumWords});
+        sendJson(response,200,{ok:true,scenarioCostProof:scenarioCostProof(scenarioState,review,formBody.values),...estimatePolishingApiRequest(apiBody),letterLengthMode:requestForEstimate.letterLengthMode,fullLetterMaximumWords:lengthPolicy(requestForEstimate.letterLengthMode,coverLetterRefinementMaxWords).maximumWords});
       } catch(error) {
+        if(error.code==='SCENARIO_SELECTION_INVALID'){sendJson(response,error.statusCode||409,{ok:false,code:error.code,error:error.message});return;}
         if(error.code==='APPLICATION_ROLE_CONFIRMATION_REQUIRED'){sendJson(response,409,{ok:false,code:error.code,error:error.message,roleReview:error.roleReview||null});return;}
         const known=error.statusCode===400||['REFINEMENT_LENGTH_INVALID','REFINEMENT_MODEL_INVALID','REFINEMENT_TONE_INVALID','CV_EVIDENCE_UNAVAILABLE','LINKEDIN_EVIDENCE_UNAVAILABLE'].includes(error.code);
         sendJson(response,known?400:503,{ok:false,error:known?error.message:'Local cost estimation failed. No provider call was made.'});
@@ -1126,6 +1135,7 @@ export function createLocalServer({
         );
       };
 
+      let scenarioState;try{scenarioState=resolveScenarioSelection(assignmentEvidenceStore,scenarioInput(formBody.values,review));requireScenarioCostApproval(scenarioState,review,formBody.values);}catch(error){await renderReview(error.statusCode||409,{...(review.refinementProposal||{}),warnings:[...(review.refinementProposal?.warnings||[]),error.message]});return;}
       let personalInstructions;try{personalInstructions=personalPolishingInstructions(formBody.values);}catch(error){await renderReview(400,{...(review.refinementProposal||{}),warnings:[...(review.refinementProposal?.warnings||[]),error.message]});return;}
       review={...review,polishingInstructions:personalInstructions};reviewStore.set(reviewId,{...reviewStore.get(reviewId),polishingInstructions:personalInstructions});
       let confirmedRole;try{confirmedRole=confirmedRoleForRequest(review,formBody.values);}catch(error){await renderReview(error.statusCode||409,{...(review.refinementProposal||{}),warnings:[...(review.refinementProposal?.warnings||[]),error.message]});return;}
@@ -1161,6 +1171,7 @@ export function createLocalServer({
         return;
       }
 
+      if(formBody.values.has('scenarioSelections')||review.polishingScenarios){reviewStore.set(reviewId,{...reviewStore.get(reviewId),polishingScenarios:scenarioState});review={...reviewStore.get(reviewId),formData:review.formData};}
       if(formBody.values.has('advertiserRelationship'))reviewStore.set(reviewId,review);
 
       const selectedIds = formBody.values
@@ -1195,7 +1206,9 @@ export function createLocalServer({
       polishingModel = normalizePolishingModel(formBody.values.get('polishingModel') || polishingModel);
       review.polishingModel = polishingModel;
       const cvEvidence = cvEvidenceLoader ? await cvEvidenceLoader(review) : {};
+      scenarioState=resolveScenarioSelection(assignmentEvidenceStore,scenarioInput(formBody.values,review));requireScenarioCostApproval(scenarioState,reviewStore.get(reviewId),formBody.values);
       refinementProposal = await coverLetterRefinementPort.refine({
+        ...approvedScenarioRequest(scenarioState),
         ...cvEvidence,
         ...(review.formData.achievementMode?{achievementSelectionExplicit:true,approvedAchievementEvidence:review.formData.achievementSelection}:{}),
         ...(formBody.values.has('polishingModel') || review.polishingModel !== DEFAULT_POLISHING_MODEL ? {polishingModel} : {}),
@@ -1237,6 +1250,8 @@ export function createLocalServer({
         error.rejectedProposal=refinementProposal.rejectedProposal;
         throw error;
       }
+      try{resolveScenarioSelection(assignmentEvidenceStore,scenarioState.references);requireScenarioCostApproval(scenarioState,reviewStore.get(reviewId),formBody.values);}catch(error){error.message='Scenario approval or application context changed while polishing. The provider request completed, but this proposal was not accepted. Review evidence before a new request; no automatic retry.';throw error;}
+      if(scenarioState.references.length)refinementProposal={...refinementProposal,scenarioEvidenceSnapshot:scenarioState};
       const quality=assertLetterLength(refinementProposal.proposedDraft,{mode:letterLengthMode,maxWords:coverLetterRefinementMaxWords,advertUrl:review.formData.jobAdvertLink});
       refinementProposal={...refinementProposal,letterLengthMode,quality,qualityAdvertUrl:review.formData.jobAdvertLink};
       rejectedRefinementProposal=null;
@@ -1249,7 +1264,7 @@ export function createLocalServer({
           durationMs:Date.now()-actionStartedAt,tone:letterTone,
           webSearchEnabled:formBody.values.has('webSearchEnabled') ? formBody.values.getAll('webSearchEnabled').includes('true') : true,
           outcome:'failed',errorCode:describeRefinementFailure(error).errorCode});
-        const failedProposal = {proposedDraft:'',warnings:[['REFINEMENT_LENGTH_EXCEEDED','REFINEMENT_LENGTH_INVALID'].includes(error.code)?error.message:formatRefinementFailure(error)]};
+        const failedProposal = {proposedDraft:'',warnings:[error.code==='SCENARIO_SELECTION_INVALID'||['REFINEMENT_LENGTH_EXCEEDED','REFINEMENT_LENGTH_INVALID'].includes(error.code)?error.message:formatRefinementFailure(error)]};
         refinementProposal = retainSuccessfulProposal(reviewStore.get(reviewId)?.refinementProposal, failedProposal);
       }
 
@@ -1340,6 +1355,7 @@ export function createLocalServer({
 
       try{requireConfirmedApplicationRole(review.formData);}catch(error){sendHtml(response,409,await renderCompleteReview({reviewId,applicationRoleMessage:error.message}));return;}
 
+      if(review.refinementProposal?.scenarioEvidenceSnapshot?.references?.length){try{const state=review.refinementProposal.scenarioEvidenceSnapshot;resolveScenarioSelection(assignmentEvidenceStore,state.references);if(JSON.stringify(review.polishingScenarios?.references||[])!==JSON.stringify(state.references))throw Object.assign(new Error('Scenario selection changed after this proposal. Request a fresh reviewed polish.'),{statusCode:409});}catch(error){sendHtml(response,error.statusCode||409,await renderCompleteReview({reviewId,refinementProposal:{...review.refinementProposal,warnings:[...(review.refinementProposal.warnings||[]),error.message]}}));return;}}
       let proposedDraftPlainText = String(
         review.refinementProposal?.proposedDraft || ''
       ).trim();
@@ -1437,6 +1453,7 @@ export function createLocalServer({
             : []),
           {
             appliedAt,
+            ...(review.refinementProposal.scenarioEvidenceSnapshot?{scenarioEvidenceSnapshot:structuredClone(review.refinementProposal.scenarioEvidenceSnapshot)}:{}),
             previousSubject: currentReviewSubject(review),
             appliedSubject: acceptedSubject,
             previousDraft: review.currentDraftPlainText,

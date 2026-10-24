@@ -9,6 +9,8 @@ export function attachPolishingCostControls(doc=document, fetchImpl=fetch, confi
   const personalInstructions=()=>String(form.querySelector('[name="instructions"]')?.value||'').replace(/\r\n?/g,'\n').trim();
   const instructionField=form.querySelector('[name="instructions"]');
   instructionField?.addEventListener('input',()=>{for(const field of form.querySelectorAll('[name="polishingCostConfirmed"],[name="polishingConfirmedInstructions"]'))field.value='';status.textContent='Personal instructions changed. The next polish will refresh the cost estimate and ask for confirmation.';});
+  const scenarioInput=()=>form.querySelector('[name="scenarioSelections"]')?.value||'[]';
+  form.querySelector('[name="scenarioSelections"]')?.addEventListener('change',()=>{for(const field of form.querySelectorAll('[name="polishingCostConfirmed"],[name="polishingConfirmedScenarios"]'))field.value='';status.textContent='Scenario selection changed. A fresh estimate and confirmation are required.';});
   let pending=false,bypass=false;
   async function estimate() {
     const values=new URLSearchParams(new FormData(form));
@@ -43,16 +45,20 @@ export function attachPolishingCostControls(doc=document, fetchImpl=fetch, confi
     event.preventDefault();if(pending)return;pending=true;button.disabled=true;
     try {
       const instructions=personalInstructions();
+      const scenarios=scenarioInput();
       const relationship=form.querySelector('[name="advertiserRelationship"]:checked')?.value;
       const {result,model}=await estimate();
       if(relationship!==form.querySelector('[name="advertiserRelationship"]:checked')?.value)throw new Error('Advertiser relationship changed; review the estimate again.');
       if(instructions!==personalInstructions())throw new Error('Personal instructions changed; review the estimate again.');
+      if(scenarios!==scenarioInput())throw new Error('Scenario selection changed; review the estimate again.');
       const approved=confirmImpl(`Polish using ${model.label} (${model.provider})?\nAdvertiser relationship: ${relationship||'saved selection'}.\nLetter length: ${result.letterLengthMode||'standard'}; complete-letter maximum ${result.fullLetterMaximumWords||400} words.\nApproximate input: ${result.estimatedInputTokens} tokens. Output-token budget: ${result.outputTokenBudget}.\nToken subtotal at that budget: $${model.estimatedTokenCostUsd.toFixed(6)} USD.\n${result.webSearchAllowed?'Additional fast-search charges and result tokens are excluded.':'Web search disabled.'}\nThis is not a guaranteed final charge. Your CV evidence goes to the selected provider through Perplexity. No automatic paid retries.`);
       if(instructions!==personalInstructions())throw new Error('Personal instructions changed; review the estimate again.');
+      if(scenarios!==scenarioInput())throw new Error('Scenario selection changed; review the estimate again.');
       if(!approved){status.textContent+=' Cancelled. No polishing call made.';return;}
       let confirmation=form.querySelector('[name="polishingCostConfirmed"]');
       if(!confirmation){confirmation=doc.createElement('input');confirmation.type='hidden';confirmation.name='polishingCostConfirmed';form.appendChild(confirmation);}
       confirmation.value='true';
+      let confirmedScenarios=form.querySelector('[name="polishingConfirmedScenarios"]');if(!confirmedScenarios){confirmedScenarios=doc.createElement('input');confirmedScenarios.type='hidden';confirmedScenarios.name='polishingConfirmedScenarios';form.appendChild(confirmedScenarios);}confirmedScenarios.value=result.scenarioCostProof||'';
       let confirmedInstructions=form.querySelector('[name="polishingConfirmedInstructions"]');if(!confirmedInstructions){confirmedInstructions=doc.createElement('input');confirmedInstructions.type='hidden';confirmedInstructions.name='polishingConfirmedInstructions';form.appendChild(confirmedInstructions);}confirmedInstructions.value=instructions;
       let confirmedModel=form.querySelector('[name="polishingConfirmedModel"]');
       if(!confirmedModel){confirmedModel=doc.createElement('input');confirmedModel.type='hidden';confirmedModel.name='polishingConfirmedModel';form.appendChild(confirmedModel);}

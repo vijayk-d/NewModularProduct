@@ -1,3 +1,4 @@
+import {normalizeApprovedScenarioEvidence} from '../../application/scenario-polishing.js';
 import {validateContextualHighlights,roleConsistencyWarnings} from '../../application/contextual-highlights.js';
 import {SENIOR_COVER_LETTER_INSTRUCTIONS} from '../../application/senior-cover-letter-instructions.js';
 import {coverLetterBudget} from '../../application/cover-letter-budget.js';
@@ -141,6 +142,7 @@ function buildPrompt(request) {
     candidateEvidence: request.selectedCvHighlights,
     achievementSelectionExplicit:request.achievementSelectionExplicit===true,
     approvedAchievementEvidence:request.achievementSelectionExplicit===true?request.approvedAchievementEvidence||null:undefined,
+    ...(request.approvedScenarioEvidence?.length?{approvedScenarioEvidence:normalizeApprovedScenarioEvidence(request.approvedScenarioEvidence)}:{}),
     selectedCompanyValues: request.companyValues,
     selectedResearchPoints: request.selectedResearchPoints,
     publicResearchSources: researchSources,
@@ -387,7 +389,7 @@ export function buildPolishingApiRequest(request, selectedModel) {
                 content: [
                   {
                     type: 'input_text',
-                    text: SENIOR_COVER_LETTER_INSTRUCTIONS
+                    text: SENIOR_COVER_LETTER_INSTRUCTIONS+(request.approvedScenarioEvidence?.length?' Selected approvedScenarioEvidence is additional explicitly user-approved candidate evidence, including when achievementSelectionExplicit is true. Use only its approvedWording for scenario claims. Keep each action and outcome with its original organisation and assignment as expressed there; if attribution is absent, do not infer it. Do not quote source IDs or narrate evidence verification. Do not manufacture problems, causation, metrics, methods or strategic responsibility. Distinguish past achievements from prospective approaches; do not assume the target employer has the same internal problem or promise repeated results. Use zero to two relevant scenarios within the existing word limit, avoiding duplicated achievements.':'')
                   }
                 ]
               },

@@ -2,7 +2,7 @@ const normal=s=>String(s||'').normalize('NFKC').toLowerCase().replace(/[\s\u2010
 const generic=new Set('a an the and or to of in on at for with as is are be by it this that their our your my how where use using making helping teams team risk solutions work working delivery learning'.split(' '));
 export function validateContextualHighlights(selections,body,request={}){
  if(!Array.isArray(selections))return [];
- const jd=normal(request.jobDescriptionText),evidence=normal([request.selectedCvText,request.candidateLinkedInText,...(request.selectedCvHighlights||[])].filter(Boolean).join('\n'));if(!jd||!evidence)return [];
+ const jd=normal(request.jobDescriptionText),evidence=normal([request.selectedCvText,request.candidateLinkedInText,...(request.selectedCvHighlights||[]),...(Array.isArray(request.approvedScenarioEvidence)?request.approvedScenarioEvidence.filter(s=>['source-supported','user-confirmed'].includes(s?.evidenceState)&&typeof s?.approvedWording==='string').slice(0,2).map(s=>s.approvedWording):[])].filter(Boolean).join('\n'));if(!jd||!evidence)return [];
  const result=[],excluded=[request.organisationName,request.candidateDisplayName,...(request.excludedHighlightEntities||[])].map(normal).filter(Boolean);
  for(const item of selections.slice(0,16)){
   if(!item||['text','context','jdRequirement','evidenceQuote','reason'].some(k=>typeof item[k]!=='string'))continue;

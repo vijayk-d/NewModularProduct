@@ -1,3 +1,4 @@
+import {normalizeApprovedScenarioEvidence} from './scenario-polishing.js';
 import {lengthPolicy,normalizeLengthMode} from '../domain/cover-letter/letter-quality-policy.js';
 import { normalizeLetterTone, normalizeExcludedEmployers } from './cover-letter-controls.js';
 import { normalizePolishingModel, normalizeAttemptMetadata } from './polishing-model-catalog.js';
@@ -93,6 +94,7 @@ function normalizeRefinementRequest({
   selectedCvHighlights = [],
   achievementSelectionExplicit = false,
   approvedAchievementEvidence = null,
+  approvedScenarioEvidence = [],
   companyValues = [],
   selectedResearchPoints = [],
   organisationUrl = '',
@@ -126,6 +128,7 @@ function normalizeRefinementRequest({
     ...(normalizeString(candidateDisplayName) ? { candidateDisplayName: normalizeString(candidateDisplayName) } : {}),
     selectedCvHighlights: normalizeStringArray(selectedCvHighlights),
     ...(achievementSelectionExplicit===true?{achievementSelectionExplicit:true,approvedAchievementEvidence:approvedAchievementEvidence?structuredClone(approvedAchievementEvidence):null}:{}),
+    ...(approvedScenarioEvidence?.length?{approvedScenarioEvidence:normalizeApprovedScenarioEvidence(approvedScenarioEvidence)}:{}),
     companyValues: normalizeStringArray(companyValues),
     selectedResearchPoints: normalizeResearchPoints(selectedResearchPoints),
     organisationUrl: normalizeUrl(organisationUrl),

@@ -676,6 +676,7 @@ export function renderRefinementPanel({
   polishingModelExplicit = false,
   currentSubject = '',
   polishingInstructions = '',
+  scenarioSelectionReferences = [],
   applicationRoleVersion = '',
   advertiserRelationship = 'unknown',
   allowWithoutOrganisationResearch = false,
@@ -733,6 +734,7 @@ export function renderRefinementPanel({
           <input type="checkbox" name="webSearchEnabled" value="true"${refinementLastAttempt?.webSearchEnabled===false?'':' checked'}>
           Allow web search during polishing
         </label>
+        <fieldset data-scenario-picker data-review-id="${escapeHtml(reviewId)}"><legend>Supporting assignment scenarios (optional; maximum two)</legend><input type="hidden" name="scenarioSelections" value="${escapeHtml(JSON.stringify(scenarioSelectionReferences))}"><p>Only currently approved wording is eligible. Private source passages, notes and confirmation comments are not sent. Approval is your assessment, not independent verification. Scenarios may be omitted if irrelevant, duplicated or outside the word budget.</p><p data-scenario-status role="status">Loading optional scenario choices…</p><div data-scenario-choices></div><button type="button" data-scenario-refresh>Refresh scenarios</button><button type="button" data-scenario-clear>Clear scenarios</button><button type="button" data-scenario-save>Save scenario selection</button></fieldset>
         <label for="personal-polishing-instructions" style="display:block">Personal polishing instructions (optional)</label>
         <textarea id="personal-polishing-instructions" name="instructions" rows="4" maxlength="4000" style="box-sizing:border-box;width:100%;resize:vertical;padding:0.65rem;font:inherit" placeholder="For example: make the opening more direct, emphasise relevant achievements, and remove repetition.">${escapeHtml(polishingInstructions)}</textarea>
         <p class="rich-editor-notice">Sent with your next polishing request only. Existing evidence, attribution and length rules still apply. Leave blank for normal polishing.</p>
@@ -747,6 +749,7 @@ export function renderRefinementPanel({
       <section class="refinement-proposal panel--proposal">
         <h2>Proposed cover-letter refinement</h2>
         <p>This proposal has not changed the current draft.</p>
+      ${refinementProposal.scenarioEvidenceSnapshot?.snapshots?.length?`<details data-scenario-provenance><summary>Scenario evidence used for this proposal</summary><ul>${refinementProposal.scenarioEvidenceSnapshot.snapshots.map(s=>`<li>${escapeHtml(s.scenarioId)} — scenario version ${s.scenarioRevision}, assignment version ${s.assignmentRevision}; ${escapeHtml(s.evidenceState)}<p>${escapeHtml(s.approvedWording)}</p></li>`).join('')}</ul><p>User-approved wording, not independently verified. Private passages are not included.</p></details>`:''}
         ${refinementProposal.attemptMetadata ? `<p class="rich-editor-notice">This proposal's requested model: ${escapeHtml(refinementProposal.attemptMetadata.requestedModel || 'Unreported')}; returned model: ${escapeHtml(refinementProposal.attemptMetadata.returnedModel || 'Unreported')}.</p>` : '<p class="rich-editor-notice">Model not recorded for this proposal.</p>'}
         <label for="proposed-cover-letter-subject">Proposed subject</label>
         <textarea id="proposed-cover-letter-subject" class="subject-editor-input" rows="2" wrap="soft"
@@ -927,6 +930,7 @@ export function renderApplicationReview({
   currentDraftHtml,
   currentDraftSubject,
   polishingInstructions = '',
+  scenarioSelectionReferences = [],
   currentHighlightPhrases = [],
   applicationRoleReview = null,
   applicationRoleMessage = '',
@@ -971,6 +975,7 @@ export function renderApplicationReview({
     polishingModelExplicit,
     currentSubject: subject,
     polishingInstructions,
+    scenarioSelectionReferences,
     applicationRoleVersion:roleState?.version||'',
     letterLengthMode,qualityMaximumWords,rejectedRefinementProposal,
     advertiserRelationship:contextMode(formData),
@@ -1963,7 +1968,7 @@ ${renderContactLinking(contactLinking)}
   </script>
 
 
-      <script type="module" src="/cv-documents.js" nonce="__SCRIPT_NONCE__"></script><script type="module" src="/application-intelligence.js" nonce="__SCRIPT_NONCE__"></script><script type="module" src="/review-page.js" nonce="__SCRIPT_NONCE__"></script><script type="module" src="/letter-quality-controls.js" nonce="__SCRIPT_NONCE__"></script>
+      <script type="module" src="/cv-documents.js" nonce="__SCRIPT_NONCE__"></script><script type="module" src="/application-intelligence.js" nonce="__SCRIPT_NONCE__"></script><script type="module" src="/review-page.js" nonce="__SCRIPT_NONCE__"></script><script type="module" src="/letter-quality-controls.js" nonce="__SCRIPT_NONCE__"></script><script type="module" src="/scenario-polishing-controls.js" nonce="__SCRIPT_NONCE__"></script>
 </body>
 </html>
 
