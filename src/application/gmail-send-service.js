@@ -50,6 +50,20 @@ export function createGmailSendService({repository,mailboxPort,env=process.env,r
   const ticket=randomUUID(),expiresAt=clock()+300000;tickets.set(ticket,{queueId,account,mode,version,raw:r.raw,summary,expiresAt,draftId:mode==='draft'?item.draftId:null,cvHash:draft?.attachment.sha256});
   return {ticket,expiresAt,mode,sendingAccount:account,recipient:item.email,emailVerified:item.verified===true,emailSource:item.emailSource||'unknown',subject:summary.subject,bodyPlainText:summary.bodyPlainText,bodyHtml:summary.bodyHtml,attachments:summary.attachments,contentHash:summary.contentHash,sent:false};
  },
+ async reserveScheduled({ticket,confirmed=false,repeatApproved=false}={}){
+  const account=gate();if(String(env.ENABLE_CLOUD_SCHEDULING||'')!=='true'||env.NMP_ENV!=='development'||env.NMP_ALLOW_DEVELOPMENT_INTEGRATIONS!=='true')fail('Development scheduling is disabled.','SCHEDULE_DISABLED',403);
+  if(confirmed!==true)fail('Confirm the exact scheduled send.','SEND_CONFIRMATION',400);
+  const a=tickets.get(ticket);if(!a)fail('Confirmation missing, consumed or expired.');tickets.delete(ticket);
+  if(a.expiresAt<=clock()||a.account.toLowerCase()!==account.toLowerCase())fail('Confirmation expired or sender changed.');
+  if(a.mode==='repeat'&&repeatApproved!==true)fail('Explicit Send again approval is required.','SEND_CONFIRMATION',400);
+  if(typeof a.raw!=='string'||a.raw.length>4*1024*1024||!/^[A-Za-z0-9_-]+={0,2}$/.test(a.raw)||hash(Buffer.from(a.raw,'base64url'))!==a.summary.contentHash)fail('Frozen MIME invalid or exceeds scheduling size limit.');
+  const item=repository.getById(a.queueId);if(!item||messageEditVersion(item)!==a.version)fail('Queue changed after confirmation.');
+  if(modeFor(item,account).mode!==a.mode)fail('Send action changed; prepare again.');
+  if(a.cvHash&&(await withCV(item)).attachment.sha256!==a.cvHash)fail('CV bytes changed after confirmation.');
+  if(a.expiresAt<=clock()||gate().toLowerCase()!==account.toLowerCase())fail('Confirmation expired or sender changed.');
+  const operation=repository.claimSendAttempt({queueId:item.id,account,version:a.version,mode:a.mode,summary:a.summary});
+  return {operation,queueId:item.id,account,raw:a.raw,summary:structuredClone(a.summary),sent:false};
+ },
  async commit({ticket,confirmed=false,repeatApproved=false}={}){
   const account=gate();if(confirmed!==true)fail('Confirm the exact prepared send.','SEND_CONFIRMATION',400);
   const a=tickets.get(ticket);if(!a)fail('Confirmation missing, consumed or expired.');tickets.delete(ticket);

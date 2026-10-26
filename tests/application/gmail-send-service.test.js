@@ -21,6 +21,19 @@ test('concurrent commits cannot produce two sends',async t=>{const f=await fixtu
 test('confirmed sending remains visible if persistence fails',async t=>{const f=await fixture(t),p=await f.service.prepare({queueId:'q'});f.repo.finishSendAttempt=()=>{throw new Error('disk');};const r=await f.service.commit({ticket:p.ticket,confirmed:true});assert.equal(r.sent,true);assert.equal(r.persistenceConfirmed,false);});
 test('known mojibake is blocked before sending',async t=>{const f=await fixture(t);f.summary.bodyPlainText=f.summary.bodyPlainText.replace('£','Â£');await assert.rejects(f.service.prepare({queueId:'q'}),/Encoding/);assert.equal(f.commits,0);});
 test('startup accepts refresh credentials only in explicit modern mode',()=>{const env={ENABLE_GMAIL:'true',ENABLE_GMAIL_SENDING:'true',GMAIL_FROM_ADDRESS:'sender@business.test',GMAIL_OAUTH_CLIENT_ID:'test',GMAIL_OAUTH_CLIENT_SECRET:'test',GMAIL_OAUTH_REFRESH_TOKEN:'test'};const c=validateRuntimeConfig({env});assert.equal(c.integrations.gmail.clientId,'test');assert.equal(c.integrations.gmail.redirectUri,'');delete env.GMAIL_OAUTH_REFRESH_TOKEN;assert.throws(()=>validateRuntimeConfig({env}),/REFRESH_TOKEN/);});
+test('scheduled reservation requires explicit enablement and never invokes sending',async t=>{
+ const f=await fixture(t),p=await f.service.prepare({queueId:'q'});await assert.rejects(f.service.reserveScheduled({ticket:p.ticket,confirmed:true}),/disabled/);
+ Object.assign(f.env,{NMP_ENV:'development',NMP_ALLOW_DEVELOPMENT_INTEGRATIONS:'true',ENABLE_CLOUD_SCHEDULING:'true'});
+ const result=await f.service.reserveScheduled({ticket:p.ticket,confirmed:true});assert.equal(result.sent,false);assert.equal(result.operation.id,'op');assert.equal(f.op.status,'reserved');assert.equal(f.commits,0);await assert.rejects(f.service.commit({ticket:p.ticket,confirmed:true}));
+});
+test('scheduled reservation rejects changed content, CV and expiry',async t=>{
+ for(const change of ['body','cv','expiry']){
+  const f=await fixture(t);Object.assign(f.env,{NMP_ENV:'development',NMP_ALLOW_DEVELOPMENT_INTEGRATIONS:'true',ENABLE_CLOUD_SCHEDULING:'true'});const p=await f.service.prepare({queueId:'q'});
+  if(change==='body')f.item.subject='changed';if(change==='cv')await writeFile(path.join(f.root,'cv.pdf'),'changed');if(change==='expiry')f.expire();
+  await assert.rejects(f.service.reserveScheduled({ticket:p.ticket,confirmed:true}));assert.equal(f.op,null);assert.equal(f.commits,0);
+ }
+});
+
 let createOutreachRepository;try{({createOutreachRepository}=await import('../../src/infrastructure/outreach/sqlite-outreach-repository.js'));}catch(e){if(e.code!=='ERR_UNKNOWN_BUILTIN_MODULE')throw e;}
 const sql={skip:!createOutreachRepository?'node:sqlite unavailable':false},sample={applicationKey:'app',contactId:'c',email:'zoe@business.test',subject:'Application',bodyPlainText:'Saved'};
 test('SQLite reservation is unique and sent history survives queue clearing',sql,()=>{const r=createOutreachRepository({filePath:':memory:'});try{const item=r.addMany([sample]).items[0],a=r.claimSendAttempt({queueId:item.id,account:'sender@business.test',version:messageEditVersion(item),mode:'new',summary:{subject:'Application'}});assert.throws(()=>r.claimSendAttempt({queueId:item.id,account:'sender@business.test',version:messageEditVersion(item),mode:'new',summary:{}}));r.finishSendAttempt({attemptId:a.id,status:'sent',messageId:'gmail-confirmed'});assert.equal(r.getById(item.id).status,'sent');r.clearQueue();assert.equal(r.listSentEmails()[0].messageId,'gmail-confirmed');}finally{r.close();}});

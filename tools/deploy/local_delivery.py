@@ -64,6 +64,7 @@ def safe_source(name):
  if any(x in low for x in ['.before-','.bak','.backup','-source.json','local-production-audit-','payload.json','recipient-package-before-']):return False
  if p.name.startswith('.env') or p.suffix.lower() in ['.db','.sqlite','.sqlite3','.pdf','.docx','.pyc','.zip','.pem','.key','.pfx']:return False
  if name in ['package.json','package-lock.json','.gitignore','.gitattributes','playwright.config.js','playwright.contacts.config.js','start-local-server.bat']:return True
+ if parts and parts[0]=='apps-script':return p.suffix.lower() in ['.gs','.js','.mjs','.md','.html'] or p.name in ['appsscript.json','appsscript.scheduler.json']
  if len(parts)==1:return p.suffix=='.md'
  if parts[0]=='python-worker':return p.suffix.lower()=='.py'
  if parts[0] in ['src','tests','templates','examples','docs','tampermonkey','scripts']:return p.suffix.lower() in ['.js','.mjs','.cjs','.py','.css','.html','.json','.md','.toml','.txt','.yml','.yaml']

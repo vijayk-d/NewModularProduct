@@ -1,3 +1,4 @@
+import {createSchedulingHttp} from './gmail-scheduling-http.js';
 import {createGmailSendService} from '../../application/gmail-send-service.js';
 // outreach-bulk-controls-v1
 import { createQueueMessageEditor, messagePresentation } from '../../application/queue-message-editor.js';
@@ -21,6 +22,7 @@ export function createOutreachHttpHandler({ repository, contactStore, getReview,
   const confirmedDrafts = gmailDraftCreationPort || createConfirmedGmailDraftService({repository,mailboxPort});
   const service = repository ? createOutreachQueueService({ repository, contactStore, getReview }) : null;
   const sends=gmailSendPort||createGmailSendService({repository,mailboxPort});
+  const handleScheduling=createSchedulingHttp({sends,repository});
   const messageEditor=repository?createQueueMessageEditor({repository}):null;
   const json = (response, code, data) => {
     response.writeHead(code, { 'content-type': 'application/json; charset=utf-8',
@@ -43,6 +45,7 @@ export function createOutreachHttpHandler({ repository, contactStore, getReview,
     catch { const error = new Error('Request body must be valid JSON.'); error.statusCode = 400; throw error; }
   }
   return async function handleOutreach(request, response, url) {
+    if(await handleScheduling(request,response,url))return true;
     const route = url.pathname;
     if (!['/outreach-queue', '/outreach-queue.js', '/outreach-simple-contacts.js', '/outreach-workflow.css', '/queue-message-editor.js', '/outreach-bulk.js', '/api/outreach-queue',
       '/api/outreach-queue/add', '/api/outreach-queue/delete', '/api/outreach-queue/clear', '/api/outreach-queue/prepare-drafts', '/api/outreach-queue/gmail-status', '/api/outreach-queue/check-mailbox', '/api/outreach-queue/gmail-draft-status', '/api/outreach-queue/gmail-draft-preview', '/api/outreach-queue/gmail-draft-create', '/api/outreach-queue/draft-one', '/api/outreach-queue/link-and-add', '/api/outreach-queue/message-save','/api/outreach-queue/send-status','/api/outreach-queue/send-prepare','/api/outreach-queue/send-commit','/api/outreach-queue/send-cancel','/api/outreach-queue/send-history'].includes(route)) return false;
@@ -71,7 +74,7 @@ export function createOutreachHttpHandler({ repository, contactStore, getReview,
           'x-content-type-options': 'nosniff'
         });
         response.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Outreach queue</title></head>
-          <body><main><h1>Outreach queue</h1><p><a href="/">Prepare an application</a></p>
+          <body><main><h1>Outreach queue</h1><p><a href="/">Prepare an application</a> | <a href="/outreach-scheduling">Email scheduling</a></p>
           <p>Draft and Send are separate actions. Sending requires explicit enablement and confirmation.</p></main>
           <script type="module" src="/outreach-queue.js"></script></body></html>`);
         return true;

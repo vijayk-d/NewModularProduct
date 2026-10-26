@@ -289,4 +289,14 @@ class CaptureScopeRegressionTests(unittest.TestCase):
     result=subprocess.run(['git','check-ignore','--no-index','--',name],cwd=root,capture_output=True)
     self.assertEqual(result.returncode,0,name)
 
+
+
+class SchedulerSourcePolicyTests(unittest.TestCase):
+ def test_maintained_apps_script_source_and_manifest_are_selected(self):
+  for name in ['apps-script/gmail-scheduler/Code.gs','apps-script/gmail-scheduler/Scheduler.gs','apps-script/gmail-scheduler/appsscript.json','apps-script/gmail-scheduler/appsscript.scheduler.json','apps-script/gmail-scheduler/README.md','tampermonkey/example.user.js']:
+   self.assertTrue(d.safe_source(name),name)
+ def test_private_apps_script_configuration_is_excluded(self):
+  for name in ['apps-script/gmail-scheduler/.env','apps-script/gmail-scheduler/.clasp.json','apps-script/gmail-scheduler/credentials.json','apps-script/gmail-scheduler/token.json','apps-script/gmail-scheduler/private.key','apps-script/gmail-scheduler/backups/Code.gs']:
+   self.assertFalse(d.safe_source(name),name)
+
 if __name__=='__main__':unittest.main()

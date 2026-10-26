@@ -1,0 +1,25 @@
+<!doctype html>
+<html><head><base target="_top"><meta charset="utf-8">
+<style>body{font:15px Arial,sans-serif;margin:18px;line-height:1.5}button{padding:9px;margin:5px 5px 5px 0}code{overflow-wrap:anywhere}#status{padding:10px;border:1px solid #888;white-space:pre-wrap}.warning{padding:10px;background:#fff2cd}</style>
+</head><body>
+<h2>Grant this app access to the existing scheduler Sheet</h2>
+<p>This uses your current Google account and the existing <code>drive.file</code> scope. It does not start the scheduler or send email.</p>
+<p class="warning">Select only the exact existing scheduler spreadsheet below. Selecting a different file can grant the app access to that file even though the scheduler rejects it. There is no upload or new-file action in this dialog.</p>
+<p>Expected name: <strong id="expected-name">Loaded when you open Picker</strong><br>Expected Sheet ID: <code id="expected-id"></code></p>
+<button id="choose" type="button" disabled>Choose the existing scheduler Sheet</button>
+<button id="verify" type="button" disabled>Verify selected Sheet access</button>
+<button id="close" type="button">Close</button>
+<p id="status" role="status">Loading the Google Picker library…</p>
+<script>
+'use strict';
+let pickerReady=false,selectedId=null,expectedId=null,inFlight=false;
+const status=document.getElementById('status'),choose=document.getElementById('choose'),verify=document.getElementById('verify');
+function show(message){status.textContent=message;}
+function onPickerApiLoad(){gapi.load('picker',{callback:function(){pickerReady=true;choose.disabled=false;show('Ready. Choose only the existing scheduler Sheet.');},onerror:function(){show('Google Picker failed to load. Check the enabled Picker API and browser/network restrictions.');},timeout:15000,ontimeout:function(){show('Google Picker library load timed out. No file or job was changed.');}});}
+function verifySelection(){if(inFlight||!selectedId)return;inFlight=true;verify.disabled=true;show('Checking per-file access, Sheet privacy and headers. No job is being processed.');google.script.run.withSuccessHandler(function(result){inFlight=false;verify.disabled=false;show(result&&result.ok?result.note:'Verification blocked at '+String(result&&result.stage||'unknown')+'. '+String(result&&result.note||'No scheduler operation performed.'));}).withFailureHandler(function(){inFlight=false;verify.disabled=false;show('Read-only verification could not finish. No schedule/send was requested. Check the bound project configuration; do not expose tokens or keys.');}).nmpVerifySchedulerPickerSelection(selectedId);}
+choose.addEventListener('click',function(){if(!pickerReady||inFlight)return;inFlight=true;choose.disabled=true;selectedId=null;verify.disabled=true;show('Loading this Apps Script project’s Picker credentials. Do not share browser network captures or access tokens.');google.script.run.withSuccessHandler(function(config){inFlight=false;choose.disabled=false;expectedId=config.expectedFileId;document.getElementById('expected-name').textContent=config.expectedName;document.getElementById('expected-id').textContent=expectedId;try{const view=new google.picker.DocsView(google.picker.ViewId.SPREADSHEETS).setOwnedByMe(true).setMode(google.picker.DocsViewMode.LIST);const picker=new google.picker.PickerBuilder().addView(view).setOAuthToken(config.oauthToken).setDeveloperKey(config.developerKey).setAppId(config.projectNumber).setOrigin(google.script.host.origin).setCallback(function(data){const action=data[google.picker.Response.ACTION];if(action===google.picker.Action.CANCEL){show('Picker cancelled. No scheduler job, trigger or send was created.');return;}if(action!==google.picker.Action.PICKED)return;const docs=data[google.picker.Response.DOCUMENTS]||[];if(docs.length!==1){show('Select exactly one existing scheduler Sheet.');return;}const id=docs[0][google.picker.Document.ID];if(id!==expectedId){show('Wrong file selected. The scheduler will not use it. Picker may already have granted per-file access to that selection. Select only the exact expected ID shown above.');return;}selectedId=id;verify.disabled=false;verifySelection();}).build();picker.setVisible(true);config.oauthToken=null;config.developerKey=null;}catch(ignore){show('Picker could not open. Check the same-project API key, Cloud project NUMBER, referrer restrictions and enabled Picker API. Do not paste raw browser errors containing tokens/keys.');}}).withFailureHandler(function(){inFlight=false;choose.disabled=false;show('Picker setup is incomplete. Check NMP_PICKER_PROJECT_NUMBER and NMP_PICKER_API_KEY in this bound project’s Script Properties, and the matching standard Cloud project.');}).nmpSchedulerPickerBootstrap();});
+verify.addEventListener('click',verifySelection);
+document.getElementById('close').addEventListener('click',()=>google.script.host.close());
+</script>
+<script async src="https://apis.google.com/js/api.js?onload=onPickerApiLoad" onerror="document.getElementById('status').textContent='Google API library could not load. No scheduler action performed.'"></script>
+</body></html>
