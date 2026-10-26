@@ -1,3 +1,5 @@
+import {letterStructurePolicy} from '../../application/structured-letter-policy.js';
+import {roleFocusPolicy} from '../../application/role-focused-letter-policy.js';
 import {normalizeApprovedScenarioEvidence} from '../../application/scenario-polishing.js';
 import {validateContextualHighlights,roleConsistencyWarnings} from '../../application/contextual-highlights.js';
 import {SENIOR_COVER_LETTER_INSTRUCTIONS} from '../../application/senior-cover-letter-instructions.js';
@@ -123,6 +125,8 @@ function buildPrompt(request) {
 
   return JSON.stringify({
     task: "Propose a refined UK cover letter",
+    letterStructure: letterStructurePolicy(request),
+    roleFocus: roleFocusPolicy(request),
     jobTitle: request.applicationJobTitle || request.jobDescriptionSummary,
     currentDate: new Date().toISOString().slice(0, 10),
     applicationMode: 'direct recruiter outreach',
@@ -159,7 +163,7 @@ function buildPrompt(request) {
       fullLetterMaximumWords:budget.maximumWords,
       lengthMode:budget.mode,
       protectedWords:budget.protectedWords,
-      finalNarrativeParagraphs:'3–4',
+      finalNarrativeParagraphs:'Motivation opening, 2–3 literal • evidence bullets, employer alignment, and one paragraph with three prospective 3–6-month focus areas. No rigid paragraph quota; local closing is protected.',
       pageFit:'requires rendered check',
       preserveGreetingAndSignoff: true,
       noInventedCandidateClaims: true,
@@ -172,6 +176,8 @@ function buildPrompt(request) {
       maxHighlightPhrases: 0,
       contextualHighlightPolicy:'Return highlightPhrases as an empty array. Select zero to six high-value capability, outcome or role-fit PASSAGES (maximum eight) in highlightSelections. Judge meaning against the JD and candidate evidence, not token overlap. Never mark generic words (how, use, making, where, teams), isolated AI/data/delivery tags, employer names/fragments, greeting, job-title opening, CTA or closing. Do not fill a quota. Copy text and exact full sentence context from YOUR proposedDraft; each must locate one unique occurrence. Include an exact JD requirement quote, exact supplied candidate evidence quote and a concise relevance reason. Avoid overlaps. If nothing useful is supported, return an empty list; no local word fallback exists.',
       canonicalRolePolicy:'Use the selected jobTitle consistently; do not carry a different vacancy title from an old draft. Explain explicit JD aliases outside the letter.',
+      plainTextEvidenceBulletsAllowed: true,
+      evidenceBulletMarker: "•",
       markdownInLetter: false
     }
   });

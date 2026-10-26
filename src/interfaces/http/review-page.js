@@ -1,3 +1,4 @@
+import './cover-reference-client.js';
 import './application-review-controls.js';
 import { attachSubjectEditors } from './subject-editors.js';
 import { attachPolishingCostControls } from './polishing-cost-controls.js';

@@ -2,6 +2,11 @@ import { assertLetterBodySafe } from './cover-letter-controls.js';
 
 export const OUTREACH_REDIRECTION = "I appreciate the convenience of ATS-based applications, but I believe strong talent is often best understood through a direct conversation. If you are not the direct contact for this position and feel my profile may align with the client's needs, I would be grateful for any redirection to the appropriate hiring manager or colleague.";
 
+export function outreachRedirection(relationship='direct-employer'){
+ if(relationship==='recruitment-intermediary')return OUTREACH_REDIRECTION;
+ return OUTREACH_REDIRECTION.replace("the client's needs",relationship==='direct-employer'?"your organisation's needs":'the requirements of this opportunity');
+}
+
 export function composeOutreachLetter({ draft, jobTitle, organisationName, advertUrl, candidateName, allowUnknownOrganisation = false, advertiserRelationship = 'direct-employer', excludedEmployers = ['micro1'] }) {
   const singleLine = (value, label) => {
     const text = String(value || '').trim();
@@ -21,7 +26,7 @@ export function composeOutreachLetter({ draft, jobTitle, organisationName, adver
     'Dear {{firstname}},',
     `I am applying for the ${title} opportunity${organisation?(advertiserRelationship==='direct-employer'?' at '+organisation:advertiserRelationship==='recruitment-intermediary'?' advertised by '+organisation:''):''}.\nRole details: ${parsed.href}`,
     bodyText,
-    OUTREACH_REDIRECTION,
+    outreachRedirection(advertiserRelationship),
     `Warm regards,\n${name}`
   ].join('\n\n');
 }

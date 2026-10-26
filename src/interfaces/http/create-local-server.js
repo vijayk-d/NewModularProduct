@@ -1,3 +1,4 @@
+import {createCoverReferenceHandler} from './cover-reference-http.js';
 function personalPolishingInstructions(values){const text=String(values.get('instructions')||'').replace(/\r\n?/g,'\n').trim();if(text.length>4000)throw Object.assign(new Error('Personal polishing instructions must not exceed 4000 characters.'),{statusCode:400,code:'POLISHING_INSTRUCTIONS_INVALID'});return text;}
 import {createScenarioPolishingHandler} from './scenario-polishing-http.js';
 import {resolveScenarioSelection,scenarioCostProof,requireScenarioCostApproval,approvedScenarioRequest} from '../../application/scenario-polishing.js';
@@ -205,6 +206,7 @@ export function createLocalServer({
   diagnosticsWriter = process.stdout,
 } = {}) {
   const reviewStore=applicationReviewStore||new Map();
+  const handleCoverReferences=createCoverReferenceHandler({getReview:id=>reviewStore.get(id)});
   const handleMaintenance=createMaintenanceHandler();
   const handleAssignmentEvidence=createAssignmentEvidenceHandler({store:assignmentEvidenceStore});
   const handleScenarioPolishing=createScenarioPolishingHandler({library:assignmentEvidenceStore,reviews:reviewStore});
@@ -401,6 +403,7 @@ export function createLocalServer({
     const method = request.method || 'GET';
     const url = new URL(request.url || '/', 'http://localhost');
     if(method==='GET'&&url.pathname==='/healthz'){sendJson(response,200,{ok:true,service:'NewModularProduct',environment:process.env.NMP_ENV||'development',release:process.env.NMP_RELEASE_COMMIT||'development'});return;}
+    if(await handleCoverReferences(request,response,url))return;
     if(await handleAchievementPreparation(request,response,url))return;
     if (await handleJobs(request,response,url)) return;
     if (await handleSavedDelete(request,response,url)) return;
