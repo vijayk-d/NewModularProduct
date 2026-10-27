@@ -1,3 +1,4 @@
+import {normalizeWritingReferenceExamples} from './writing-reference-selection.js';
 import {normalizeApprovedScenarioEvidence} from './scenario-polishing.js';
 import {lengthPolicy,normalizeLengthMode} from '../domain/cover-letter/letter-quality-policy.js';
 import { normalizeLetterTone, normalizeExcludedEmployers } from './cover-letter-controls.js';
@@ -95,6 +96,7 @@ function normalizeRefinementRequest({
   achievementSelectionExplicit = false,
   approvedAchievementEvidence = null,
   approvedScenarioEvidence = [],
+  writingReferenceExamples = [],
   companyValues = [],
   selectedResearchPoints = [],
   organisationUrl = '',
@@ -102,6 +104,7 @@ function normalizeRefinementRequest({
   letterLengthMode = 'standard',
   maxWords = 500
 } = {}) {
+  const writingExamples=normalizeWritingReferenceExamples(writingReferenceExamples);
   const draft = normalizeString(draftPlainText);
 
   if (!draft) {
@@ -129,6 +132,7 @@ function normalizeRefinementRequest({
     selectedCvHighlights: normalizeStringArray(selectedCvHighlights),
     ...(achievementSelectionExplicit===true?{achievementSelectionExplicit:true,approvedAchievementEvidence:approvedAchievementEvidence?structuredClone(approvedAchievementEvidence):null}:{}),
     ...(approvedScenarioEvidence?.length?{approvedScenarioEvidence:normalizeApprovedScenarioEvidence(approvedScenarioEvidence)}:{}),
+    ...(writingExamples.length?{writingReferenceExamples:writingExamples}:{}),
     companyValues: normalizeStringArray(companyValues),
     selectedResearchPoints: normalizeResearchPoints(selectedResearchPoints),
     organisationUrl: normalizeUrl(organisationUrl),

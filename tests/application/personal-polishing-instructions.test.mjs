@@ -1,6 +1,8 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import vm from 'node:vm';
 const server=readFileSync(new URL('../../src/interfaces/http/create-local-server.js',import.meta.url),'utf8'),render=readFileSync(new URL('../../src/interfaces/http/rendering.js',import.meta.url),'utf8'),client=readFileSync(new URL('../../src/interfaces/http/polishing-cost-controls.js',import.meta.url),'utf8');
-const context=vm.createContext({});vm.runInContext(server.slice(0,server.indexOf('\n')),context);const normalize=v=>context.personalPolishingInstructions(new URLSearchParams(v===null?{}:{instructions:v}));
+const helperMatches=server.match(/^function personalPolishingInstructions\(values\)\{[^\r\n]*\}$/gm)||[];
+assert.equal(helperMatches.length,1,'Expected one standalone personalPolishingInstructions helper; do not execute module imports in this script fixture.');
+const context=vm.createContext({});vm.runInContext(helperMatches[0],context);const normalize=v=>context.personalPolishingInstructions(new URLSearchParams(v===null?{}:{instructions:v}));
 test('blank instructions preserve normal polishing',()=>{assert.equal(normalize(null),'');assert.equal(normalize('  '),'');});
 test('multiline Unicode instructions preserved with canonical line endings',()=>assert.equal(normalize('  More direct.\r\nKeep £ and café.  '),'More direct.\nKeep £ and café.'));
 test('4000-character instructions accepted',()=>assert.equal(normalize('x'.repeat(4000)).length,4000));

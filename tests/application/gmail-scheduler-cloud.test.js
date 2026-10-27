@@ -17,3 +17,7 @@ test('shared Sheet fails closed before any send',()=>{const f=fixture();f.schedu
 test('different signed schedule command cannot replace an existing job',()=>{const f=fixture();const original=f.schedule();f.tick();f.schedule({raw:Buffer.from('changed').toString('base64url'),contentHash:createHash('sha256').update('changed').digest('hex')});f.advance(180000);f.tick();assert.equal(f.status(),'SENT');assert.equal(f.sent,1);});
 
 test('a command bound to a different Sheet cannot be replayed here',()=>{const f=fixture();f.schedule({sheetId:'different-private-sheet'});f.advance(180000);f.tick();assert.equal(f.status(),undefined);assert.equal(f.sent,0);});
+
+// Bulk dispatch regressions added by the integrated scheduling UI release.
+test('same-time cloud batch processes 20 then the remaining jobs without replay',()=>{const f=fixture();for(let n=0;n<25;n++)f.schedule({jobId:'55555555-5555-5555-5555-'+String(n).padStart(12,'0')});f.advance(180000);f.tick();assert.equal(f.sent,20);f.tick();assert.equal(f.sent,25);f.tick();assert.equal(f.sent,25);});
+test('slow bulk dispatch stops starting new sends after the soft time budget',()=>{const f=fixture();for(let n=0;n<10;n++)f.schedule({jobId:'66666666-6666-6666-6666-'+String(n).padStart(12,'0')});const original=f.context.Gmail.Users.Messages.send;f.context.Gmail.Users.Messages.send=function(){f.advance(16000);return original();};f.advance(180000);f.tick();assert.equal(f.sent,3);});

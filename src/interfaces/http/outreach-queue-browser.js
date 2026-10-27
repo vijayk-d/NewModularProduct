@@ -1,3 +1,4 @@
+import {attachOutreachSchedule} from './outreach-schedule.js';
 import {renderHistoryRows} from './review-workspace.js';
 import {createQueueRole} from './review-flow-view.js';
 import {partitionQueueSelection,executeBulkSend,showBulkConfirmation,shortSendLabel} from './outreach-bulk.js';
@@ -75,7 +76,7 @@ function startOutreachQueue() {
       row.insertCell().appendChild(checkbox);
       textCell(row, item.fullName); const roleCell=row.insertCell();roleCell.appendChild(createQueueRole(item.role));roleCell.className='outreach-role';roleCell.title=item.role||'';
       textCell(row, `${item.email} (${item.verified ? 'verified' : item.emailSource || 'unknown'})`);
-      textCell(row, item.status); textCell(row, item.lastOutcome);
+      const queueStatusCell=textCell(row, item.status);queueStatusCell.dataset.queueStatus=item.id; textCell(row, item.lastOutcome);
       // queue-single-editor-v1
       row.insertCell().appendChild(createQueueMessageControl(item));
       // outreach-actions-hotfix-v1
@@ -236,7 +237,9 @@ function startOutreachQueue() {
   const stopBulkButton=document.createElement('button');stopBulkButton.type='button';stopBulkButton.textContent='Stop after current';stopBulkButton.hidden=true;
   stopBulkButton.setAttribute('aria-label','Stop bulk sending after the current operation');section.querySelector('.outreach-bulk-toolbar').appendChild(stopBulkButton);
   let stopBulk=false;stopBulkButton.addEventListener('click',()=>{stopBulk=true;stopBulkButton.disabled=true;status.textContent='Stopping after the current operation. An email already sending cannot be recalled here.';});
+  const scheduleControls=attachOutreachSchedule({section,getItems:()=>bulkQueueItems,getIds:()=>[...tbody.querySelectorAll('.outreach-queue-checkbox:checked')].map(b=>b.value),api:request,save:saveQueuedMessageBeforeDraft,refresh:async()=>{await refresh();await refreshHistory();},getBusy:()=>directBusy,setBusy:value=>{directBusy=value;section.querySelectorAll('[data-send-queue-id]').forEach(b=>b.disabled=value||!sendConfiguration?.sendingEnabled||b.dataset.sendEligible!=='true');section.querySelectorAll('[data-direct-queue-id]').forEach(b=>b.disabled=value||!liveDraftConfig?.draftCreationEnabled||!liveDraftConfig?.configurationReady);syncBulkControls();},getSendingReady:()=>sendConfiguration?.sendingEnabled===true,renderResults:renderBulkResults,isLeaving:()=>leaving||(!standalone&&document.querySelector('input[name="reviewId"]')?.value!==scopeReviewId)});
   function syncBulkControls(){
+    scheduleControls.sync();
     const ids=[...tbody.querySelectorAll('.outreach-queue-checkbox:checked')].map(b=>b.value),draft=partitionQueueSelection(bulkQueueItems,ids,'draft'),send=partitionQueueSelection(bulkQueueItems,ids,'send');
     const draftButton=section.querySelector('[data-queue-action="draft-direct"]'),sendButton=section.querySelector('[data-queue-action="send-selected"]'),remove=section.querySelector('[data-queue-action="delete"]');
     draftButton.textContent=`Draft (${draft.eligible.length})`;draftButton.disabled=directBusy||!liveDraftConfig?.draftCreationEnabled||!liveDraftConfig?.configurationReady||!draft.eligible.length;

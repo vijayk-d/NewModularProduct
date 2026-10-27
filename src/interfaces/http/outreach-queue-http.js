@@ -47,7 +47,7 @@ export function createOutreachHttpHandler({ repository, contactStore, getReview,
   return async function handleOutreach(request, response, url) {
     if(await handleScheduling(request,response,url))return true;
     const route = url.pathname;
-    if (!['/outreach-queue', '/outreach-queue.js', '/outreach-simple-contacts.js', '/outreach-workflow.css', '/queue-message-editor.js', '/outreach-bulk.js', '/api/outreach-queue',
+    if (!['/outreach-queue', '/outreach-queue.js', '/outreach-simple-contacts.js', '/outreach-workflow.css', '/queue-message-editor.js', '/outreach-bulk.js','/outreach-schedule.js', '/api/outreach-queue',
       '/api/outreach-queue/add', '/api/outreach-queue/delete', '/api/outreach-queue/clear', '/api/outreach-queue/prepare-drafts', '/api/outreach-queue/gmail-status', '/api/outreach-queue/check-mailbox', '/api/outreach-queue/gmail-draft-status', '/api/outreach-queue/gmail-draft-preview', '/api/outreach-queue/gmail-draft-create', '/api/outreach-queue/draft-one', '/api/outreach-queue/link-and-add', '/api/outreach-queue/message-save','/api/outreach-queue/send-status','/api/outreach-queue/send-prepare','/api/outreach-queue/send-commit','/api/outreach-queue/send-cancel','/api/outreach-queue/send-history'].includes(route)) return false;
     try {
       const origin = request.headers.origin;
@@ -57,7 +57,7 @@ export function createOutreachHttpHandler({ repository, contactStore, getReview,
       if (request.headers['sec-fetch-site'] === 'cross-site') {
         json(response, 403, { ok: false, error: 'Cross-site queue access is not allowed.' }); return true;
       }
-      if(request.method==='GET' && ['/outreach-simple-contacts.js','/outreach-workflow.css','/queue-message-editor.js','/outreach-bulk.js'].includes(route)){
+      if(request.method==='GET' && ['/outreach-simple-contacts.js','/outreach-workflow.css','/queue-message-editor.js','/outreach-bulk.js','/outreach-schedule.js'].includes(route)){
         const file=route.slice(1);
         response.writeHead(200,{'content-type':file.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'});
         response.end(await readFile(new URL('./'+file,import.meta.url),'utf8'));return true;

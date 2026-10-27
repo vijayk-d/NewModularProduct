@@ -1,3 +1,6 @@
+import {createCoverReferenceLibrary} from '../../application/cover-reference-library.js';
+import {createWritingReferenceHandler} from './writing-reference-http.js';
+import {parseWritingReferenceSelection,resolveWritingReferences,writingReferenceRequest,writingReferenceAudit,writingReferenceCostProof,requireWritingReferenceCostApproval,assertWritingReferenceSnapshot} from '../../application/writing-reference-selection.js';
 import {createCoverReferenceHandler} from './cover-reference-http.js';
 function personalPolishingInstructions(values){const text=String(values.get('instructions')||'').replace(/\r\n?/g,'\n').trim();if(text.length>4000)throw Object.assign(new Error('Personal polishing instructions must not exceed 4000 characters.'),{statusCode:400,code:'POLISHING_INSTRUCTIONS_INVALID'});return text;}
 import {createScenarioPolishingHandler} from './scenario-polishing-http.js';
@@ -198,6 +201,7 @@ export function createLocalServer({
   cvEvidenceLoader = null,
   applicationIntelligence = null,
   assignmentEvidenceStore = null,
+  writingReferenceLibrary = null,
   cvDocumentAdapter = null,
   cvInventoryRepository = null,
   coverLetterRefinementMaxWords = 500,
@@ -207,6 +211,11 @@ export function createLocalServer({
 } = {}) {
   const reviewStore=applicationReviewStore||new Map();
   const handleCoverReferences=createCoverReferenceHandler({getReview:id=>reviewStore.get(id)});
+  let writingLibraryCache=writingReferenceLibrary;
+  const getWritingReferenceLibrary=()=>{if(writingLibraryCache)return writingLibraryCache;if(process.env.NMP_ENV==='verification')return null;writingLibraryCache=createCoverReferenceLibrary();return writingLibraryCache;};
+  const resolveWritingInput=value=>{const refs=parseWritingReferenceSelection(value);return resolveWritingReferences(refs.length?getWritingReferenceLibrary():null,refs);};
+  const handleWritingReferences=createWritingReferenceHandler({getLibrary:getWritingReferenceLibrary,getReview:id=>reviewStore.get(id)});
+
   const handleMaintenance=createMaintenanceHandler();
   const handleAssignmentEvidence=createAssignmentEvidenceHandler({store:assignmentEvidenceStore});
   const handleScenarioPolishing=createScenarioPolishingHandler({library:assignmentEvidenceStore,reviews:reviewStore});
@@ -403,6 +412,7 @@ export function createLocalServer({
     const method = request.method || 'GET';
     const url = new URL(request.url || '/', 'http://localhost');
     if(method==='GET'&&url.pathname==='/healthz'){sendJson(response,200,{ok:true,service:'NewModularProduct',environment:process.env.NMP_ENV||'development',release:process.env.NMP_RELEASE_COMMIT||'development'});return;}
+    if(await handleWritingReferences(request,response,url))return;
     if(await handleCoverReferences(request,response,url))return;
     if(await handleAchievementPreparation(request,response,url))return;
     if (await handleJobs(request,response,url)) return;
@@ -1050,7 +1060,8 @@ export function createLocalServer({
         const ids = formBody.values.getAll('selectedResearchPointIds').map(value=>String(value).trim());
         const selectedResearchPoints = usesCandidateValues(review.formData)?[]:getSelectableCompanyValues(review.research).filter(point=>ids.includes(point.id));
         const scenarioState=resolveScenarioSelection(assignmentEvidenceStore,scenarioInput(formBody.values,review));
-        const requestForEstimate = {...cvEvidence,...approvedScenarioRequest(scenarioState),...(review.formData.achievementMode?{achievementSelectionExplicit:true,approvedAchievementEvidence:review.formData.achievementSelection}:{}),draftPlainText:review.currentDraftPlainText,
+        const writingState=resolveWritingInput(formBody.values.get('writingReferenceSelections')||'[]');
+        const requestForEstimate = {...cvEvidence,...writingReferenceRequest(writingState),...approvedScenarioRequest(scenarioState),...(review.formData.achievementMode?{achievementSelectionExplicit:true,approvedAchievementEvidence:review.formData.achievementSelection}:{}),draftPlainText:review.currentDraftPlainText,
           applicationJobTitle:confirmedRole,jobDescriptionSummary:confirmedRole,jobDescriptionText:review.formData.jobDescriptionText,
           selectedCvHighlights:Array.isArray(review.formData.cvHighlights)?review.formData.cvHighlights.map(value=>String(value||'').trim()).filter(value=>value&&value.toLowerCase()!=='null'):[],
           companyValues:selectedResearchPoints.map(point=>point.text),selectedResearchPoints,
@@ -1059,8 +1070,9 @@ export function createLocalServer({
           letterTone:normalizeLetterTone(formBody.values.get('letterTone')||review.letterTone||'professional'),excludedEmployers:['micro1'],
           webSearchEnabled:formBody.values.getAll('webSearchEnabled').includes('true')};
         const apiBody = buildPolishingApiRequest(requestForEstimate,selectedModel);
-        sendJson(response,200,{ok:true,scenarioCostProof:scenarioCostProof(scenarioState,review,formBody.values),...estimatePolishingApiRequest(apiBody),letterLengthMode:requestForEstimate.letterLengthMode,fullLetterMaximumWords:lengthPolicy(requestForEstimate.letterLengthMode,coverLetterRefinementMaxWords).maximumWords});
+        sendJson(response,200,{ok:true,writingReferenceCostProof:writingReferenceCostProof(writingState,review,formBody.values),writingReferenceCount:writingState.examples.length,writingReferenceCharacters:writingState.examples.reduce((n,x)=>n+Array.from(x.excerpt).length,0),scenarioCostProof:scenarioCostProof(scenarioState,review,formBody.values),...estimatePolishingApiRequest(apiBody),letterLengthMode:requestForEstimate.letterLengthMode,fullLetterMaximumWords:lengthPolicy(requestForEstimate.letterLengthMode,coverLetterRefinementMaxWords).maximumWords});
       } catch(error) {
+        if(error.code==='WRITING_REFERENCE_INVALID'){sendJson(response,error.statusCode||409,{ok:false,code:error.code,error:error.message});return;}
         if(error.code==='SCENARIO_SELECTION_INVALID'){sendJson(response,error.statusCode||409,{ok:false,code:error.code,error:error.message});return;}
         if(error.code==='APPLICATION_ROLE_CONFIRMATION_REQUIRED'){sendJson(response,409,{ok:false,code:error.code,error:error.message,roleReview:error.roleReview||null});return;}
         const known=error.statusCode===400||['REFINEMENT_LENGTH_INVALID','REFINEMENT_MODEL_INVALID','REFINEMENT_TONE_INVALID','CV_EVIDENCE_UNAVAILABLE','LINKEDIN_EVIDENCE_UNAVAILABLE'].includes(error.code);
@@ -1138,6 +1150,7 @@ export function createLocalServer({
         );
       };
 
+      let writingState;try{writingState=resolveWritingInput(formBody.values.get('writingReferenceSelections')||'[]');requireWritingReferenceCostApproval(writingState,review,formBody.values);}catch(error){await renderReview(error.statusCode||409,{...(review.refinementProposal||{}),warnings:[...(review.refinementProposal?.warnings||[]),error.message]});return;}
       let scenarioState;try{scenarioState=resolveScenarioSelection(assignmentEvidenceStore,scenarioInput(formBody.values,review));requireScenarioCostApproval(scenarioState,review,formBody.values);}catch(error){await renderReview(error.statusCode||409,{...(review.refinementProposal||{}),warnings:[...(review.refinementProposal?.warnings||[]),error.message]});return;}
       let personalInstructions;try{personalInstructions=personalPolishingInstructions(formBody.values);}catch(error){await renderReview(400,{...(review.refinementProposal||{}),warnings:[...(review.refinementProposal?.warnings||[]),error.message]});return;}
       review={...review,polishingInstructions:personalInstructions};reviewStore.set(reviewId,{...reviewStore.get(reviewId),polishingInstructions:personalInstructions});
@@ -1210,9 +1223,11 @@ export function createLocalServer({
       review.polishingModel = polishingModel;
       const cvEvidence = cvEvidenceLoader ? await cvEvidenceLoader(review) : {};
       scenarioState=resolveScenarioSelection(assignmentEvidenceStore,scenarioInput(formBody.values,review));requireScenarioCostApproval(scenarioState,reviewStore.get(reviewId),formBody.values);
+      writingState=resolveWritingInput(formBody.values.get('writingReferenceSelections')||'[]');requireWritingReferenceCostApproval(writingState,reviewStore.get(reviewId),formBody.values);
       refinementProposal = await coverLetterRefinementPort.refine({
         ...approvedScenarioRequest(scenarioState),
         ...cvEvidence,
+        ...writingReferenceRequest(writingState),
         ...(review.formData.achievementMode?{achievementSelectionExplicit:true,approvedAchievementEvidence:review.formData.achievementSelection}:{}),
         ...(formBody.values.has('polishingModel') || review.polishingModel !== DEFAULT_POLISHING_MODEL ? {polishingModel} : {}),
         letterTone,
@@ -1254,6 +1269,8 @@ export function createLocalServer({
         throw error;
       }
       try{resolveScenarioSelection(assignmentEvidenceStore,scenarioState.references);requireScenarioCostApproval(scenarioState,reviewStore.get(reviewId),formBody.values);}catch(error){error.message='Scenario approval or application context changed while polishing. The provider request completed, but this proposal was not accepted. Review evidence before a new request; no automatic retry.';throw error;}
+      try{writingState=resolveWritingInput(writingState.references);requireWritingReferenceCostApproval(writingState,reviewStore.get(reviewId),formBody.values);}catch(error){error.message='Writing example or application context changed while polishing. The provider request completed, but this proposal was not accepted. Refresh references and review before a new request; no automatic retry.';throw error;}
+      if(writingState.references.length)refinementProposal={...refinementProposal,writingReferenceSnapshot:writingReferenceAudit(writingState)};
       if(scenarioState.references.length)refinementProposal={...refinementProposal,scenarioEvidenceSnapshot:scenarioState};
       const quality=assertLetterLength(refinementProposal.proposedDraft,{mode:letterLengthMode,maxWords:coverLetterRefinementMaxWords,advertUrl:review.formData.jobAdvertLink});
       refinementProposal={...refinementProposal,letterLengthMode,quality,qualityAdvertUrl:review.formData.jobAdvertLink};
@@ -1267,7 +1284,7 @@ export function createLocalServer({
           durationMs:Date.now()-actionStartedAt,tone:letterTone,
           webSearchEnabled:formBody.values.has('webSearchEnabled') ? formBody.values.getAll('webSearchEnabled').includes('true') : true,
           outcome:'failed',errorCode:describeRefinementFailure(error).errorCode});
-        const failedProposal = {proposedDraft:'',warnings:[error.code==='SCENARIO_SELECTION_INVALID'||['REFINEMENT_LENGTH_EXCEEDED','REFINEMENT_LENGTH_INVALID'].includes(error.code)?error.message:formatRefinementFailure(error)]};
+        const failedProposal = {proposedDraft:'',warnings:[['SCENARIO_SELECTION_INVALID','WRITING_REFERENCE_INVALID'].includes(error.code)||['REFINEMENT_LENGTH_EXCEEDED','REFINEMENT_LENGTH_INVALID'].includes(error.code)?error.message:formatRefinementFailure(error)]};
         refinementProposal = retainSuccessfulProposal(reviewStore.get(reviewId)?.refinementProposal, failedProposal);
       }
 
@@ -1359,6 +1376,7 @@ export function createLocalServer({
       try{requireConfirmedApplicationRole(review.formData);}catch(error){sendHtml(response,409,await renderCompleteReview({reviewId,applicationRoleMessage:error.message}));return;}
 
       if(review.refinementProposal?.scenarioEvidenceSnapshot?.references?.length){try{const state=review.refinementProposal.scenarioEvidenceSnapshot;resolveScenarioSelection(assignmentEvidenceStore,state.references);if(JSON.stringify(review.polishingScenarios?.references||[])!==JSON.stringify(state.references))throw Object.assign(new Error('Scenario selection changed after this proposal. Request a fresh reviewed polish.'),{statusCode:409});}catch(error){sendHtml(response,error.statusCode||409,await renderCompleteReview({reviewId,refinementProposal:{...review.refinementProposal,warnings:[...(review.refinementProposal.warnings||[]),error.message]}}));return;}}
+      if(review.refinementProposal?.writingReferenceSnapshot?.references?.length){try{assertWritingReferenceSnapshot(getWritingReferenceLibrary(),review.refinementProposal.writingReferenceSnapshot);}catch(error){sendHtml(response,error.statusCode||409,await renderCompleteReview({reviewId,refinementProposal:{...review.refinementProposal,warnings:[...(review.refinementProposal.warnings||[]),error.message]}}));return;}}
       let proposedDraftPlainText = String(
         review.refinementProposal?.proposedDraft || ''
       ).trim();
@@ -1456,6 +1474,7 @@ export function createLocalServer({
             : []),
           {
             appliedAt,
+            ...(review.refinementProposal.writingReferenceSnapshot?{writingReferenceSnapshot:structuredClone(review.refinementProposal.writingReferenceSnapshot)}:{}),
             ...(review.refinementProposal.scenarioEvidenceSnapshot?{scenarioEvidenceSnapshot:structuredClone(review.refinementProposal.scenarioEvidenceSnapshot)}:{}),
             previousSubject: currentReviewSubject(review),
             appliedSubject: acceptedSubject,
