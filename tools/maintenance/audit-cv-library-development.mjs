@@ -11,9 +11,9 @@ export async function audit(root){
  root=await fs.realpath(root);if(await fs.stat(path.join(root,'release.json')).then(()=>true).catch(e=>{if(e.code==='ENOENT')return false;throw e;}))throw Error('Production release refused.');
  const env=parseEnv((await fs.readFile(path.join(root,'.env'),'utf8')).replace(/^\uFEFF/,''));
  if((env.NMP_ENV||'development')!=='development'||String(env.PORT||'3000')!=='3000'||!['127.0.0.1','localhost','::1'].includes(env.HOST||'127.0.0.1'))throw Error('Only loopback development on port 3000 is supported.');
- const catalogue=path.join(root,'config','cv-library.json'),parsed=await smallJson(catalogue),cvs=parsed.cvs||parsed.cv_inventory?.cvs;
+ const shared=String(env.NMP_CV_LIBRARY_DIRECTORY||'').trim(),catalogue=shared?path.join(path.resolve(shared),'catalogue.json'):path.join(root,'config','cv-library.json'),parsed=await smallJson(catalogue),cvs=parsed.cvs||parsed.cv_inventory?.cvs;
  if(!Array.isArray(cvs)||!cvs.length||cvs.length>500||cvs.some(c=>typeof c.role_code!=='string'||typeof c.role_name!=='string')||new Set(cvs.map(c=>c.role_code)).size!==cvs.length)throw Error('Review the catalogue structure, role names and unique IDs.');
- const configured=String(env.CV_INVENTORY_PATH||'').trim(),active=configured?path.resolve(root,configured):null;
+ const configured=shared?catalogue:String(env.CV_INVENTORY_PATH||'').trim(),active=configured?path.resolve(root,configured):null;
  const [realCatalogue,realActive]=await Promise.all([fs.realpath(catalogue),active?fs.realpath(active).catch(()=>null):null]);
  const inventoryPointsToCatalogue=Boolean(realActive&&realCatalogue===realActive);
  const hostname=env.HOST==='::1'?'[::1]':env.HOST||'127.0.0.1';

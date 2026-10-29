@@ -35,6 +35,7 @@ import { createCvDocumentAdapter } from '../../infrastructure/documents/cv-docum
 import { createSelectedCvEvidenceLoader } from '../../application/selected-cv-evidence-loader.js';
 import { createLocalServer } from './create-local-server.js';
 import { installCvLibrary } from './cv-library-v1.js';
+import {resolveCvLibraryRuntime,assertSharedCvReady} from '../../config/shared-cv-library-runtime.js';
 
 const DEFAULT_TEMPLATE_ID = 'standard-cover-letter';
 const deployment=deploymentRuntime({env:process.env,projectRoot:fileURLToPath(new URL('../../../',import.meta.url))});
@@ -60,8 +61,10 @@ const templateRepository = createFileTemplateRepository({
   templateDirectory: config.storage.templateDirectory
 });
 
+const cvLibraryRuntime=resolveCvLibraryRuntime({env:process.env,mode:deployment.mode,projectRoot:fileURLToPath(new URL('../../../',import.meta.url)),server:config.server,legacyInventoryPath:config.storage.cvInventoryPath});
+await assertSharedCvReady(cvLibraryRuntime,config.storage.cvFolder);
 const cvInventoryRepository = createJsonCvInventoryRepository({
-  inventoryPath: config.storage.cvInventoryPath
+  inventoryPath: cvLibraryRuntime.inventoryPath
 });
 
 const companyResearchPort = config.features.enablePerplexityResearch
@@ -180,19 +183,19 @@ const server = createLocalServer({
   }
 });
 
-// CV_LIBRARY_V1_BEGIN
-if (deployment.mode === 'development' && config.server.port === 3000 &&
-    ['127.0.0.1', 'localhost', '::1'].includes(config.server.host)) {
+// CV_LIBRARY_SHARED_V1_BEGIN
+if (cvLibraryRuntime.enabled) {
   installCvLibrary(server, {
     mode: deployment.mode,
     projectRoot,
-    cataloguePath: path.join(projectRoot, 'config', 'cv-library.json'),
+    sharedDirectory: cvLibraryRuntime.sharedDirectory || '',
+    cataloguePath: cvLibraryRuntime.cataloguePath,
     cvFolder: config.storage.cvFolder,
-    privateDirectory: path.join(projectRoot, 'output', 'cv-library-v1'),
+    privateDirectory: cvLibraryRuntime.privateDirectory,
     adapter: createCvDocumentAdapter({cvFolder: config.storage.cvFolder})
   });
 }
-// CV_LIBRARY_V1_END
+// CV_LIBRARY_SHARED_V1_END
 
 server.listen(config.server.port, config.server.host, () => {
   process.stdout.write(

@@ -1,6 +1,7 @@
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
+import {sharedCvLayout,checkSharedCvOwnership,noLinkedPath,samePath} from '../../config/shared-cv-library-runtime.js';
 const hash=x=>createHash('sha256').update(x).digest('hex');
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 const allowed=new Set(['role_code','role_name','local_path','tags','use_cases','priority','legacy_aliases']);
@@ -20,7 +21,7 @@ export function normaliseCatalogue(value){
  const cvs=rows.map(row=>{
   if(!row||typeof row!=='object'||Array.isArray(row)||Object.keys(row).some(k=>!allowed.has(k)))throw fail('Unsupported entry fields. Use the cleaned catalogue; absolute legacy paths and extracted text do not belong here.');
   const text=(v,n,max)=>{if(typeof v!=='string'||!v.trim()||v.trim().length>max)throw fail('Invalid '+n+'.');return v.trim();};
-  const code=text(row.role_code,'role code',80);
+  const code=text(row.role_code,'role code',60);
   if(!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(code)||codes.has(code.toLowerCase()))throw fail('Role codes must be unique, including case-insensitive comparisons.');
   codes.add(code.toLowerCase());
   const list=(v,n)=>{if(v===undefined)return [];if(!Array.isArray(v)||v.length>100)throw fail('Invalid '+n+'.');return v.map(x=>text(x,n,200));};
@@ -38,9 +39,12 @@ async function atomic(file,data){
  const temp=path.join(path.dirname(file),'.cv-library-'+randomUUID()+'.tmp');
  try{const h=await fs.open(temp,'wx',0o600);try{await h.writeFile(data);await h.sync();}finally{await h.close();}await fs.rename(temp,file);}finally{await fs.unlink(temp).catch(()=>{});}
 }
-export function createCvLibrary({projectRoot,cataloguePath,cvFolder,privateDirectory,adapter}){
+export function createCvLibrary({projectRoot,cataloguePath,cvFolder,privateDirectory,adapter,sharedDirectory='',mode='development'}){
  const root=path.resolve(projectRoot),catalogue=path.resolve(cataloguePath),privateRoot=path.resolve(privateDirectory);
- if(catalogue!==path.join(root,'config','cv-library.json')||privateRoot!==path.join(root,'output','cv-library-v1'))throw fail('Unexpected CV-library storage configuration.');
+ const shared=Boolean(sharedDirectory);
+ if(shared){const layout=sharedCvLayout({projectRoot:root,sharedDirectory,mode});if(!samePath(catalogue,layout.cataloguePath)||!samePath(privateRoot,layout.privateDirectory))throw fail('Shared CV paths do not match the configured layout.');}
+ else if(mode!=='development'||catalogue!==path.join(root,'config','cv-library.json')||privateRoot!==path.join(root,'output','cv-library-v1'))throw fail('Unexpected CV-library storage configuration.');
+ async function sharedWriter(fn){if(!shared)return fn();await checkSharedCvOwnership(sharedDirectory,cvFolder);const lock=path.join(sharedDirectory,'catalogue-write.lock');let h;try{h=await fs.open(lock,'wx',0o600);}catch(e){if(e.code==='EEXIST')throw fail('Shared catalogue is being updated. Reload/retry after the other save; do not delete locks blindly.',409);throw e;}try{return await fn();}finally{await h.close();await fs.unlink(lock);}}
  let queue=Promise.resolve();
  const exclusive=fn=>{const task=queue.then(async()=>{
   await preparePrivate();const lock=path.join(privateRoot,'operation.lock');let h;
@@ -48,11 +52,13 @@ export function createCvLibrary({projectRoot,cataloguePath,cvFolder,privateDirec
   try{return await fn();}finally{await h.close();await fs.unlink(lock);}
  });queue=task.catch(()=>{});return task;};
  async function preparePrivate(){
+  if(shared){const live=await checkSharedCvOwnership(sharedDirectory,cvFolder);await fs.mkdir(privateRoot,{recursive:true});await noLinkedPath(privateRoot);if(!samePath(await fs.realpath(privateRoot),path.join(live,'indexes',mode)))throw fail('Shared cache path was redirected.',409);return;}
   const realRoot=await fs.realpath(root);
   await fs.mkdir(privateRoot,{recursive:true});
   if(await fs.realpath(privateRoot)!==path.join(realRoot,'output','cv-library-v1'))throw fail('Private cache must not be redirected through a link.',409);
  }
  async function load(){
+  if(shared)await checkSharedCvOwnership(sharedDirectory,cvFolder);
   await noLink(path.dirname(catalogue));await noLink(catalogue);
   const st=await fs.stat(catalogue);if(!st.isFile()||st.size>1048576)throw fail('Catalogue must be a JSON file smaller than 1 MiB.');
   const raw=await fs.readFile(catalogue);let data;
@@ -70,11 +76,11 @@ export function createCvLibrary({projectRoot,cataloguePath,cvFolder,privateDirec
   let walking=realRoot;for(const part of rel.split(path.sep)){walking=path.join(walking,part);await noLink(walking);}
   const real=await fs.realpath(target),actual=path.relative(realRoot,real);
   if(!actual||actual==='..'||actual.startsWith('..'+path.sep)||path.isAbsolute(actual))throw fail('CV path escaped its root.',409);
-  const st=await fs.stat(real);if(!st.isFile()||st.size>25*1024*1024)throw fail('CV is not a regular file below the 25 MiB limit.',409);
+  const st=await fs.stat(real);if(!st.isFile()||st.size>20*1024*1024)throw fail('CV is not a regular file below the 20 MiB limit.',409);
   return {sha256:hash(await fs.readFile(real)),sizeBytes:st.size};
  }
  const meta=entry=>hash(JSON.stringify(entry));
- async function snapshot(){const c=await load();await preparePrivate();const i=await index();return {etag:c.etag,cvs:c.cvs,indexed:c.cvs.map(e=>({role_code:e.role_code,indexedAt:i.records[e.role_code]?.indexedAt||null,status:i.records[e.role_code]?.status==='failed'?'failed':i.records[e.role_code]?.text?'indexed; current file not checked':'not indexed'}))};}
+ async function snapshot(){const c=await load();await preparePrivate();const i=await index();return {etag:c.etag,cvs:c.cvs,environment:mode,storage:shared?'shared':'development',cataloguePath:catalogue,indexed:c.cvs.map(e=>({role_code:e.role_code,indexedAt:i.records[e.role_code]?.indexedAt||null,status:i.records[e.role_code]?.status==='failed'?'failed':i.records[e.role_code]?.text?'indexed; current file not checked':'not indexed'}))};}
  async function validate(){const c=await load();await preparePrivate();const i=await index(),results=[];for(const e of c.cvs){try{const f=await fingerprint(e),record=i.records[e.role_code];results.push({role_code:e.role_code,...f,status:record?.status==='failed'?'failed':record?.sha256===f.sha256&&record.metadataHash===meta(e)&&record.text?'current':record?'stale':'not indexed'});}catch{results.push({role_code:e.role_code,status:'unavailable',error:'Check CV_FOLDER, the relative path, file permissions and size.'});}}return {etag:c.etag,results};}
  async function extract(entry){
   const before=await fingerprint(entry);
@@ -84,15 +90,16 @@ export function createCvLibrary({projectRoot,cataloguePath,cvFolder,privateDirec
   return {...before,text,metadataHash:meta(entry),status:'indexed',indexedAt:new Date().toISOString(),warnings:Array.isArray(result.warnings)?result.warnings.map(x=>String(x).slice(0,500)).slice(0,20):[]};
  }
  async function inspect(code){const c=await load(),entry=c.cvs.find(e=>e.role_code===code);if(!entry)throw fail('Unknown catalogue code.',404);return {role_code:code,...await extract(entry)};}
- async function save({etag,cvs}){return exclusive(async()=>{
+ async function save({etag,cvs}){return exclusive(()=>sharedWriter(async()=>{
   const next=normaliseCatalogue({cvs}),before=await load();if(etag!==before.etag)throw fail('Catalogue changed. Reload before saving; no changes were written.',409);
   if(before.cvs.some(e=>!next.cvs.some(n=>n.role_code===e.role_code)))throw fail('Removing or renaming existing codes is disabled to protect saved application references.',409);
-  const backupDir=path.join(privateRoot,'backups');await fs.mkdir(backupDir,{recursive:true});await noLink(backupDir);
+  if(shared)for(const entry of next.cvs){const prior=before.cvs.find(e=>e.role_code===entry.role_code);if(!prior||prior.local_path!==entry.local_path)await fingerprint(entry);}
+  const backupDir=path.join(shared?sharedDirectory:privateRoot,'backups');await fs.mkdir(backupDir,{recursive:true});await noLink(backupDir);
   const backup=path.join(backupDir,before.etag+'.json');await noLink(backup);
   try{await fs.writeFile(backup,before.raw,{flag:'wx',mode:0o600});}catch(e){if(e.code!=='EEXIST')throw e;if(hash(await fs.readFile(backup))!==before.etag)throw fail('Existing backup failed integrity verification.',409);}
   if((await load()).etag!==before.etag)throw fail('Catalogue changed during save; reload first.',409);
   await atomic(catalogue,JSON.stringify(next,null,2)+'\n');return {etag:(await load()).etag,saved:true};
- });}
+ }));}
  async function reindex({mode='changed',code}={}){if(!['changed','all'].includes(mode))throw fail('Invalid indexing mode.');return exclusive(async()=>{
   const c=await load(),i=await index(),results=[];if(code&&!c.cvs.some(e=>e.role_code===code))throw fail('Unknown catalogue code.',404);
   for(const e of c.cvs){if(code&&e.role_code!==code)continue;try{
@@ -108,5 +115,5 @@ export function createCvLibrary({projectRoot,cataloguePath,cvFolder,privateDirec
   async function scan(dir,depth){await noLink(dir);const actual=await fs.realpath(dir),r=path.relative(rootPath,actual);if(r==='..'||r.startsWith('..'+path.sep)||path.isAbsolute(r))return;if(depth>10||visited>=2000){truncated=true;return;}for(const d of await fs.readdir(dir,{withFileTypes:true})){if(++visited>2000){truncated=true;break;}if(d.isSymbolicLink())continue;const p=path.join(dir,d.name);if(d.isDirectory())await scan(p,depth+1);else if(d.isFile()&&/\.(pdf|docx)$/i.test(d.name)){const rel=path.relative(rootPath,p).split(path.sep).join('/');try{relativeCvPath(rel);if(!known.has(rel.toLowerCase()))found.push(rel);}catch{}}}}
   await scan(rootPath,0);return {files:found,truncated};
  }
- return {snapshot,validate,inspect,save,reindex,discover};
+ return {snapshot,validate,inspect,save,reindex,discover,async exportCatalogue(){return {cvs:(await load()).cvs};}};
 }

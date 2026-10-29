@@ -3,7 +3,7 @@ import {randomBytes,timingSafeEqual} from 'node:crypto';
 import {createCvLibrary} from '../../infrastructure/cv-inventory/cv-library-v1.js';
 const assets=new Map([['/cv-library',['cv-library-v1.html','text/html; charset=utf-8']],['/cv-library-v1.js',['cv-library-v1.browser.js','text/javascript; charset=utf-8']]]);
 export function installCvLibrary(server,options){
- if(options.mode!=='development')throw Error('CV library management is development-only.');
+ if(!['development','production'].includes(options.mode)||(options.mode==='production'&&!options.sharedDirectory))throw Error('CV library management is development-only unless explicitly configured for shared production storage.');
  const library=createCvLibrary(options),token=randomBytes(32).toString('hex'),previous=server.listeners('request');
  if(!previous.length)throw Error('CV library requires the existing application handler.');
  server.removeAllListeners('request');
@@ -18,6 +18,7 @@ export function installCvLibrary(server,options){
    if(assets.has(url.pathname)){if(req.method!=='GET'){json(res,405,{error:'GET required.'});return;}const [file,type]=assets.get(url.pathname);res.writeHead(200,{'content-type':type,'cache-control':'no-store','x-content-type-options':'nosniff','content-security-policy':"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"});res.end(await readFile(new URL(file,import.meta.url)));return;}
    if(req.method==='GET'){
     if(url.pathname==='/api/cv-library/session'){json(res,200,{token});return;}
+    if(url.pathname==='/api/cv-library/export'){res.writeHead(200,{'content-type':'application/json; charset=utf-8','content-disposition':'attachment; filename="cv-library.json"','cache-control':'no-store','x-content-type-options':'nosniff'});res.end(JSON.stringify(await library.exportCatalogue(),null,2)+'\n');return;}
     const actions={'/api/cv-library':()=>library.snapshot(),'/api/cv-library/validate':()=>library.validate(),'/api/cv-library/discover':()=>library.discover(),'/api/cv-library/inspect':()=>library.inspect(url.searchParams.get('code'))};
     if(!actions[url.pathname]){json(res,404,{error:'Unknown library endpoint.'});return;}json(res,200,await actions[url.pathname]());return;
    }

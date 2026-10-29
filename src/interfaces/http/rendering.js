@@ -303,7 +303,7 @@ ${renderAchievementPreparation(values)}
     // CV_LIBRARY_FRONT_LINK_V1_BEGIN
     {
       const libraryLink = document.getElementById('cv-library-front-link');
-      if (libraryLink && window.location.port === '3000' &&
+      if (libraryLink && ['3000','3100'].includes(window.location.port) &&
           ['localhost', '127.0.0.1', '::1', '[::1]'].includes(window.location.hostname)) {
         fetch('/api/cv-library/session', {
           cache: 'no-store', credentials: 'same-origin', redirect: 'error'
