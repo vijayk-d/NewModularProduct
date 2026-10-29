@@ -1,0 +1,40 @@
+{
+  "qualityPolicyVersion": "cover-letter-quality-v2",
+  "assessmentComplete": true,
+  "requirementAssessment": [
+    {
+      "requirementId": "R1",
+      "jdQuote": "Design and deliver AI learning programmes",
+      "importance": "unspecified",
+      "support": "transferable",
+      "evidenceIds": [
+        "E1"
+      ],
+      "explanation": "The permitted passage supports delivery coaching, not formal programme design."
+    }
+  ],
+  "claimAudit": [
+    {
+      "draftQuote": "I coached delivery teams.",
+      "claimType": "past_experience",
+      "evidenceIds": [
+        "E1"
+      ],
+      "requirementIds": [
+        "R1"
+      ],
+      "supportExplanation": "The source states delivery coaching; the draft does not claim curriculum ownership."
+    }
+  ],
+  "confirmationQuestions": [
+    {
+      "requirementId": "R1",
+      "question": "Have you designed and delivered an AI curriculum or academy?",
+      "reason": "The selected material does not establish this specialist responsibility."
+    }
+  ],
+  "omittedEvidenceIds": [],
+  "assessmentLimitations": [
+    "Model assessment requires local checks and human review; it is not independent verification."
+  ]
+}

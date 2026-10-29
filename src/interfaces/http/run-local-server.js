@@ -34,6 +34,7 @@ import {
 import { createCvDocumentAdapter } from '../../infrastructure/documents/cv-document-adapter.js';
 import { createSelectedCvEvidenceLoader } from '../../application/selected-cv-evidence-loader.js';
 import { createLocalServer } from './create-local-server.js';
+import { installCvLibrary } from './cv-library-v1.js';
 
 const DEFAULT_TEMPLATE_ID = 'standard-cover-letter';
 const deployment=deploymentRuntime({env:process.env,projectRoot:fileURLToPath(new URL('../../../',import.meta.url))});
@@ -178,6 +179,20 @@ const server = createLocalServer({
     });
   }
 });
+
+// CV_LIBRARY_V1_BEGIN
+if (deployment.mode === 'development' && config.server.port === 3000 &&
+    ['127.0.0.1', 'localhost', '::1'].includes(config.server.host)) {
+  installCvLibrary(server, {
+    mode: deployment.mode,
+    projectRoot,
+    cataloguePath: path.join(projectRoot, 'config', 'cv-library.json'),
+    cvFolder: config.storage.cvFolder,
+    privateDirectory: path.join(projectRoot, 'output', 'cv-library-v1'),
+    adapter: createCvDocumentAdapter({cvFolder: config.storage.cvFolder})
+  });
+}
+// CV_LIBRARY_V1_END
 
 server.listen(config.server.port, config.server.host, () => {
   process.stdout.write(

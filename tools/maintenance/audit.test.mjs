@@ -1,0 +1,13 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {compare,audit} from './audit-cv-library-development.mjs';
+import * as fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+const cvs=[{role_code:'SM',role_name:'Scrum Master',local_path:'SM/cv.pdf'}];
+test('aligned options',()=>{const r=compare(cvs,[{roleCode:'SM',roleName:'Scrum Master',hasDocument:true}]);assert.equal(r.missingFromSelector.length,0);assert.equal(r.amendedNamesNotReflected.length,0);});
+test('new catalogue entries detected',()=>assert.deepEqual(compare(cvs,[]).missingFromSelector,['SM']));
+test('amended names detected',()=>assert.equal(compare(cvs,[{roleCode:'SM',roleName:'Old name',hasDocument:true}]).amendedNamesNotReflected.length,1));
+test('obsolete options detected',()=>assert.deepEqual(compare(cvs,[{roleCode:'OLD',roleName:'Old'}]).notInCatalogue,['OLD']));
+test('missing document flag detected',()=>assert.deepEqual(compare(cvs,[{roleCode:'SM',roleName:'Scrum Master',hasDocument:false}]).documentAvailabilityMismatch,['SM']));
+test('production folder refused before reading private config',async t=>{const root=await fs.mkdtemp(path.join(os.tmpdir(),'cv-align-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));await fs.writeFile(path.join(root,'release.json'),'{}');await assert.rejects(()=>audit(root),/Production release refused/);});

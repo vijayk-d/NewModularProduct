@@ -1,8 +1,11 @@
 import {normalizeWritingReferenceExamples,WRITING_REFERENCE_POLICY} from '../../application/writing-reference-selection.js';
+import {savePrivateFailure,providerCategory} from '../../application/cover-letter-v2-diagnostics.js';
 import {letterStructurePolicy} from '../../application/structured-letter-policy.js';
 import {roleFocusPolicy} from '../../application/role-focused-letter-policy.js';
 import {normalizeApprovedScenarioEvidence} from '../../application/scenario-polishing.js';
 import {validateContextualHighlights,roleConsistencyWarnings} from '../../application/contextual-highlights.js';
+// COVER_LETTER_QUALITY_V2_INTEGRATION
+import {qualityV2Enabled,QUALITY_V2_INSTRUCTIONS,evidenceContractForPrompt,extendQualityV2Schema,validateQualityV2,qualityV2Review,reconcileQualityV2,qualityV2RoleFocus} from '../../application/cover-letter-quality-v2.js';
 import {SENIOR_COVER_LETTER_INSTRUCTIONS} from '../../application/senior-cover-letter-instructions.js';
 import {coverLetterBudget} from '../../application/cover-letter-budget.js';
 import {assertLetterLength} from '../../domain/cover-letter/letter-quality-policy.js';
@@ -126,8 +129,9 @@ function buildPrompt(request) {
 
   return JSON.stringify({
     task: "Propose a refined UK cover letter",
+    ...(qualityV2Enabled()?{evidenceContract:evidenceContractForPrompt(request)}:{}),
     letterStructure: letterStructurePolicy(request),
-    roleFocus: roleFocusPolicy(request),
+    roleFocus: qualityV2RoleFocus(request,roleFocusPolicy(request)),
     jobTitle: request.applicationJobTitle || request.jobDescriptionSummary,
     currentDate: new Date().toISOString().slice(0, 10),
     applicationMode: 'direct recruiter outreach',
@@ -165,7 +169,7 @@ function buildPrompt(request) {
       fullLetterMaximumWords:budget.maximumWords,
       lengthMode:budget.mode,
       protectedWords:budget.protectedWords,
-      finalNarrativeParagraphs:'Motivation opening, 2–3 literal • evidence bullets, employer alignment, and one paragraph with three prospective 3–6-month focus areas. No rigid paragraph quota; local closing is protected.',
+      finalNarrativeParagraphs:qualityV2Enabled()?'Motivation opening, up to three supported literal • evidence bullets, employer alignment, and one paragraph with three prospective 3–6-month focus areas. Two or three bullets are desirable only if supported; no padding or rigid paragraph quota. Local closing is protected.':'Motivation opening, 2–3 literal • evidence bullets, employer alignment, and one paragraph with three prospective 3–6-month focus areas. No rigid paragraph quota; local closing is protected.',
       pageFit:'requires rendered check',
       preserveGreetingAndSignoff: true,
       noInventedCandidateClaims: true,
@@ -228,6 +232,7 @@ function validateProposal(result, request) {
     );
   }
 
+  const evidenceAudit=qualityV2Enabled()?validateQualityV2(result,request,proposedDraft):null;
   if (!request.protectOutreachStructure) assertLetterBodySafe(proposedDraft, request.excludedEmployers);
   if (request.protectOutreachStructure) {
     proposedDraft = composeOutreachLetter({
@@ -248,18 +253,21 @@ function validateProposal(result, request) {
   let quality;
   try {quality=assertLetterLength(proposedDraft,{mode:request.letterLengthMode,maxWords:request.maxWords,advertUrl:request.jobAdvertLink});}
   catch(error){error.rejectedProposal={proposedDraft,quality:error.quality,letterLengthMode:error.quality?.mode,lengthCheckFailed:true,warnings:[error.message]};throw error;}
+  if(evidenceAudit) quality=reconcileQualityV2(quality);
   return {
+    ...(evidenceAudit?{evidenceAudit}:{}),
     quality,letterLengthMode:quality.mode,qualityAdvertUrl:request.jobAdvertLink||'',
     review: {
       strengths: [],
       risks: [],
       unsupportedClaims: [],
-      suggestedChanges: normalizeStringArray(result?.warnings)
+      suggestedChanges: normalizeStringArray(result?.warnings),
+      ...(evidenceAudit?qualityV2Review(evidenceAudit,result?.warnings):{})
     },
     proposedDraft,
     highlightPhrases: [],
     highlightSelections:validateContextualHighlights(result?.highlightSelections,proposedDraft,request),
-    warnings:[...normalizeStringArray(result?.warnings),...roleConsistencyWarnings(proposedDraft,request.applicationJobTitle||request.jobDescriptionSummary)],
+    warnings:[...normalizeStringArray(result?.warnings),...roleConsistencyWarnings(proposedDraft,request.applicationJobTitle||request.jobDescriptionSummary),...(evidenceAudit?.warnings||[])],
     appliedResearchPointIds: normalizeStringArray(
       result?.appliedResearchPointIds
     ),
@@ -316,7 +324,9 @@ export function createPerplexityCoverLetterRefinementAdapter({
       if (!response.ok) {
         let providerError = {};
         try { providerError = (await response.json())?.error || {}; } catch {}
+        const privateReplay=qualityV2Enabled()?await savePrivateFailure({kind:'provider',model:selectedModel,httpStatus:response.status,providerError}):{saved:false};
         throw refinementError('REFINEMENT_HTTP_FAILED', 'Perplexity cover-letter refinement is unavailable.', {
+          providerErrorCategory:qualityV2Enabled()?providerCategory(providerError):undefined,privateReplayStatus:privateReplay.saved?'saved':privateReplay.reason,
           httpStatus: response.status, elapsedMs: Date.now() - providerStartedAt,
           providerErrorCode: providerError.code, providerErrorType: providerError.type,
           providerRequestId: response.headers?.get?.('x-request-id')
@@ -338,9 +348,11 @@ export function createPerplexityCoverLetterRefinementAdapter({
         elapsedMs:Date.now()-attemptStartedAt,outputTokenBudget:POLISHING_OUTPUT_TOKEN_BUDGET,
         providerRequestId:response.headers?.get?.('x-request-id')});
       let proposal;
+      const structuredResult=extractStructuredOutput(payload);
       try {
-        proposal = validateProposal(extractStructuredOutput(payload), request);
+        proposal = validateProposal(structuredResult, request);
       } catch (error) {
+        if(String(error.code||'').startsWith('REFINEMENT_EVIDENCE_V2')){const capture=await savePrivateFailure({kind:'evidence',model:selectedModel,auditReasonCode:error.auditReasonCode,request,result:structuredResult,body:normalizeText(structuredResult?.proposedDraft).replace(/\{\{\s*candidateDisplayName\s*\}\}/g,()=>normalizeText(request.candidateDisplayName)||'{{candidateDisplayName}}')});error.privateReplayStatus=capture.saved?'saved':capture.reason;}
         error.refinementDetails = {
           httpStatus: response.status,
           elapsedMs: Date.now() - providerStartedAt,
@@ -391,13 +403,14 @@ export function buildPolishingApiRequest(request, selectedModel) {
   return {
             model: selectedModel,
             max_output_tokens: POLISHING_OUTPUT_TOKEN_BUDGET,
+            ...((process.env.NMP_ENV||'development') === 'development' && String(process.env.PORT||'3000') === '3000' && ['127.0.0.1','localhost','::1'].includes(process.env.HOST||'127.0.0.1') && selectedModel === 'openai/gpt-6-luna' ? {reasoning:{effort:'low'}} : {}), // QUALITY_FIRST_RECOVERY
             input: [
               {
                 role: 'system',
                 content: [
                   {
                     type: 'input_text',
-                    text: SENIOR_COVER_LETTER_INSTRUCTIONS+(request.writingReferenceExamples?.length?' '+WRITING_REFERENCE_POLICY:'')+(request.approvedScenarioEvidence?.length?' Selected approvedScenarioEvidence is additional explicitly user-approved candidate evidence, including when achievementSelectionExplicit is true. Use only its approvedWording for scenario claims. Keep each action and outcome with its original organisation and assignment as expressed there; if attribution is absent, do not infer it. Do not quote source IDs or narrate evidence verification. Do not manufacture problems, causation, metrics, methods or strategic responsibility. Distinguish past achievements from prospective approaches; do not assume the target employer has the same internal problem or promise repeated results. Use zero to two relevant scenarios within the existing word limit, avoiding duplicated achievements.':'')
+                    text: (qualityV2Enabled()?QUALITY_V2_INSTRUCTIONS:SENIOR_COVER_LETTER_INSTRUCTIONS)+(request.writingReferenceExamples?.length?' '+WRITING_REFERENCE_POLICY:'')+(request.approvedScenarioEvidence?.length?' Selected approvedScenarioEvidence is additional explicitly user-approved candidate evidence, including when achievementSelectionExplicit is true. Use only its approvedWording for scenario claims. Keep each action and outcome with its original organisation and assignment as expressed there; if attribution is absent, do not infer it. Do not quote source IDs or narrate evidence verification. Do not manufacture problems, causation, metrics, methods or strategic responsibility. Distinguish past achievements from prospective approaches; do not assume the target employer has the same internal problem or promise repeated results. Use zero to two relevant scenarios within the existing word limit, avoiding duplicated achievements.':'')
                   }
                 ]
               },
@@ -417,7 +430,7 @@ export function buildPolishingApiRequest(request, selectedModel) {
               json_schema: {
                 name: 'cover_letter_refinement',
                 strict: true,
-                schema: responseSchema()
+                schema: qualityV2Enabled()?extendQualityV2Schema(responseSchema()):responseSchema()
               }
             }
           };

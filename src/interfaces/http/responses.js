@@ -26,7 +26,11 @@ export function sendHtml(response, statusCode, html, headers = {}) {
         "base-uri 'none'; form-action 'self'",
     "x-content-type-options": "nosniff",
     "x-frame-options": "DENY",
-    "referrer-policy": "no-referrer",
+    "referrer-policy":
+      (process.env.NMP_ENV || "development") === "development" &&
+      String(process.env.PORT || "3000") === "3000" &&
+      ["127.0.0.1", "localhost", "::1"].includes(process.env.HOST || "127.0.0.1")
+        ? "same-origin" : "no-referrer", // REFERENCE_FORM_ORIGIN_FIX
     ...headers
   });
 

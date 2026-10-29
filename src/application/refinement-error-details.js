@@ -40,6 +40,9 @@ export function describeRefinementFailure(error) {
     suppliedCode === 'CV_EVIDENCE_UNAVAILABLE' || suppliedCode === 'LINKEDIN_EVIDENCE_UNAVAILABLE' ? suppliedCode : 'REFINEMENT_FAILED');
   const details = error?.refinementDetails || {};
   const result = { errorCode: code };
+  if(/^CLQ_[A-Z0-9_]+$/.test(error?.auditReasonCode||''))result.auditReasonCode=error.auditReasonCode;
+  const replayStatus=error?.privateReplayStatus||error?.refinementDetails?.privateReplayStatus;
+  if(['saved','disabled','size-limit','redirected-path','linked-file','local-write-unavailable'].includes(replayStatus))result.privateReplayStatus=replayStatus;
   if (Number.isInteger(details.httpStatus)) result.httpStatus = details.httpStatus;
   if (Number.isFinite(details.elapsedMs)) result.elapsedMs = details.elapsedMs;
   for (const key of ['networkCode', 'networkName', 'providerErrorCode', 'providerErrorType', 'providerRequestId']) {
@@ -67,7 +70,10 @@ export function describeRefinementFailure(error) {
 }
 export function formatRefinementFailure(error) {
   const details = describeRefinementFailure(error);
-  let message = safeMessages.has(error?.message) ? error.message : 'Cover-letter refinement is currently unavailable.';
+  let message = safeMessages.has(error?.message) ? error.message : ['REFINEMENT_EVIDENCE_V2_REJECTED','REFINEMENT_EVIDENCE_V2_INPUT'].includes(details.errorCode) ? 'The v2 evidence audit failed its source, permission or completeness checks. Current letter unchanged. No automatic paid retry.' : 'Cover-letter refinement is currently unavailable.';
+  if (details.auditReasonCode) message += ' Audit reason: '+details.auditReasonCode+'.';
+  if (details.providerErrorCategory) message += ' Provider category: '+details.providerErrorCategory+'.';
+  if (details.privateReplayStatus) message += ' Private replay: '+details.privateReplayStatus+'.';
   if (details.httpStatus) message += ` Provider HTTP status: ${details.httpStatus}.`;
   if (details.networkCode) message += ` Network error: ${details.networkCode}.`;
   return `[${details.errorCode}] ${message} See the server diagnostic with the matching request ID.`;

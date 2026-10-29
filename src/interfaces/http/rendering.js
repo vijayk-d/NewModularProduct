@@ -261,7 +261,7 @@ export function renderApplicationForm({
 </head>
 <body>
   <main>
-    <h1>Application preparation</h1><p><a href="/applications">Saved applications</a> <a href="/maintenance">Maintenance &amp; Commands</a> <a href="/evidence-library">Assignment evidence library (development)</a> · <a href="/outreach-queue">Outreach queue</a></p>
+    <h1>Application preparation</h1><p><a href="/applications">Saved applications</a> · <a id="cv-library-front-link" href="/cv-library" hidden>CV Library</a> <a href="/maintenance">Maintenance &amp; Commands</a> <a href="/evidence-library">Assignment evidence library (development)</a> · <a href="/outreach-queue">Outreach queue</a></p>
     <p class="intro">Prepare and review a local application draft before manually sending it.</p>
 ${errorSummary}    <form id="application-form" method="post" action="/applications" autocomplete="on">
 <div class="form-draft-tools"><button id="clear-saved-form" type="button" class="secondary-button">Clear saved test data</button></div>
@@ -300,6 +300,24 @@ ${renderAchievementPreparation(values)}
   <script nonce="__SCRIPT_NONCE__">
     const storageKey = 'application-form-draft-v1';
     const form = document.getElementById('application-form');
+    // CV_LIBRARY_FRONT_LINK_V1_BEGIN
+    {
+      const libraryLink = document.getElementById('cv-library-front-link');
+      if (libraryLink && window.location.port === '3000' &&
+          ['localhost', '127.0.0.1', '::1', '[::1]'].includes(window.location.hostname)) {
+        fetch('/api/cv-library/session', {
+          cache: 'no-store', credentials: 'same-origin', redirect: 'error'
+        }).then(async response => {
+          if (!response.ok || !(response.headers.get('content-type') || '').includes('application/json')) return;
+          const session = await response.json();
+          if (typeof session.token === 'string' && /^[a-f0-9]{64}$/.test(session.token)) {
+            libraryLink.hidden = false;
+          }
+        }).catch(() => {});
+      }
+    }
+    // CV_LIBRARY_FRONT_LINK_V1_END
+
     const clearButton = document.getElementById('clear-saved-form');
 
     const fieldNames = [

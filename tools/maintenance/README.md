@@ -1,33 +1,15 @@
-# Maintenance utilities
+# Development CV-library alignment audit
 
-Extract this ZIP into the project root; all entries are under tools/maintenance.
-From D:\monorepo\NewModularProduct run:
+Place audit-cv-library-development.mjs in tools/maintenance/ in the development repository. Keep audit.test.mjs beside it if you retain the tests. Both are maintainable source under the existing tools/maintenance policy; commit and push reviewed additions.
 
-    python .\tools\maintenance\organize_legacy_utilities.py
+With your existing Node.js 24+ runtime, from the project root:
 
-This is a dry run. Review its list, then apply:
+node tools/maintenance/audit-cv-library-development.mjs --root "D:\monorepo\NewModularProduct"
 
-    python .\tools\maintenance\organize_legacy_utilities.py --apply --update-ignore
+This reads the development .env but prints no credentials or complete environment. It compares the maintained catalogue against the live /api/preparation/options endpoint on loopback port 3000. It does not read original CV documents, the private extracted-text index, saved reviews or databases. No files are written by the audit; there are no provider calls, Gmail operations, memory tuning or production requests.
 
-It archives explicitly named, untracked legacy root files in
-var/maintenance/archive/<timestamp>. No wildcard deletion is used. Unknown files,
-symlinks, Git-tracked files and application code/data/startup files are untouched.
-If Git is unavailable, legacy files are skipped. The optional .gitignore edit only
-appends /var/maintenance/ if absent; existing content is preserved.
-RESTORE_MANIFEST.json records original and archived paths. Restore only to a free
-original path. Archived utilities may rely on their old root location; do not run
-them in the archive directory.
+It checks missing/new IDs, stale role names, unexpected IDs, document-configured flags, and whether CV_INVENTORY_PATH on disk resolves to the maintained catalogue. It cannot prove that the already running server loaded a recently edited .env. A restart may be required after configuration changes. Matching role choices does not establish indexed text/ATS scoring freshness and does not rerank existing reviews.
 
-To collect the current source baseline:
+The helper rejects production release folders, non-development mode and non-3000/non-loopback configuration. Catalogue and response reads are bounded to 1 MiB. Six pure/fixture tests passed locally on Node v20.20.1; the live user's Windows process was not accessed.
 
-    python .\tools\maintenance\collect_outreach_source.py
-
-Output: var/maintenance/bundles/outreach-current-source.zip
-Review the ZIP for hard-coded secrets/private fixtures before upload.
-The collector reads package.json and supported source files under src,
-python-worker, test and tests. It excludes .env files, databases, CVs, logs and
-normal dependency/build directories. Source code may still contain secrets.
-Both tools default to the current working directory, not their script location;
-use --root with an explicit project directory if needed.
-Do not stop the server; avoid simultaneous source edits during collection.
-This package organizes utilities and collects source. It is not the UI/Gmail fix.
+PREPARATION_SELECTOR_ALIGNED means only the checks above match. ALIGNMENT_REVIEW_NEEDED lists discrepancies. Do not reset databases or delete caches to fix a catalogue-path discrepancy.

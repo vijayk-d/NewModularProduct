@@ -1,0 +1,213 @@
+{
+  "cvs": [
+    {
+      "role_code": "ADL",
+      "role_name": "Agile Delivery Lead",
+      "local_path": "ADL/Vijay Dafal_ADL.pdf",
+      "tags": [
+        "agile-transformation",
+        "enterprise-agile",
+        "delivery-lead",
+        "SAFe",
+        "AI delivery",
+        "agile-coaching",
+        "multi-team-coordination"
+      ],
+      "use_cases": [
+        "Enterprise Agile Transformation",
+        "SAFe implementation",
+        "Large-scale delivery programmes"
+      ],
+      "priority": "very-high"
+    },
+    {
+      "role_code": "SM",
+      "role_name": "Scrum Master",
+      "local_path": "SM/Vijay Dafal_SM CV_Ver 1.PDF",
+      "tags": [
+        "scrum",
+        "agile-delivery",
+        "facilitation",
+        "team-coaching",
+        "continuous-improvement"
+      ],
+      "use_cases": [
+        "Scrum Master",
+        "Agile delivery",
+        "Cross-functional team facilitation"
+      ],
+      "priority": "high"
+    },
+    {
+      "role_code": "RTE",
+      "role_name": "Release Train Engineer",
+      "local_path": "RTE/Vijay Dafal_RTE.pdf",
+      "tags": [
+        "release-train-engineer",
+        "safe",
+        "agile-delivery",
+        "programme-increment-planning",
+        "cross-team-coordination",
+        "dependency-management"
+      ],
+      "use_cases": [
+        "Release Train Engineer",
+        "SAFe delivery",
+        "Multi-team agile delivery"
+      ],
+      "priority": "high"
+    },
+    {
+      "role_code": "AI-PM",
+      "role_name": "AI Project Manager",
+      "local_path": "PM - AI/Vijay Dafal_AI-Manager.pdf",
+      "tags": [
+        "ai-project-management",
+        "technical-delivery",
+        "stakeholder-management",
+        "roadmap-planning",
+        "data-and-ai",
+        "delivery-governance"
+      ],
+      "use_cases": [
+        "AI project delivery",
+        "Technical programme coordination",
+        "Digital transformation"
+      ],
+      "priority": "high",
+      "legacy_aliases": [
+        "Agile-PM"
+      ]
+    },
+    {
+      "role_code": "TECH-PM",
+      "role_name": "Technical Project Manager",
+      "local_path": "Technical-PM/Vijay_Dafal_Technical_PM.pdf",
+      "tags": [
+        "technical-project-management",
+        "software-delivery",
+        "stakeholder-management",
+        "delivery-governance",
+        "risk-management",
+        "cross-functional-delivery"
+      ],
+      "use_cases": [
+        "Technical project management",
+        "Software delivery",
+        "Technology transformation"
+      ],
+      "priority": "high"
+    },
+    {
+      "role_code": "AGILE-COACH",
+      "role_name": "Agile Coach",
+      "local_path": "AgileCoach/Vijay Dafal_Agile_Coach.pdf",
+      "tags": [
+        "agile-coaching",
+        "scrum",
+        "safe",
+        "team-coaching",
+        "continuous-improvement",
+        "agile-transformation"
+      ],
+      "use_cases": [
+        "Agile coaching",
+        "Enterprise agile transformation",
+        "Team and leadership coaching"
+      ],
+      "priority": "high"
+    },
+    {
+      "role_code": "PROGRAM-MGR",
+      "role_name": "Programme Manager",
+      "local_path": "ProgMgr/Vijay Dafal_ProgMgr.pdf",
+      "tags": [
+        "programme-management",
+        "delivery-governance",
+        "portfolio-management",
+        "stakeholder-management",
+        "risk-management",
+        "dependency-management"
+      ],
+      "use_cases": [
+        "Programme management",
+        "Complex delivery governance",
+        "Portfolio coordination"
+      ],
+      "priority": "high"
+    },
+    {
+      "role_code": "PM",
+      "role_name": "Project Manager",
+      "local_path": "ProjectMgr/VIJAY_DAFAL_PM.pdf",
+      "tags": [
+        "project-management",
+        "project-delivery",
+        "stakeholder-management",
+        "risk-management",
+        "planning",
+        "governance"
+      ],
+      "use_cases": [
+        "Project management",
+        "Cross-functional delivery",
+        "Business change"
+      ],
+      "priority": "high"
+    },
+    {
+      "role_code": "DM",
+      "role_name": "Delivery Manager",
+      "local_path": "DM/Vijay Dafal_ADM.pdf",
+      "tags": [
+        "delivery-management",
+        "agile-delivery",
+        "stakeholder-management",
+        "team-leadership",
+        "delivery-governance",
+        "continuous-improvement"
+      ],
+      "use_cases": [
+        "Delivery management",
+        "Agile delivery",
+        "Multi-team coordination"
+      ],
+      "priority": "high"
+    },
+    {
+      "role_code": "GCC-UAE",
+      "role_name": "GCC/UAE Delivery Professional",
+      "local_path": "GCC-UAE/Vijay_Dafal_GCC.pdf",
+      "tags": [
+        "gcc",
+        "uae",
+        "delivery-management",
+        "programme-management",
+        "stakeholder-management",
+        "regional-mobility"
+      ],
+      "use_cases": [
+        "GCC and UAE delivery roles",
+        "Regional transformation",
+        "Programme delivery"
+      ],
+      "priority": "medium"
+    },
+    {
+      "role_code": "Enterprise_Agile_Coach-Transformation_Lead",
+      "role_name": "Public-Sector",
+      "local_path": "Delivery_Management-AI_Focus/Vijay Dafal_ Delivery Management with AI Focus.pdf",
+      "tags": [],
+      "use_cases": [],
+      "priority": "very-high"
+    },
+    {
+      "role_code": "Enterprise_Delivery_Lead",
+      "role_name": "Enterprise Delivery Lead specialising in AI enabled transformation across complex",
+      "local_path": "Enterprise_Lead-Public Sector/Vijay Dafal_ Agile Delivery Lead (Private + Public Sector) .pdf",
+      "tags": [],
+      "use_cases": [],
+      "priority": "high"
+    }
+  ]
+}
