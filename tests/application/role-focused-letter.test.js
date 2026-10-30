@@ -19,7 +19,43 @@ const context={jobTitle:'Scrum Master',organisationName:'Example',advertUrl:'htt
 test('composition preserves greeting, advert and signoff with one contextual closing',()=>{const r=composeOutreachLetter({...context,draft:'I coached teams through change.'});assert.match(r,/^Dear \{\{firstname\}\},/);assert.ok(r.includes(context.advertUrl));assert.ok(r.includes(outreachRedirection('direct-employer')));assert.ok(r.endsWith('Warm regards,\nExample Person'));});
 test('legacy or contextual closing cannot duplicate the protected paragraph',()=>{for(const close of [OUTREACH_REDIRECTION,outreachRedirection('direct-employer'),outreachRedirection('unknown')]){const r=composeOutreachLetter({...context,draft:'I coached teams.\n\n'+close});assert.equal(r.split('I appreciate the convenience').length,2);}});
 test('extracting existing text does not reword its substantive experience',()=>{assert.equal(extractOutreachExperienceBody('I coached teams.\n\n'+OUTREACH_REDIRECTION),'I coached teams.');});
-test('adapter supplies role policy without changing output schema or adding paid calls',()=>{const code=readFileSync(new URL('../../src/infrastructure/refinement/perplexity-cover-letter-refinement-adapter.js',import.meta.url),'utf8');assert.match(code,/roleFocus: roleFocusPolicy\(request\)/);assert.match(code,/json_schema/);assert.match(code,/request.webSearchEnabled !== false/);assert.ok(!code.includes("finalNarrativeParagraphs:'3–4'"));});
+test('adapter supplies role policy without changing output schema or adding paid calls',async()=>{
+ const oldFlag=process.env.ENABLE_COVER_LETTER_QUALITY_V2,oldFetch=globalThis.fetch;
+ let networkCalls=0;
+ try{
+  process.env.ENABLE_COVER_LETTER_QUALITY_V2='false';
+  globalThis.fetch=()=>{networkCalls++;throw Error('Provider/network calls are forbidden in this request-construction test.');};
+  const {buildPolishingApiRequest}=await import('../../src/infrastructure/refinement/perplexity-cover-letter-refinement-adapter.js');
+  const {POLISHING_OUTPUT_TOKEN_BUDGET}=await import('../../src/application/polishing-model-catalog.js');
+  const request={applicationJobTitle:'Scrum Master',jobDescriptionText:'Coach Agile teams, facilitate collaboration and improve delivery flow.',selectedCvText:'Synthetic evidence: coached Agile delivery teams.',draftPlainText:'Synthetic draft.',candidateDisplayName:'Test Candidate',organisationName:'Example',organisationUrl:'https://example.invalid',jobAdvertLink:'https://example.invalid/jobs/test',letterTone:'professional',letterLengthMode:'standard',maxWords:400,protectOutreachStructure:false,webSearchEnabled:false,selectedCvHighlights:[],companyValues:[],selectedResearchPoints:[],researchSources:[]};
+  const model='openai/gpt-6-luna',api=buildPolishingApiRequest(request,model);
+  const message=api.input.find(item=>item.role==='user');
+  assert.ok(message,'Request must contain a user input message.');
+  const block=message.content.find(item=>item.type==='input_text');
+  assert.ok(block,'Request must contain the structured user payload.');
+  const input=JSON.parse(block.text);
+  assert.deepEqual(input.roleFocus,roleFocusPolicy(request));
+  assert.equal(input.fullJobDescription,request.jobDescriptionText);
+  assert.equal(input.selectedCvText,request.selectedCvText);
+  assert.equal(Object.hasOwn(input,'evidenceContract'),false,'Legacy mode must not send the compulsory v2 audit.');
+  assert.equal(api.model,model);
+  assert.equal(api.max_output_tokens,POLISHING_OUTPUT_TOKEN_BUDGET);
+  assert.equal(api.response_format.type,'json_schema');
+  assert.equal(api.response_format.json_schema.strict,true);
+  const schema=api.response_format.json_schema.schema;
+  assert.equal(schema.properties.proposedDraft.type,'string');
+  assert.equal(schema.required.includes('evidenceAudit'),false,'Legacy mode must not require a v2 response audit.');
+  assert.notEqual(input.constraints.finalNarrativeParagraphs,'3–4');
+  assert.equal(Object.hasOwn(api,'tools'),false,'Disabling web search must omit search tools.');
+  const withSearch=buildPolishingApiRequest({...request,webSearchEnabled:true},model);
+  assert.ok(withSearch.tools.some(tool=>tool.type==='web_search'));
+  assert.equal(networkCalls,0,'Constructing requests must not call the provider.');
+ }finally{
+  globalThis.fetch=oldFetch;
+  if(oldFlag===undefined)delete process.env.ENABLE_COVER_LETTER_QUALITY_V2;
+  else process.env.ENABLE_COVER_LETTER_QUALITY_V2=oldFlag;
+ }
+});
 test('senior instructions no longer force two experience-only paragraphs',()=>{const code=readFileSync(new URL('../../src/application/senior-cover-letter-instructions.js',import.meta.url),'utf8');assert.ok(!code.includes('substantive experience paragraphs, normally two'));assert.match(code,/ROLE_LED_WRITING_POLICY/);assert.match(code,/source-backed|supported reason/);});
 class E{constructor(tag){this.tag=tag;this.dataset={};this.children=[];this.listeners={};}append(...nodes){for(const n of nodes){n.parent=this;this.children.push(n);}}replaceChildren(...nodes){this.children=[];this.append(...nodes);}setAttribute(k,v){if(k==='data-cover-reference-link')this.dataset.coverReferenceLink=v;}addEventListener(k,fn){this.listeners[k]=fn;}after(n){if(n.parent)n.remove();n.parent=this.parent;this.parent.children.splice(this.parent.children.indexOf(this)+1,0,n);}remove(){if(this.parent)this.parent.children=this.parent.children.filter(n=>n!==this);}get previousElementSibling(){return this.parent?.children[this.parent.children.indexOf(this)-1];}}
 function editorFixture({textarea=false,body='Visible UNSAVED letter\nSecond paragraph'}={}){const container=new E('section'),editor=new E(textarea?'textarea':'div'),bodyNode=new E('body'),submitted=[];if(textarea)editor.value=body;else editor.innerText=body;container.append(editor);const input={value:'review1'},subject={value:'Current subject'};const doc={body:bodyNode,defaultView:{alert(){}},getElementById(id){return id==='cover-letter-draft'?editor:id==='current-cover-letter-subject'?subject:null;},querySelector(selector){return selector==='input[name="reviewId"]'?input:selector==='[data-cover-reference-link]'?container.children.find(n=>Object.hasOwn(n.dataset,'coverReferenceLink')):null;},createElement(tag){const n=new E(tag);if(tag==='form')n.submit=()=>submitted.push({method:n.method,action:n.action,target:n.target,values:Object.fromEntries(n.children.map(x=>[x.name,x.value]))});return n;},createTextNode:s=>({textContent:s})};return {doc,editor,container,submitted,input};}
