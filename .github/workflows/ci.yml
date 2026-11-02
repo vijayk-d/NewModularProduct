@@ -31,6 +31,10 @@ jobs:
         with:
           python-version: '3.13'
       - name: Verify (same suite as local release)
+        # The runner's default TEMP uses an 8.3 short name (RUNNER~1); path-ownership tests need the long form.
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
         run: python tools/deploy/ci_verify.py
       - name: Upload verification log
         if: always()
