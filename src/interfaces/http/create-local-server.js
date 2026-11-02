@@ -1,4 +1,5 @@
 import {createHistoryDashboardHandler} from './history-dashboard-http.js';
+import {createFeatureTogglesHandler} from './feature-toggles-http.js';
 import {createCoverReferenceLibrary} from '../../application/cover-reference-library.js';
 import {createWritingReferenceHandler} from './writing-reference-http.js';
 import {parseWritingReferenceSelection,resolveWritingReferences,writingReferenceRequest,writingReferenceAudit,writingReferenceCostProof,requireWritingReferenceCostApproval,assertWritingReferenceSnapshot} from '../../application/writing-reference-selection.js';
@@ -219,6 +220,7 @@ export function createLocalServer({
 
   const handleMaintenance=createMaintenanceHandler();
   const handleHistoryDashboard=createHistoryDashboardHandler();
+  const handleFeatureToggles=createFeatureTogglesHandler();
   const handleAssignmentEvidence=createAssignmentEvidenceHandler({store:assignmentEvidenceStore});
   const handleScenarioPolishing=createScenarioPolishingHandler({library:assignmentEvidenceStore,reviews:reviewStore});
   const scenarioInput=(values,review)=>values.has('scenarioSelections')?values.get('scenarioSelections'):JSON.stringify(review.polishingScenarios?.references||[]);
@@ -425,6 +427,7 @@ export function createLocalServer({
     if(await handleIntelligence(request,response,url))return;
     if(await handleMaintenance(request,response,url))return;
     if(await handleHistoryDashboard(request,response,url))return;
+    if(await handleFeatureToggles(request,response,url))return;
     if(await handleAssignmentEvidence(request,response,url))return;
     if(await handleScenarioPolishing(request,response,url))return;
     if (await handleOutreach(request, response, url)) return;

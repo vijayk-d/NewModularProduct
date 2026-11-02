@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import '../../config/apply-feature-toggles.js';
 import {createAssignmentEvidenceStore} from '../../infrastructure/applications/sqlite-assignment-evidence.js';
 import {createApplicationIntelligenceStore} from '../../infrastructure/applications/sqlite-application-intelligence.js';
 import {createApplicationIntelligence} from '../../application/application-intelligence.js';
