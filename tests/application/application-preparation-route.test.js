@@ -1,0 +1,7 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {handleApplicationPreparation} from '../../src/interfaces/http/routes/application-preparation.js';
+function response(){return {status:null,headers:null,body:'',writeHead(s,h){this.status=s;this.headers=h;},end(v){this.body=String(v||'');}};}
+test('optional preparation route has one usable named export',()=>{assert.equal(typeof handleApplicationPreparation,'function');assert.equal(typeof handleApplicationPreparation(),'function');});
+test('GET root renders the existing form and reports handled',async()=>{const r=response();assert.equal(await handleApplicationPreparation()({method:'GET',url:'/'},r),true);assert.equal(r.status,200);assert.match(r.body,/Job title/);assert.match(r.headers['content-type'],/html/);});
+test('unrelated GET route is not consumed',async()=>{const r=response();assert.equal(await handleApplicationPreparation()({method:'GET',url:'/other'},r),false);assert.equal(r.status,null);});
+test('POST is not turned into application preparation by the optional route',async()=>{const r=response();assert.equal(await handleApplicationPreparation()({method:'POST',url:'/'},r),false);assert.equal(r.status,null);});
+test('diagnostic callback receives only method and root route',async()=>{const calls=[],r=response();await handleApplicationPreparation({writeDiagnostic:(name,data)=>calls.push({name,data})})({method:'GET',url:'/'},r,new URL('http://localhost/'));assert.deepEqual(calls,[{name:'application_form_requested',data:{method:'GET',route:'/'}}]);});

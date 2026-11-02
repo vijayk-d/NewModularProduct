@@ -1,7 +1,7 @@
 import { loadRuntimeConfig } from '../../config/load-runtime-config.js';
 import {
-  createPdfTextExtractor
-} from '../../infrastructure/documents/pdf-text-extractor.js';
+  createCvDocumentAdapter
+} from '../../infrastructure/documents/cv-document-adapter.js';
 import {
   inspectCvCommand
 } from './inspect-cv-command.js';
@@ -11,7 +11,7 @@ async function run() {
     env: process.env
   });
 
-  const extractor = createPdfTextExtractor({
+  const extractor = createCvDocumentAdapter({
     cvFolder: config.storage.cvFolder
   });
 

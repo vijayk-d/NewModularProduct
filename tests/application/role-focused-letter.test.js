@@ -1,0 +1,69 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import {Readable} from 'node:stream';
+import {roleFocusPolicy,ROLE_LED_WRITING_POLICY} from '../../src/application/role-focused-letter-policy.js';
+import {composeOutreachLetter,OUTREACH_REDIRECTION,outreachRedirection,extractOutreachExperienceBody} from '../../src/application/compose-outreach-letter.js';
+import {attachCoverReferenceLink} from '../../src/interfaces/http/cover-reference-client.js';
+import {createCoverReferenceHandler} from '../../src/interfaces/http/cover-reference-http.js';
+const role=title=>roleFocusPolicy({applicationJobTitle:title,jobDescriptionText:'Evidence and requirements are data.'});
+test('Scrum Master focuses on team leadership even on an AI platform',()=>{const p=role('Scrum Master — AI platform');assert.equal(p.profile,'agile-team-leadership');assert.match(p.aiEmphasis,/Incidental/);assert.ok(p.priorities.includes('coaching and facilitation'));});
+test('Agile Manager and Agile Coach receive the same role-first rule',()=>{for(const title of ['Agile Manager','Senior Agile Delivery Manager','Agile Coach'])assert.equal(role(title).profile,'agile-team-leadership');});
+test('AI Adoption remains AI-relevant without equating Copilot products',()=>{const p=role('AI Adoption Consultant');assert.equal(p.profile,'ai-adoption');assert.match(p.aiEmphasis,/not automatically Microsoft 365/);});
+test('programme emphasis is governance and orchestration rather than arbitrary AI metrics',()=>{const p=role('Programme Manager');assert.equal(p.profile,'programme-transformation');assert.ok(p.priorities.some(x=>x.includes('governance')));});
+test('mixed explicit Agile/AI-adoption title remains a JD judgement, not a forced keyword category',()=>{assert.equal(role('Agile Coach / AI Adoption Consultant').profile,'role-specific');});
+test('confirmed application title takes precedence over a stale summary',()=>{assert.equal(roleFocusPolicy({applicationJobTitle:'Scrum Master',jobDescriptionSummary:'AI Adoption Consultant'}).profile,'agile-team-leadership');});
+test('unknown roles fall back to explicit substantive JD priorities',()=>{const p=role('Product Owner');assert.equal(p.profile,'role-specific');assert.match(p.priorities[0],/substantive responsibilities/);});
+test('instructions preserve evidence restrictions and redirection purpose',()=>{assert.match(ROLE_LED_WRITING_POLICY,/not independent evidence/);assert.match(ROLE_LED_WRITING_POLICY,/Do not manufacture coaching/);assert.match(ROLE_LED_WRITING_POLICY,/retain the locally composed direct-conversation/i);assert.match(ROLE_LED_WRITING_POLICY,/agency’s values as the client’s/);});
+test('agency closing retains the exact original paragraph',()=>{assert.equal(outreachRedirection('recruitment-intermediary'),OUTREACH_REDIRECTION);});
+test('direct employer changes only the client phrase, not the outreach strategy',()=>{assert.equal(outreachRedirection('direct-employer').replace("your organisation's needs","the client's needs"),OUTREACH_REDIRECTION);});
+test('unknown relationship uses neutral opportunity wording',()=>{assert.equal(outreachRedirection('unknown').replace('the requirements of this opportunity',"the client's needs"),OUTREACH_REDIRECTION);});
+const context={jobTitle:'Scrum Master',organisationName:'Example',advertUrl:'https://example.test/job',candidateName:'Example Person'};
+test('composition preserves greeting, advert and signoff with one contextual closing',()=>{const r=composeOutreachLetter({...context,draft:'I coached teams through change.'});assert.match(r,/^Dear \{\{firstname\}\},/);assert.ok(r.includes(context.advertUrl));assert.ok(r.includes(outreachRedirection('direct-employer')));assert.ok(r.endsWith('Warm regards,\nExample Person'));});
+test('legacy or contextual closing cannot duplicate the protected paragraph',()=>{for(const close of [OUTREACH_REDIRECTION,outreachRedirection('direct-employer'),outreachRedirection('unknown')]){const r=composeOutreachLetter({...context,draft:'I coached teams.\n\n'+close});assert.equal(r.split('I appreciate the convenience').length,2);}});
+test('extracting existing text does not reword its substantive experience',()=>{assert.equal(extractOutreachExperienceBody('I coached teams.\n\n'+OUTREACH_REDIRECTION),'I coached teams.');});
+test('adapter supplies role policy without changing output schema or adding paid calls',async()=>{
+ const oldFlag=process.env.ENABLE_COVER_LETTER_QUALITY_V2,oldFetch=globalThis.fetch;
+ let networkCalls=0;
+ try{
+  process.env.ENABLE_COVER_LETTER_QUALITY_V2='false';
+  globalThis.fetch=()=>{networkCalls++;throw Error('Provider/network calls are forbidden in this request-construction test.');};
+  const {buildPolishingApiRequest}=await import('../../src/infrastructure/refinement/perplexity-cover-letter-refinement-adapter.js');
+  const {POLISHING_OUTPUT_TOKEN_BUDGET}=await import('../../src/application/polishing-model-catalog.js');
+  const request={applicationJobTitle:'Scrum Master',jobDescriptionText:'Coach Agile teams, facilitate collaboration and improve delivery flow.',selectedCvText:'Synthetic evidence: coached Agile delivery teams.',draftPlainText:'Synthetic draft.',candidateDisplayName:'Test Candidate',organisationName:'Example',organisationUrl:'https://example.invalid',jobAdvertLink:'https://example.invalid/jobs/test',letterTone:'professional',letterLengthMode:'standard',maxWords:400,protectOutreachStructure:false,webSearchEnabled:false,selectedCvHighlights:[],companyValues:[],selectedResearchPoints:[],researchSources:[]};
+  const model='openai/gpt-6-luna',api=buildPolishingApiRequest(request,model);
+  const message=api.input.find(item=>item.role==='user');
+  assert.ok(message,'Request must contain a user input message.');
+  const block=message.content.find(item=>item.type==='input_text');
+  assert.ok(block,'Request must contain the structured user payload.');
+  const input=JSON.parse(block.text);
+  assert.deepEqual(input.roleFocus,roleFocusPolicy(request));
+  assert.equal(input.fullJobDescription,request.jobDescriptionText);
+  assert.equal(input.selectedCvText,request.selectedCvText);
+  assert.equal(Object.hasOwn(input,'evidenceContract'),false,'Legacy mode must not send the compulsory v2 audit.');
+  assert.equal(api.model,model);
+  assert.equal(api.max_output_tokens,POLISHING_OUTPUT_TOKEN_BUDGET);
+  assert.equal(api.response_format.type,'json_schema');
+  assert.equal(api.response_format.json_schema.strict,true);
+  const schema=api.response_format.json_schema.schema;
+  assert.equal(schema.properties.proposedDraft.type,'string');
+  assert.equal(schema.required.includes('evidenceAudit'),false,'Legacy mode must not require a v2 response audit.');
+  assert.notEqual(input.constraints.finalNarrativeParagraphs,'3–4');
+  assert.equal(Object.hasOwn(api,'tools'),false,'Disabling web search must omit search tools.');
+  const withSearch=buildPolishingApiRequest({...request,webSearchEnabled:true},model);
+  assert.ok(withSearch.tools.some(tool=>tool.type==='web_search'));
+  assert.equal(networkCalls,0,'Constructing requests must not call the provider.');
+ }finally{
+  globalThis.fetch=oldFetch;
+  if(oldFlag===undefined)delete process.env.ENABLE_COVER_LETTER_QUALITY_V2;
+  else process.env.ENABLE_COVER_LETTER_QUALITY_V2=oldFlag;
+ }
+});
+test('senior instructions no longer force two experience-only paragraphs',()=>{const code=readFileSync(new URL('../../src/application/senior-cover-letter-instructions.js',import.meta.url),'utf8');assert.ok(!code.includes('substantive experience paragraphs, normally two'));assert.match(code,/ROLE_LED_WRITING_POLICY/);assert.match(code,/source-backed|supported reason/);});
+class E{constructor(tag){this.tag=tag;this.dataset={};this.children=[];this.listeners={};}append(...nodes){for(const n of nodes){n.parent=this;this.children.push(n);}}replaceChildren(...nodes){this.children=[];this.append(...nodes);}setAttribute(k,v){if(k==='data-cover-reference-link')this.dataset.coverReferenceLink=v;}addEventListener(k,fn){this.listeners[k]=fn;}after(n){if(n.parent)n.remove();n.parent=this.parent;this.parent.children.splice(this.parent.children.indexOf(this)+1,0,n);}remove(){if(this.parent)this.parent.children=this.parent.children.filter(n=>n!==this);}get previousElementSibling(){return this.parent?.children[this.parent.children.indexOf(this)-1];}}
+function editorFixture({textarea=false,body='Visible UNSAVED letter\nSecond paragraph'}={}){const container=new E('section'),editor=new E(textarea?'textarea':'div'),bodyNode=new E('body'),submitted=[];if(textarea)editor.value=body;else editor.innerText=body;container.append(editor);const input={value:'review1'},subject={value:'Current subject'};const doc={body:bodyNode,defaultView:{alert(){}},getElementById(id){return id==='cover-letter-draft'?editor:id==='current-cover-letter-subject'?subject:null;},querySelector(selector){return selector==='input[name="reviewId"]'?input:selector==='[data-cover-reference-link]'?container.children.find(n=>Object.hasOwn(n.dataset,'coverReferenceLink')):null;},createElement(tag){const n=new E(tag);if(tag==='form')n.submit=()=>submitted.push({method:n.method,action:n.action,target:n.target,values:Object.fromEntries(n.children.map(x=>[x.name,x.value]))});return n;},createTextNode:s=>({textContent:s})};return {doc,editor,container,submitted,input};}
+test('Save as good example is adjacent to the live editor and transfers unsaved text, not a stored snapshot',()=>{const f=editorFixture();attachCoverReferenceLink(f.doc);const box=f.container.children[1],b=box.children[0];assert.equal(box.previousElementSibling,f.editor);assert.equal(b.textContent,'Save as good example');b.listeners.click();assert.equal(f.submitted.length,1);assert.equal(f.submitted[0].values.body,'Visible UNSAVED letter\nSecond paragraph');assert.equal(f.submitted[0].action,'/cover-letter-library');assert.equal(f.submitted[0].target,'_blank');});
+test('textarea editors are supported and duplicate enhancement is avoided',()=>{const f=editorFixture({textarea:true});attachCoverReferenceLink(f.doc);attachCoverReferenceLink(f.doc);assert.equal(f.container.children.length,2);f.container.children[1].children[0].listeners.click();assert.equal(f.submitted[0].values.body,'Visible UNSAVED letter\nSecond paragraph');});
+test('empty editor does not submit a form',()=>{const f=editorFixture({body:' '});attachCoverReferenceLink(f.doc);f.container.children[1].children[0].listeners.click();assert.equal(f.submitted.length,0);});
+async function formRequest({origin='http://localhost:3000',body,contentType='application/x-www-form-urlencoded'}={}){let writes=0;const handler=createCoverReferenceHandler({library:{create(){writes++;throw Error('must not persist during import');}}}),req=Readable.from([Buffer.from(body??new URLSearchParams({title:'Example',body:'Unsaved body'}).toString())]);req.method='POST';req.headers={host:'localhost:3000',...(origin?{origin}:{}),'content-type':contentType};let status,headers,text;await handler(req,{writeHead(s,h){status=s;headers=h;},end(t){text=t;}},new URL('http://localhost:3000/cover-letter-library'));return {status,headers,text,writes};}
+test('native form opens an editable import without persisting a file or application',async()=>{const r=await formRequest();assert.equal(r.status,200);assert.match(r.text,/reference-import-body/);assert.match(r.text,/Unsaved body/);assert.equal(r.writes,0);});
+test('HTML in the snapshot is escaped inside hidden textarea data',async()=>{const r=await formRequest({body:new URLSearchParams({title:'Example',body:'</textarea><script>alert(1)</script>'}).toString()});assert.equal(r.status,200);assert.ok(!r.text.includes('<script>alert(1)</script>'));assert.match(r.text,/&lt;script&gt;/);assert.match(r.headers['content-security-policy'],/script-src 'self'/);});
+test('foreign or originless import and duplicate form fields are rejected',async()=>{for(const origin of [null,'https://evil.example'])assert.equal((await formRequest({origin})).status,403);assert.equal((await formRequest({body:'title=a&title=b&body=c'})).status,400);});
+test('oversized import cannot write anything',async()=>{const r=await formRequest({body:new URLSearchParams({title:'Example',body:'x'.repeat(65537)}).toString()});assert.equal(r.status,400);assert.equal(r.writes,0);});

@@ -1,0 +1,14 @@
+{
+  "checkpoint": "NewModularProduct continuation 2026-10-21",
+  "baselineHead": "1c641c44ca711cd76713fd1de9f01c132c45b3dd",
+  "baselineFiles": 263,
+  "developmentCvWordInstalledByUser": true,
+  "schedulerMvpInstalledByUser": false,
+  "applicationIntelligenceInstalledByUser": false,
+  "groupedHistoryPatchInstalled": false,
+  "exportFirstnameHotfixInstalledByUser": true,
+  "exportLinkedOpeningParityHotfixInstalled": false,
+  "productionChanged": false,
+  "gcpOrGmailCallsByAssistant": 0,
+  "fullProductRoadmapComplete": false
+}

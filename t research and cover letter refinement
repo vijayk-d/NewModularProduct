@@ -1,0 +1,26 @@
+ .gitignore                                         |   5 [32m+[m[31m-[m
+ scripts/add-apply-refinement-proposal.py           | 478 [32m+++++++++++[m
+ scripts/add-cover-letter-refinement-preview.py     | 733 [32m+++++++++++++++++[m
+ scripts/add-inline-organisation-research-tests.py  | 359 [32m+++++++++[m
+ scripts/add-refinement-runtime-configuration.py    | 462 [32m+++++++++++[m
+ scripts/align-tests-with-current-http-markup.py    |  58 [32m++[m
+ scripts/connect-inline-organisation-research.py    | 564 [32m+++++++++++++[m
+ .../fix-refinement-cv-highlights-normalization.py  |  52 [32m++[m
+ scripts/fix-stale-http-test-expectations.py        |  93 [32m+++[m
+ scripts/restore-working-company-research.py        | 524 [32m++++++++++++[m
+ scripts/test-perplexity-connectivity.mjs           |  68 [32m++[m
+ .../upgrade-company-research-structured-output.py  | 600 [32m++++++++++++++[m
+ .../upgrade-cover-letter-refinement-contract.py    | 880 [32m+++++++++++++++++++++[m
+ src/application/refine-cover-letter.js             | 150 [32m+++[m[31m-[m
+ src/config/redact-runtime-config.js                |  10 [32m+[m[31m-[m
+ src/config/validate-runtime-config.js              |  47 [32m+[m[31m-[m
+ .../perplexity-cover-letter-refinement-adapter.js  | 283 [32m+++++[m[31m--[m
+ .../perplexity-company-research-adapter.js         | 184 [32m++++[m[31m-[m
+ src/interfaces/http/create-local-server.js         | 734 [32m++++++++++++++++[m[31m-[m
+ src/interfaces/http/run-local-server.js            |  30 [32m+[m
+ tests/application/refine-cover-letter.test.js      |  48 [32m+[m[31m-[m
+ tests/config/runtime-config.test.js                |  65 [32m+[m[31m-[m
+ ...plexity-cover-letter-refinement-adapter.test.js | 247 [32m++++[m[31m--[m
+ .../perplexity-company-research-adapter.test.js    | 198 [32m+++[m[31m--[m
+ tests/interfaces/http/create-local-server.test.js  | 594 [32m+++++++++++++[m[31m-[m
+ 25 files changed, 7190 insertions(+), 276 deletions(-)

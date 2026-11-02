@@ -1,0 +1,49 @@
+{
+  "id": "role-title-review-20261022",
+  "root": "D:\\monorepo\\NewModularProduct",
+  "stateDir": "D:\\monorepo\\NewModularProduct\\output",
+  "files": [
+    {
+      "path": "src/application/application-role-review.js",
+      "before": null,
+      "beforeNormalized": null,
+      "after": "1af5504e543a70580b46be0060307d49e0b42fedd5fcdfcd8d8f90386eb1efb7",
+      "original": null
+    },
+    {
+      "path": "src/interfaces/http/create-local-server.js",
+      "before": "493902f7c731017776f0ed58f071e51c52e72dace3c1ff12315a9fd4b557ac9e",
+      "beforeNormalized": "493902f7c731017776f0ed58f071e51c52e72dace3c1ff12315a9fd4b557ac9e",
+      "after": "d3e0d878ad7364af059c96f55a739570240eaeb09394e7ec1c0d81d981691b14",
+      "original": "493902f7c731017776f0ed58f071e51c52e72dace3c1ff12315a9fd4b557ac9e"
+    },
+    {
+      "path": "src/interfaces/http/application-review-controls.js",
+      "before": "66deff5f67665605608134150a501c5538852457f2afd635269f9b6f87e49de6",
+      "beforeNormalized": "66deff5f67665605608134150a501c5538852457f2afd635269f9b6f87e49de6",
+      "after": "f8e403526ae43e51766489fad238bf6292c47ed5d9285f419543d65ffc907d4a",
+      "original": "66deff5f67665605608134150a501c5538852457f2afd635269f9b6f87e49de6"
+    },
+    {
+      "path": "src/interfaces/http/rendering.js",
+      "before": "f0f81550944918dc2e69b8756cad6cd0cbd8192932490deb731e6cf487b9fce9",
+      "beforeNormalized": "f0f81550944918dc2e69b8756cad6cd0cbd8192932490deb731e6cf487b9fce9",
+      "after": "74655680ed875dccac559932fdd08d38d0cc6ec3cb5549eab61c8134d97a119c",
+      "original": "f0f81550944918dc2e69b8756cad6cd0cbd8192932490deb731e6cf487b9fce9"
+    },
+    {
+      "path": "tests/interfaces/http/create-local-server.test.js",
+      "before": "29fc88d4661c10cf30c0a808eedc129003bf4ad495835fb01c818893da3bc1e3",
+      "beforeNormalized": "4b243884794d168b1a524e93469f519967770cb37c28b50de4ea509292d3032d",
+      "after": "ef1dd1be1db946b57205939980913429d871fe054a71e8c1480d50f0ae5f61fc",
+      "original": "29fc88d4661c10cf30c0a808eedc129003bf4ad495835fb01c818893da3bc1e3"
+    },
+    {
+      "path": "tests/application/application-role-review.test.js",
+      "before": null,
+      "beforeNormalized": null,
+      "after": "dea5f1e9b9d1170d4b314de89b4218b37376e98fa5302bf75a2f581f2043c8be",
+      "original": null
+    }
+  ]
+}

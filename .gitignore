@@ -1,4 +1,4 @@
-﻿node_modules/
+node_modules/
 .env
 .env.*
 *.log
@@ -16,3 +16,58 @@ templates/standard-cover-letter.md
 playwright-report/
 test-results/
 blob-report/
+
+scripts/*.ps1
+scripts/*.ps1
+.patch-backups/
+# Local secrets and generated artifacts
+.env
+*.bak
+data/application-output.local.json
+
+.patch-backups/
+scripts/*.py
+test-perplexity-connectivity.bat
+/t research and cover letter refinement
+
+
+scripts/*.ps1
+scripts/*.py
+.patch-backups/
+test-perplexity-connectivity.bat
+/t research and cover letter refinement
+
+# Local secrets and generated artifacts
+.env
+*.bak
+data/application-output.local.json
+output/
+
+*.backup
+*.before-recovery
+*.corrupted-backup
+
+/test-summary-artifacts/
+# Local maintenance bundles and archives
+/var/maintenance/
+
+# Checkpoint hygiene: generated files and optional local packages
+__pycache__/
+*.py[cod]
+
+# Checkpoint hygiene: generated files and optional local packages
+/tools/patches/
+
+# Local delivery reports and source captures
+/tools/maintenance/*-source.json
+/tools/maintenance/local-production-audit-*.json
+/recipient-package-before-newline-repair-*/
+
+# Private assignment evidence
+/evidence/
+
+# Source-capture transport artifacts: not checkpoint or release source
+/docs/*-source.json
+/docs/*-source-????????T??????Z.json
+/docs/scenario-source-text/
+/docs/scenario-polishing-source.zip

@@ -82,7 +82,7 @@ export function createCvCatalog({
         for (const entry of entries) {
           if (
             !entry.isFile() ||
-            extname(entry.name).toLowerCase() !== '.pdf'
+            !['.pdf','.docx'].includes(extname(entry.name).toLowerCase())
           ) {
             continue;
           }

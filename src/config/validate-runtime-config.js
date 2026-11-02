@@ -36,6 +36,32 @@ function readPort(value, name, defaultValue) {
   return port;
 }
 
+function readBoundedInteger(value, name, {
+  defaultValue,
+  minimum,
+  maximum
+}) {
+  if (value === undefined || value === null || value === '') {
+    return defaultValue;
+  }
+
+  const parsed = Number(value);
+
+  if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw configError(
+      `${name} must be an integer from ${minimum} to ${maximum}.`
+    );
+  }
+
+  return parsed;
+}
+
+function readNonEmptyString(value, defaultValue = '') {
+  const normalized = String(value ?? '').trim();
+
+  return normalized || defaultValue;
+}
+
 function requiredWhenEnabled(value, name, enabled) {
   if (!enabled) {
     return String(value || '');
@@ -69,8 +95,25 @@ export function validateRuntimeConfig({
     'ENABLE_GMAIL'
   );
 
+  const modernGmail=enableGmail&&readBoolean(env.ENABLE_GMAIL_SENDING,'ENABLE_GMAIL_SENDING');
+  if(modernGmail){requiredWhenEnabled(env.GMAIL_OAUTH_REFRESH_TOKEN,'GMAIL_OAUTH_REFRESH_TOKEN',true);requiredWhenEnabled(env.GMAIL_FROM_ADDRESS,'GMAIL_FROM_ADDRESS',true);}
   const perplexityEnabled =
     enablePerplexityResearch || enableCoverLetterRefinement;
+
+  const refinementModel = readNonEmptyString(
+    env.PERPLEXITY_REFINEMENT_MODEL,
+    'perplexity/glm-5.3-flash'
+  );
+
+  const coverLetterRefinementMaxWords = readBoundedInteger(
+    env.COVER_LETTER_REFINEMENT_MAX_WORDS,
+    'COVER_LETTER_REFINEMENT_MAX_WORDS',
+    {
+      defaultValue: 500,
+      minimum: 120,
+      maximum: 500
+    }
+  );
 
   return {
     server: {
@@ -88,10 +131,17 @@ export function validateRuntimeConfig({
       cvFolder: String(env.CV_FOLDER || '').trim(),
       databasePath: String(env.DATABASE_PATH || '').trim()
     },
+    application: {
+      coverLetterRefinementMaxWords
+    },
     features: {
       enablePerplexityResearch,
       enableCoverLetterRefinement,
-      enableGmail
+      enableGmail,
+      localDebugLogging: readBoolean(
+        env.LOCAL_DEBUG_LOGGING,
+        'LOCAL_DEBUG_LOGGING'
+      )
     },
     integrations: {
       perplexity: {
@@ -100,31 +150,33 @@ export function validateRuntimeConfig({
           env.PERPLEXITY_API_KEY,
           'PERPLEXITY_API_KEY',
           perplexityEnabled
-        )
+        ),
+        refinementModel
       },
       gmail: {
         enabled: enableGmail,
         clientId: requiredWhenEnabled(
-          env.GMAIL_CLIENT_ID,
-          'GMAIL_CLIENT_ID',
+          modernGmail?env.GMAIL_OAUTH_CLIENT_ID:env.GMAIL_CLIENT_ID,
+          modernGmail?'GMAIL_OAUTH_CLIENT_ID':'GMAIL_CLIENT_ID',
           enableGmail
         ),
         clientSecret: requiredWhenEnabled(
-          env.GMAIL_CLIENT_SECRET,
-          'GMAIL_CLIENT_SECRET',
+          modernGmail?env.GMAIL_OAUTH_CLIENT_SECRET:env.GMAIL_CLIENT_SECRET,
+          modernGmail?'GMAIL_OAUTH_CLIENT_SECRET':'GMAIL_CLIENT_SECRET',
           enableGmail
         ),
         redirectUri: requiredWhenEnabled(
           env.GMAIL_REDIRECT_URI,
           'GMAIL_REDIRECT_URI',
-          enableGmail
+          enableGmail&&!modernGmail
         ),
         tokenStorePath: requiredWhenEnabled(
           env.GMAIL_TOKEN_STORE_PATH,
           'GMAIL_TOKEN_STORE_PATH',
-          enableGmail
+          enableGmail&&!modernGmail
         )
       }
     }
   };
 }
+

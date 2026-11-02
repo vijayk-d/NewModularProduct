@@ -1,0 +1,154 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "qualityPolicyVersion",
+    "assessmentComplete",
+    "requirementAssessment",
+    "claimAudit",
+    "confirmationQuestions",
+    "omittedEvidenceIds",
+    "assessmentLimitations"
+  ],
+  "properties": {
+    "qualityPolicyVersion": {
+      "type": "string",
+      "enum": [
+        "cover-letter-quality-v2"
+      ]
+    },
+    "assessmentComplete": {
+      "type": "boolean"
+    },
+    "requirementAssessment": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "requirementId",
+          "jdQuote",
+          "importance",
+          "support",
+          "evidenceIds",
+          "explanation"
+        ],
+        "properties": {
+          "requirementId": {
+            "type": "string"
+          },
+          "jdQuote": {
+            "type": "string"
+          },
+          "importance": {
+            "type": "string",
+            "enum": [
+              "mandatory",
+              "desirable",
+              "unspecified"
+            ]
+          },
+          "support": {
+            "type": "string",
+            "enum": [
+              "direct",
+              "transferable",
+              "not_evidenced",
+              "needs_confirmation"
+            ]
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "explanation": {
+            "type": "string"
+          }
+        }
+      },
+      "maxItems": 12
+    },
+    "claimAudit": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "draftQuote",
+          "claimType",
+          "evidenceIds",
+          "requirementIds",
+          "supportExplanation"
+        ],
+        "properties": {
+          "draftQuote": {
+            "type": "string"
+          },
+          "claimType": {
+            "type": "string",
+            "enum": [
+              "past_experience",
+              "capability",
+              "outcome",
+              "prospective"
+            ]
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "requirementIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "supportExplanation": {
+            "type": "string"
+          }
+        }
+      },
+      "maxItems": 20
+    },
+    "confirmationQuestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "requirementId",
+          "question",
+          "reason"
+        ],
+        "properties": {
+          "requirementId": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "maxItems": 8
+    },
+    "omittedEvidenceIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "assessmentLimitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

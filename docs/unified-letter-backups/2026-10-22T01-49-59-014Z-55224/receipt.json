@@ -1,0 +1,203 @@
+{
+  "id": "unified-letter-20261022",
+  "root": "D:\\monorepo\\NewModularProduct",
+  "stateDb": "D:\\monorepo\\NewModularProduct\\output\\outreach.db",
+  "files": [
+    {
+      "path": "src/domain/cover-letter/letter-quality-policy.js",
+      "before": "d77f3fed496b48032fe69eeaf273bc84d132ca58cd371cffaf31d20ffc83bd53",
+      "beforeNormalized": "d77f3fed496b48032fe69eeaf273bc84d132ca58cd371cffaf31d20ffc83bd53",
+      "after": "3852338c53ff7538c8db80d65b62db9bdf099b542709773da5b5229ddc963ccf",
+      "original": "d77f3fed496b48032fe69eeaf273bc84d132ca58cd371cffaf31d20ffc83bd53"
+    },
+    {
+      "path": "src/application/senior-cover-letter-instructions.js",
+      "before": "1f1caaf8320fac6f1c8158c65b9aaaeb7c1aa1b7f754088fe59995b3a2562bbd",
+      "beforeNormalized": "1f1caaf8320fac6f1c8158c65b9aaaeb7c1aa1b7f754088fe59995b3a2562bbd",
+      "after": "68fc30e86c85bc769015c605ab819e35602580501d1198fcdac0e91083a394e9",
+      "original": "1f1caaf8320fac6f1c8158c65b9aaaeb7c1aa1b7f754088fe59995b3a2562bbd"
+    },
+    {
+      "path": "src/config/validate-runtime-config.js",
+      "before": "46215397cfa96cc731c63b3553dd7c39d5e87e061c829d1443b78978dd9cd276",
+      "beforeNormalized": "925488b7444bc4a99e5ac8621e05ef973cf0b05f89991d2a2f0bebde6082d82b",
+      "after": "92dec450f1e10dccafa970c61c7c62f0724d403f5397bc0eb069f551d2ec1fb2",
+      "original": "46215397cfa96cc731c63b3553dd7c39d5e87e061c829d1443b78978dd9cd276"
+    },
+    {
+      "path": "src/application/cover-letter-controls.js",
+      "before": "fa751a9edca8293eb2f50927340e5aac73eb05840b3059c4b00be4e706400c90",
+      "beforeNormalized": "fa751a9edca8293eb2f50927340e5aac73eb05840b3059c4b00be4e706400c90",
+      "after": "1ca76fce502d9029192ec7971a5208ff32957007cca339d0b470a654a7510909",
+      "original": "fa751a9edca8293eb2f50927340e5aac73eb05840b3059c4b00be4e706400c90"
+    },
+    {
+      "path": "src/interfaces/http/cover-letter-html.js",
+      "before": "feb9e980e4eb4e8ede00b658ceb17a58823a605718722fcec3fb7b9edc590424",
+      "beforeNormalized": "feb9e980e4eb4e8ede00b658ceb17a58823a605718722fcec3fb7b9edc590424",
+      "after": "55c36b7b3083b3d3a185f204056b596c34727335f232c9713d909f4a0d952819",
+      "original": "feb9e980e4eb4e8ede00b658ceb17a58823a605718722fcec3fb7b9edc590424"
+    },
+    {
+      "path": "src/application/refine-cover-letter.js",
+      "before": "5fd891013f647ec8649d59d67e968939618abde1a0a30042a492976f76d17add",
+      "beforeNormalized": "5fd891013f647ec8649d59d67e968939618abde1a0a30042a492976f76d17add",
+      "after": "cdf5ef7a1bb54a33f4eb97b77a027fbca69904e9b840ff26dd7c8b4e9fa8505f",
+      "original": "5fd891013f647ec8649d59d67e968939618abde1a0a30042a492976f76d17add"
+    },
+    {
+      "path": "src/infrastructure/refinement/perplexity-cover-letter-refinement-adapter.js",
+      "before": "c2a401d8acaa66fe5cea3cfab8a8eeea14dc83dc5f50dd077e719a26639fab0e",
+      "beforeNormalized": "c2a401d8acaa66fe5cea3cfab8a8eeea14dc83dc5f50dd077e719a26639fab0e",
+      "after": "82b0d25a88c7b6e44aae8a565e084a28aade62190c1e7c2fec5b14cf25ec1eef",
+      "original": "c2a401d8acaa66fe5cea3cfab8a8eeea14dc83dc5f50dd077e719a26639fab0e"
+    },
+    {
+      "path": "src/interfaces/http/rendering.js",
+      "before": "a59c6b7f2d5cd6c81b644944b5bac7a1808ca21b40260ca236592c5130754eb0",
+      "beforeNormalized": "a59c6b7f2d5cd6c81b644944b5bac7a1808ca21b40260ca236592c5130754eb0",
+      "after": "ea905972bb283cff43501b1b7b6d680532c52c65154f83449a78ffc5b6ace7ca",
+      "original": "a59c6b7f2d5cd6c81b644944b5bac7a1808ca21b40260ca236592c5130754eb0"
+    },
+    {
+      "path": "src/application/outreach-message-snapshot.js",
+      "before": "4dff16cdd11b62df3b38c6052d401a9149a72f8c055482fe51b5b25ce8418725",
+      "beforeNormalized": "4dff16cdd11b62df3b38c6052d401a9149a72f8c055482fe51b5b25ce8418725",
+      "after": "a571478888f35bd004fa6225261aed46415c10dc2b22f9d523837d4effc72a8a",
+      "original": "4dff16cdd11b62df3b38c6052d401a9149a72f8c055482fe51b5b25ce8418725"
+    },
+    {
+      "path": "src/application/unsent-letter-update-store.js",
+      "before": null,
+      "beforeNormalized": null,
+      "after": "b7f8c806372d9fe042d962d3743aa95ce2a3fbf4175e86bf5d809c39a2880680",
+      "original": null
+    },
+    {
+      "path": "src/application/gmail-send-ledger.js",
+      "before": "8218260fd78214e49e0cab25a0001359b73a8c1f367ef972d0b0e82963483dce",
+      "beforeNormalized": "8218260fd78214e49e0cab25a0001359b73a8c1f367ef972d0b0e82963483dce",
+      "after": "4a9ae8f32eddf7c41f6cef668d24a7d007ab6fe74c4205884f7b9f7cb078b919",
+      "original": "8218260fd78214e49e0cab25a0001359b73a8c1f367ef972d0b0e82963483dce"
+    },
+    {
+      "path": "src/infrastructure/outreach/sqlite-outreach-repository.js",
+      "before": "af7013e600a04424c328e2c17a5fc6d9550a932ef3ae9acfe90d0560a444d387",
+      "beforeNormalized": "af7013e600a04424c328e2c17a5fc6d9550a932ef3ae9acfe90d0560a444d387",
+      "after": "c26b6bb7afe09b2fff2b125639af80f2b1fea0200417eae61d997678cfe1af8d",
+      "original": "af7013e600a04424c328e2c17a5fc6d9550a932ef3ae9acfe90d0560a444d387"
+    },
+    {
+      "path": "src/application/unsent-letter-update-service.js",
+      "before": null,
+      "beforeNormalized": null,
+      "after": "62bf7a5d1d500ce7cb4bd14acc775430a04be8fece94c258a78796047a1c4156",
+      "original": null
+    },
+    {
+      "path": "python-worker/gmail_update_draft_worker.py",
+      "before": null,
+      "beforeNormalized": null,
+      "after": "87a8986500aa2ddd39c9b4a2069cd0ff430e20591201115d36111bf7aca99877",
+      "original": null
+    },
+    {
+      "path": "src/application/gmail-draft-update-port.js",
+      "before": null,
+      "beforeNormalized": null,
+      "after": "b7a5b669b15233def5a16eea0917819826bde13eb9705080f33f1bbee895f788",
+      "original": null
+    },
+    {
+      "path": "src/config/deployment-runtime.js",
+      "before": "50aba3c09029be3ff75c743300b79f951e682c5f807d46256b2277bfe6443ed2",
+      "beforeNormalized": "50aba3c09029be3ff75c743300b79f951e682c5f807d46256b2277bfe6443ed2",
+      "after": "aa6c99067ea2fc3be9bdf02049f417b02b5a424fd93e75cd9b78494f6874dd45",
+      "original": "50aba3c09029be3ff75c743300b79f951e682c5f807d46256b2277bfe6443ed2"
+    },
+    {
+      "path": "src/interfaces/http/application-review-http.js",
+      "before": "429d9aa1f62106495400b045a488755bb4ebff2be2d2a661cd50f3ac929d2767",
+      "beforeNormalized": "429d9aa1f62106495400b045a488755bb4ebff2be2d2a661cd50f3ac929d2767",
+      "after": "6c717308179c28dbe884355d03c000224edbcd4169da4b6d46d6fc63a3ae1454",
+      "original": "429d9aa1f62106495400b045a488755bb4ebff2be2d2a661cd50f3ac929d2767"
+    },
+    {
+      "path": "src/interfaces/http/create-local-server.js",
+      "before": "61c8e4e68dd24785ee6219ba426fb1e5ed080f52ff29db1caec1cb5cd574cf4c",
+      "beforeNormalized": "61c8e4e68dd24785ee6219ba426fb1e5ed080f52ff29db1caec1cb5cd574cf4c",
+      "after": "318688b3a84f35564dea88cd711ccb0d21288e2e6836be29880c6eb534b29167",
+      "original": "61c8e4e68dd24785ee6219ba426fb1e5ed080f52ff29db1caec1cb5cd574cf4c"
+    },
+    {
+      "path": "src/interfaces/http/queue-message-editor.js",
+      "before": "d74ce3a1b48cd9d8d120a2950f026827b44db9813a3083bbdf7d2090114492e7",
+      "beforeNormalized": "d74ce3a1b48cd9d8d120a2950f026827b44db9813a3083bbdf7d2090114492e7",
+      "after": "87ed01399de3d578c0e04ea3980df50f8d4072bdd822fc1dbd60fcaf8f0dd912",
+      "original": "d74ce3a1b48cd9d8d120a2950f026827b44db9813a3083bbdf7d2090114492e7"
+    },
+    {
+      "path": "src/interfaces/http/unsent-letter-update-controls.js",
+      "before": null,
+      "beforeNormalized": null,
+      "after": "99c15c1ac42ddec233a79b3ec624b2528efe86b8e892ab6e42c83b6e09e576fe",
+      "original": null
+    },
+    {
+      "path": "src/interfaces/http/application-review-controls.js",
+      "before": "00c1479c676a60405ed06b7ccfa428f22a23d07acad7f193c3b0a61aa56ebdd8",
+      "beforeNormalized": "00c1479c676a60405ed06b7ccfa428f22a23d07acad7f193c3b0a61aa56ebdd8",
+      "after": "66deff5f67665605608134150a501c5538852457f2afd635269f9b6f87e49de6",
+      "original": "00c1479c676a60405ed06b7ccfa428f22a23d07acad7f193c3b0a61aa56ebdd8"
+    },
+    {
+      "path": "tests/application/cover-letter-controls.test.js",
+      "before": "634057b5029b6ca3b3a222f9b8160364b70d186222a8fe524a8e6f0de2d4963c",
+      "beforeNormalized": "634057b5029b6ca3b3a222f9b8160364b70d186222a8fe524a8e6f0de2d4963c",
+      "after": "3349272b655359f8a5bfd1fffc74d3875b75b746c0cfdbdfbb7b14888d111d09",
+      "original": "634057b5029b6ca3b3a222f9b8160364b70d186222a8fe524a8e6f0de2d4963c"
+    },
+    {
+      "path": "tests/application/cover-letter-quality.test.js",
+      "before": "a864de9fcbce918b66528777ce3268ff2ed80bc35a216c89389055273923a4ea",
+      "beforeNormalized": "a864de9fcbce918b66528777ce3268ff2ed80bc35a216c89389055273923a4ea",
+      "after": "92f7feaf7c7fe97b472c9ddce469e9ce1ec685322d86154ae94e4bc87fe2f774",
+      "original": "a864de9fcbce918b66528777ce3268ff2ed80bc35a216c89389055273923a4ea"
+    },
+    {
+      "path": "tests/application/urgent-review-ui.test.js",
+      "before": "391de35e64df976047a709159df87fdfed856d30b9995b0cdc197738c7a36b42",
+      "beforeNormalized": "391de35e64df976047a709159df87fdfed856d30b9995b0cdc197738c7a36b42",
+      "after": "76c88d1d123f30c8767d2909db389554a1f5eed7e88b14789b1b5478f54ebb58",
+      "original": "391de35e64df976047a709159df87fdfed856d30b9995b0cdc197738c7a36b42"
+    },
+    {
+      "path": "tests/config/runtime-config.test.js",
+      "before": "e824e85ad84ac803b9fa919047a47f76cb105397c5d37343361e083e8cf7c71b",
+      "beforeNormalized": "1e8ea82c7139e449bda353bab88b01d4a1c2698a5b0861ef5e7b2a9e4bbedd16",
+      "after": "380fddadb1ee28c46807e90d6c1196c9f6cb9a1789a8e20ebb8c40138029ee0e",
+      "original": "e824e85ad84ac803b9fa919047a47f76cb105397c5d37343361e083e8cf7c71b"
+    },
+    {
+      "path": "tests/application/outreach-rich-snapshot.test.js",
+      "before": "03dbf03abcf9220ca75a8ca03f9ca25dcbf71db66cc80cd1a30cbe4a0094db1e",
+      "beforeNormalized": "03dbf03abcf9220ca75a8ca03f9ca25dcbf71db66cc80cd1a30cbe4a0094db1e",
+      "after": "13a24295ffc0fe1918fcdfd99350f6996530b3cd00e2b639b9fee45e15ff167c",
+      "original": "03dbf03abcf9220ca75a8ca03f9ca25dcbf71db66cc80cd1a30cbe4a0094db1e"
+    },
+    {
+      "path": "tests/application/unified-letter-update.test.js",
+      "before": null,
+      "beforeNormalized": null,
+      "after": "ae76332501ed86ee1d41fa6aef3bcb4a303cfb0078b9ca090e0f276d5398ce03",
+      "original": null
+    },
+    {
+      "path": "python-worker/test_gmail_update_draft_worker.py",
+      "before": null,
+      "beforeNormalized": null,
+      "after": "cddc561af1da7770c2a0fb20bc096f0860814cede69ae87fc3bbfc7ecd1721eb",
+      "original": null
+    }
+  ]
+}

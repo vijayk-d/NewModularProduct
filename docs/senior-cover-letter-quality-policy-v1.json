@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "policyId": "senior-cover-letter-quality-v1",
+  "status": "specification_not_integrated",
+  "defaultMode": "standard",
+  "modes": {
+    "standard": {
+      "targetMinimum": 300,
+      "targetMaximum": 400,
+      "maximumWords": 400
+    },
+    "extended": {
+      "targetMinimum": 400,
+      "targetMaximum": 500,
+      "maximumWords": 500,
+      "requiresExplicitSelection": true
+    }
+  },
+  "absoluteMaximumWords": 500,
+  "narrativeParagraphs": {
+    "minimum": 3,
+    "maximum": 4,
+    "default": 4
+  },
+  "counting": {
+    "basis": "canonical visible full letter after local composition and recipient personalization",
+    "include": [
+      "greeting",
+      "visible opening",
+      "visible advert-reference label when separately displayed",
+      "experience paragraphs",
+      "protected redirection paragraph",
+      "signoff and sender name"
+    ],
+    "exclude": [
+      "email subject",
+      "Gmail signature",
+      "HTML markup",
+      "nonvisible hyperlink destinations",
+      "provenance-labelled machine-only link fallback metadata"
+    ],
+    "neverCountHiddenLinkMetadataTwice": true
+  },
+  "content": {
+    "language": "UK English",
+    "primaryEvidence": "selected CV",
+    "excludeExperiences": [
+      "Micro1 AI/LLM training programme"
+    ],
+    "requireSourceAttribution": true,
+    "neverInventSmartFields": true,
+    "prioritiseApprovedSelectedAchievements": true,
+    "noAutomaticEmployerInference": true
+  },
+  "rendering": {
+    "pageTarget": 1,
+    "pageFitRequiresRenderedCheck": true,
+    "preserveProtectedSections": true,
+    "advertLinksRenderedLocally": true,
+    "generateHtmlOrUrlsInExperience": false,
+    "closing": "Warm regards,\nVijay DAFAL",
+    "signatureInEditableLetter": false
+  },
+  "subject": {
+    "editable": true,
+    "prefix": "_",
+    "singleLine": true,
+    "preserveSavedEdits": true
+  },
+  "workflow": {
+    "belowTarget": "advisory; never pad",
+    "aboveModeMaximum": "retain proposal separately; do not apply or prepare sending until revised or valid mode explicitly selected",
+    "manualDraftSave": "allowed even when outside target; retain edits",
+    "providerRetries": "explicit user action and fresh cost approval only",
+    "existingSavedLetters": "do not regenerate or overwrite",
+    "productionChange": "none in this package",
+    "sourceConfiguration": "respect .env; no launcher or credential changes"
+  },
+  "modelOutput": "existing structured response schema; proposedDraft contains only experience paragraphs when protectedSectionsAddedLocally=true"
+}

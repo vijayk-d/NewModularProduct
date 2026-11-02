@@ -1,0 +1,19 @@
+// Synthetic-only UI server. Never starts the production composition root or loads .env.
+import {createLocalServer} from '../../../src/interfaces/http/create-local-server.js';
+import {createDurableReviewStore,createMemoryReviewRepository} from '../../../src/application/durable-review-store.js';
+for(const k of ['ENABLE_GMAIL','ENABLE_GMAIL_SENDING','ENABLE_GMAIL_DRAFT_CREATION','ENABLE_GMAIL_MAILBOX_CHECK','ENABLE_PERPLEXITY_RESEARCH','ENABLE_COVER_LETTER_REFINEMENT','LOCAL_DEBUG'])process.env[k]='false';
+for(const k of ['PERPLEXITY_API_KEY','GMAIL_OAUTH_CLIENT_ID','GMAIL_OAUTH_CLIENT_SECRET','GMAIL_OAUTH_REFRESH_TOKEN','CV_FOLDER'])process.env[k]='';
+const store=createDurableReviewStore(createMemoryReviewRepository()),id='review-ui-fixture';
+const cvs=['DM','ADL','PM','SM'].map((code,i)=>({cv:{role_code:code,role_name:['Delivery Manager','Agile Delivery Lead','Project Manager','Scrum Master'][i],local_path:'fixture.pdf'},ats:{score:60-i*7,matchedKeywords:['delivery'],missingKeywords:['example']}}));
+const body='Dear Hiring Manager,\n\nI am applying for this role.\n\nI led delivery worth £2M.\n\nWarm regards,\nFixture Candidate';
+store.set(id,{formData:{jobTitle:'Delivery Manager',organisationName:'Synthetic Organisation',jobDescriptionText:'Synthetic delivery role',organisationUrl:'https://fixture.test',jobAdvertLink:'https://fixture.test/jobs/1'},prepared:{jobDescription:{role:'Delivery Manager'},coverLetter:{subject:'Application for Delivery Manager | Synthetic organisation | Ref 12345 | Fixture Candidate',plainText:body},recommendation:{bestCv:cvs[0].cv,ats:cvs[0].ats},rankedCvs:cvs},currentDraftPlainText:body,currentDraftSubject:'Application for Delivery Manager | Synthetic organisation | Ref 12345 | Fixture Candidate',selectedCvRoleCode:'DM'});
+const contact={id:'fixture-contact',firstName:'Alex',lastName:'Example',fullName:'Alex Example',role:'Synthetic Recruiter',linkedinUrl:'https://www.linkedin.com/in/synthetic-fixture/',selectedEmail:'alex.example@fixture.test',emailCandidates:['alex.example@fixture.test','example.alex@fixture.test'],emailSource:'inferred',linkedApplicationReviewIds:[]};
+const contacts={listAll:async()=>[structuredClone(contact)],listByReview:async()=>[],listByOrganisation:async()=>[structuredClone(contact)]};
+const sends=[0,1].map(i=>({id:'fixture-send-'+i,fullName:'Alex Example',email:'alex.example@fixture.test',subject:'Synthetic subject — £2M delivery portfolio',action:'send_again',sentAt:`2026-10-14T21:0${i}:00.000Z`,messageId:'fixture-message-'+i,linkedinUrl:'https://www.linkedin.com/in/synthetic-fixture-'+i}));
+const repository={list:()=>[],listSentEmails:()=>structuredClone(sends)};
+const server=createLocalServer({applicationReviewStore:store,recruiterContactStore:contacts,outreachRepository:repository,prepareApplication:async()=>{throw new Error('Fixture preparation disabled');}});
+const handler=server.listeners('request')[0];server.removeAllListeners('request');
+const reads=new Set(['/','/outreach-queue','/applications/'+id,'/api/application-reviews/'+id,'/api/recruiter-contacts/linking','/api/outreach-queue','/api/outreach-queue/send-history','/api/outreach-queue/gmail-status','/api/outreach-queue/gmail-draft-status','/api/outreach-queue/send-status']);
+const writes=new Set(['/api/application-reviews/save','/review-subject-save','/review-cv-selection']);
+server.on('request',(req,res)=>{const u=new URL(req.url,'http://localhost');if(req.method==='GET'&&(reads.has(u.pathname)||/^\/[a-z0-9-]+\.(?:js|css)$/.test(u.pathname)))return handler(req,res);if(req.method==='POST'&&writes.has(u.pathname))return handler(req,res);res.writeHead(403,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:'This operation is disabled in the isolated UI fixture.'}));});
+server.listen(Number(process.env.REVIEW_UI_PORT||3317),'127.0.0.1',()=>console.log('UI_FIXTURE_PORT='+server.address().port));

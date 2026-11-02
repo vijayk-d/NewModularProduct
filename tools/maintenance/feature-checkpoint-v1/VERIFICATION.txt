@@ -1,0 +1,20 @@
+FEATURE CHECKPOINT HELPER — FIXTURE VERIFICATION
+
+PASS Python syntax compilation.
+PASS Default preview leaves Git index/source/documents unchanged (metadata reports only).
+PASS Opt-in reconciliation updates exactly three documents; index unchanged.
+PASS Documentation-write failure restores previously written docs in the fixture.
+PASS Documentation update preserves BOM/CRLF and is idempotent.
+PASS Stale content approval blocks staging without index change.
+PASS Explicit approved staging includes exactly 59 expected paths in the fixture.
+PASS 55 held-back tracked tool deletions remain unstaged.
+PASS Unrelated untracked artifact remains unstaged.
+PASS Existing staged work stops the helper and is preserved.
+PASS Wrong branch, changed source and missing required source are blocked.
+PASS Fixture HEAD is unchanged by helper operations; helper never commits/pushes.
+
+Scope source/test values came from the uploaded audit; utility body not included in
+that audit was represented with a synthetic file in the Git mechanics fixture.
+This verifies checkpoint helper mechanics, not that missing utility's production
+behaviour or the whole application's test baseline.
+No real-user repository, email/paid-provider action, browser run or live DB operation.

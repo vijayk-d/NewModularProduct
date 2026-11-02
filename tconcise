@@ -1,0 +1,15 @@
+ src/application/email-domain-resolution-service.js | 105 [32m+++++++[m
+ src/application/email-domain-store.js              |  41 [32m+++[m
+ src/application/recruiter-contact-store.js         |  96 [32m++++[m[31m--[m
+ src/infrastructure/perplexity-client.js            | 130 [32m++++++++[m
+ src/interfaces/http/create-local-server.js         | 251 [32m+++++++++++++[m[31m--[m
+ src/interfaces/http/rendering.js                   | 124 [32m+[m[31m-------[m
+ src/interfaces/http/responses.js                   |  35 [32m++[m[31m-[m
+ src/interfaces/http/review-page.js                 | 195 [32m++++++++++++[m
+ tools/apply_contact_delete_patch.py                | 281 [32m+++++++++++++++++[m
+ tools/apply_email_domain_patch.py                  | 347 [32m+++++++++++++++++++++[m
+ tools/create_email_domain_slice.py                 | 298 [32m++++++++++++++++++[m
+ tools/create_linkedin_contact_bridge.py            | 321 [32m+++++++++++++++++++[m
+ tools/fix_contact_delete_buttons.py                | 140 [32m+++++++++[m
+ tools/fix_review_csp_contract.py                   | 101 [32m++++++[m
+ 14 files changed, 2281 insertions(+), 184 deletions(-)

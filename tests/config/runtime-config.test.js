@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadRuntimeConfig } from '../../src/config/load-runtime-config.js';
 
@@ -32,8 +32,17 @@ test('uses safe defaults when no optional configuration is supplied', () => {
   assert.deepEqual(config.features, {
     enablePerplexityResearch: false,
     enableCoverLetterRefinement: false,
-    enableGmail: false
+    enableGmail: false,
+    localDebugLogging: false
   });
+  assert.equal(
+    config.integrations.perplexity.refinementModel,
+    'perplexity/glm-5.3-flash'
+  );
+  assert.equal(
+    config.application.coverLetterRefinementMaxWords,
+    500
+  );
 
   assert.equal(
     config.storage.templateDirectory,
@@ -56,7 +65,10 @@ test('parses configured server, storage, and feature values', () => {
       CV_INVENTORY_PATH: 'D:/app-data/cv-inventory.json',
       DATABASE_PATH: 'D:/app-data/application.db',
       ENABLE_PERPLEXITY_RESEARCH: 'yes',
-      PERPLEXITY_API_KEY: 'test-perplexity-key'
+      ENABLE_COVER_LETTER_REFINEMENT: 'true',
+      PERPLEXITY_API_KEY: 'test-perplexity-key',
+      PERPLEXITY_REFINEMENT_MODEL: 'perplexity/sonar',
+      COVER_LETTER_REFINEMENT_MAX_WORDS: '300'
     }
   });
 
@@ -70,8 +82,16 @@ test('parses configured server, storage, and feature values', () => {
   );
   assert.equal(config.storage.databasePath, 'D:/app-data/application.db');
   assert.equal(config.features.enablePerplexityResearch, true);
-  assert.equal(config.features.enableCoverLetterRefinement, false);
+  assert.equal(config.features.enableCoverLetterRefinement, true);
   assert.equal(config.integrations.perplexity.enabled, true);
+  assert.equal(
+    config.integrations.perplexity.refinementModel,
+    'perplexity/sonar'
+  );
+  assert.equal(
+    config.application.coverLetterRefinementMaxWords,
+    300
+  );
   assert.equal(
     config.integrations.perplexity.apiKey,
     'test-perplexity-key'
@@ -129,6 +149,36 @@ test('requires Perplexity API key only when a Perplexity feature is enabled', ()
   assert.equal(disabled.integrations.perplexity.apiKey, 'unused-key');
 });
 
+test('rejects invalid cover-letter refinement word limits', () => {
+  for (const value of ['119', '501', 'not-a-number']) {
+    assert.throws(
+      () => loadRuntimeConfig({
+        env: {
+          COVER_LETTER_REFINEMENT_MAX_WORDS: value
+        }
+      }),
+      {
+        message:
+          'Invalid runtime configuration: COVER_LETTER_REFINEMENT_MAX_WORDS must be an integer from 120 to 500.'
+      }
+    );
+  }
+});
+
+test('requires a Perplexity API key when only refinement is enabled', () => {
+  assert.throws(
+    () => loadRuntimeConfig({
+      env: {
+        ENABLE_COVER_LETTER_REFINEMENT: 'true'
+      }
+    }),
+    {
+      message:
+        'Invalid runtime configuration: PERPLEXITY_API_KEY is required when its integration is enabled.'
+    }
+  );
+});
+
 test('requires all Gmail OAuth settings only when Gmail is enabled', () => {
   assert.throws(
     () => loadRuntimeConfig({
@@ -174,6 +224,14 @@ test('redacts API keys and OAuth secrets from configuration diagnostics', () => 
   const serialized = JSON.stringify(redacted);
 
   assert.equal(redacted.integrations.perplexity.apiKey, '[redacted]');
+  assert.equal(
+    redacted.integrations.perplexity.refinementModel,
+    'perplexity/glm-5.3-flash'
+  );
+  assert.equal(
+    redacted.application.coverLetterRefinementMaxWords,
+    500
+  );
   assert.equal(redacted.integrations.gmail.clientId, '[redacted]');
   assert.equal(redacted.integrations.gmail.clientSecret, '[redacted]');
   assert.ok(!serialized.includes('perplexity-secret'));
@@ -184,3 +242,4 @@ test('redacts API keys and OAuth secrets from configuration diagnostics', () => 
     'http://localhost:3000/oauth/callback'
   );
 });
+

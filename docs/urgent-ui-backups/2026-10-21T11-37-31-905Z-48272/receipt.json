@@ -1,0 +1,42 @@
+{
+  "id": "urgent-review-ui-20261021",
+  "root": "D:\\monorepo\\NewModularProduct",
+  "createdAt": "2026-10-21T11:37:31.911Z",
+  "files": [
+    {
+      "path": "src/interfaces/http/rendering.js",
+      "beforeSha256": "0e8352fecc9676f35233525d40d916895d8b00d7a1ecae185c154ee00112558e",
+      "beforeNormalizedSha256": "cc880ce37c565c66829fea48fbcc14653ef550c1370dc972ccf5475586f11f9d",
+      "afterSha256": "296d9145a2b5297498c1b6408e944ea234a1d72b49c817fcc95caeed0293b60f",
+      "originalSha256": "0e8352fecc9676f35233525d40d916895d8b00d7a1ecae185c154ee00112558e"
+    },
+    {
+      "path": "src/interfaces/http/create-local-server.js",
+      "beforeSha256": "8023259026136bc111c6eabb9ad65206bfba10fdb506ac42374ac2e4e5c29d19",
+      "beforeNormalizedSha256": "bb9d4f22132c00c312481594602332348f346a797577a5f6758040f99c23c52b",
+      "afterSha256": "2f4bfa13cb2a831945dfd5f53dbb9f2aef71438b88220858c16bb8b309b0dfbb",
+      "originalSha256": "8023259026136bc111c6eabb9ad65206bfba10fdb506ac42374ac2e4e5c29d19"
+    },
+    {
+      "path": "src/interfaces/http/application-intelligence.js",
+      "beforeSha256": "aa71010b58b10edd3a398c8ba646555481bbf025039343edfc94f60e3fa9a2b8",
+      "beforeNormalizedSha256": "cc92856a1a6f4a4ad6b9b5f69ed3ada941fd42bcbe1c591e26b7da0c64119110",
+      "afterSha256": "1ab265dcd90b900eae88420ff177b861b309769b66121d340c6e8afecd4d8fb7",
+      "originalSha256": "aa71010b58b10edd3a398c8ba646555481bbf025039343edfc94f60e3fa9a2b8"
+    },
+    {
+      "path": "src/interfaces/http/polishing-cost-controls.js",
+      "beforeSha256": "f8e84d6437c3f4d0566fa3b39037370656f7e6639b341c3f8fafafe15fede75f",
+      "beforeNormalizedSha256": "f8e84d6437c3f4d0566fa3b39037370656f7e6639b341c3f8fafafe15fede75f",
+      "afterSha256": "7254e0481f4a5f68109b90740d7bd832f1dc3a9acb9b6e6e642ada5a5f15791b",
+      "originalSha256": "f8e84d6437c3f4d0566fa3b39037370656f7e6639b341c3f8fafafe15fede75f"
+    },
+    {
+      "path": "tests/application/urgent-review-ui.test.js",
+      "beforeSha256": null,
+      "beforeNormalizedSha256": null,
+      "afterSha256": "391de35e64df976047a709159df87fdfed856d30b9995b0cdc197738c7a36b42",
+      "originalSha256": null
+    }
+  ]
+}

@@ -1,3 +1,6 @@
+import {assessLetterQuality} from './letter-quality-policy.js';
+import {renderLinkedRoleOpening,canonicalLinkedOpeningPlain} from '../shared/linked-role-opening.js';
+import {normalizeLegacyAdvertPlain,embedCanonicalAdvertHtml} from '../shared/legacy-advert-normalization.js';
 import { fillTemplate } from './fill-template.js';
 import { validateCoverLetter } from './validate-cover-letter.js';
 import { normalize } from '../shared/text-normalization.js';
@@ -268,6 +271,7 @@ export function generateCoverLetter({
   finalCoverLetter = '',
   atsScore = '',
   cvHighlights = [],
+  selectedAchievementStatements = null,
   jdKeywords = [],
   domainMapping = {},
   variantProfiles = {},
@@ -298,7 +302,8 @@ export function generateCoverLetter({
   const matchedDomains = (parsedJobDescription.domain || [])
     .flatMap((domain) => domainMapping[domain] || []);
 
-  const highlights = profile.highlights ||
+  const explicitAchievements=Array.isArray(selectedAchievementStatements);
+  const highlights = explicitAchievements ? selectedAchievementStatements.join('\n\n') : profile.highlights ||
     toText(cvHighlights) ||
     (selectedCv.use_cases || []).slice(0, 3).join(', ') ||
     selectedCv.role_name ||
@@ -317,10 +322,18 @@ export function generateCoverLetter({
     ? supportedMethods.join(' and ')
     : 'pragmatic delivery practices';
 
-  const evidence = profile.evidence ||
-    `My relevant experience includes ${highlights}. In these settings, I used ${methods} to coordinate delivery, manage dependencies, and improve collaboration across stakeholders.`;
+  const evidenceText = toText(highlights);
+  const evidenceBody = evidenceText.replace(/\.{2,}$/, '.');
+  const evidenceWithEnding = /[.!?]$/.test(evidenceBody)
+    ? evidenceBody
+    : `${evidenceBody}.`;
 
-  const currentRoleEvidence = profile.currentRoleEvidence ||
+  const evidence = explicitAchievements ? selectedAchievementStatements.join('\n\n') : profile.evidence ||
+    (/^(?:I|My|We|Our)\b/i.test(evidenceBody)
+      ? evidenceWithEnding
+      : `Relevant experience:\n${evidenceWithEnding}`);
+
+  const currentRoleEvidence = explicitAchievements ? '' : profile.currentRoleEvidence ||
     candidateProfile.currentRoleEvidence ||
     '';
 
@@ -337,7 +350,7 @@ export function generateCoverLetter({
       ['uae', 'dubai', 'gcc'].includes(String(location).toLowerCase())
     )
       ? candidateProfile.uaeResidencyNote ||
-        'I can support a prompt joining process in the UAE.'
+        ''
       : '';
 
   const clearanceNote = parsedJobDescription.scClearanceRequired
@@ -386,11 +399,11 @@ export function generateCoverLetter({
     referenceSuffix
   });
 
-  const plainText = ensureAtsRedirectionParagraph(
+  const plainText = canonicalLinkedOpeningPlain(normalizeLegacyAdvertPlain(ensureAtsRedirectionParagraph(
     refinedCoverLetterText || templateBody
-  );
+  ),jobAdvertLink).text);
 
-  const subject = `Application for ${parsedJobDescription.role}` +
+  const subject = `_Application for ${parsedJobDescription.role}` +
     `${jobAdvertLink ? ' | LinkedIn' : ''}` +
     `${referenceSuffix} | ${recipient}`;
     
@@ -401,7 +414,7 @@ export function generateCoverLetter({
   );
 
   const richText = highlightTermsInHtml(
-    plainText.replace(/\n\n/g, '<p>').replace(/\n/g, '<br>'),
+    renderLinkedRoleOpening(plainText) ?? embedCanonicalAdvertHtml(plainText,jobAdvertLink).replace(/\n\n/g, '<p>').replace(/\n/g, '<br>'),
     selectedHighlights
   );
 
@@ -412,6 +425,7 @@ export function generateCoverLetter({
     richText,
     plainText,
     validation,
+    quality:assessLetterQuality(plainText,{advertUrl:jobAdvertLink}),
     variant,
     variantLabel: profile.label || variant,
     templateBody,
@@ -420,3 +434,4 @@ export function generateCoverLetter({
     highlightPhrases: selectedHighlights
   };
 }
+

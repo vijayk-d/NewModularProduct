@@ -1,0 +1,62 @@
+{
+  "id": "bulk-workspace-20261021",
+  "root": "D:\\monorepo\\NewModularProduct",
+  "files": [
+    {
+      "path": "src/interfaces/http/outreach-bulk.js",
+      "before": "1fe8ba3db5d3ffce7afe507b8b824e7c25919e34140c7f1de2a9a0f26fffc33c",
+      "beforeNormalized": "1fe8ba3db5d3ffce7afe507b8b824e7c25919e34140c7f1de2a9a0f26fffc33c",
+      "after": "189dcd71c1e762ab83c4b1a7b4373b32bc30469305f76b4953ab68ac7ed448d3",
+      "original": "1fe8ba3db5d3ffce7afe507b8b824e7c25919e34140c7f1de2a9a0f26fffc33c"
+    },
+    {
+      "path": "src/interfaces/http/outreach-queue-browser.js",
+      "before": "18db7666cb0bf2ae4cf1fd6e9c53ac7d13ec26f24f080dabce21ab70a5e62ee5",
+      "beforeNormalized": "18db7666cb0bf2ae4cf1fd6e9c53ac7d13ec26f24f080dabce21ab70a5e62ee5",
+      "after": "c03c2e26bc67ea30678266646d89575983f12f144f7b596d4f66e3314ada6e4d",
+      "original": "18db7666cb0bf2ae4cf1fd6e9c53ac7d13ec26f24f080dabce21ab70a5e62ee5"
+    },
+    {
+      "path": "src/interfaces/http/outreach-queue-http.js",
+      "before": "82397cc0f4bc6e2ed82c5fa193645357759455c4c49fdfcab26824856d9e4476",
+      "beforeNormalized": "82397cc0f4bc6e2ed82c5fa193645357759455c4c49fdfcab26824856d9e4476",
+      "after": "d757adf02d09535557fadefe01b39a89107a3b259c3cbdef045a32efb5bf9561",
+      "original": "82397cc0f4bc6e2ed82c5fa193645357759455c4c49fdfcab26824856d9e4476"
+    },
+    {
+      "path": "src/interfaces/http/rendering.js",
+      "before": "296d9145a2b5297498c1b6408e944ea234a1d72b49c817fcc95caeed0293b60f",
+      "beforeNormalized": "296d9145a2b5297498c1b6408e944ea234a1d72b49c817fcc95caeed0293b60f",
+      "after": "740b98432b44bef459f581d24bd4edc88796e3cf3da9c140f1ddba0c931ff0ec",
+      "original": "296d9145a2b5297498c1b6408e944ea234a1d72b49c817fcc95caeed0293b60f"
+    },
+    {
+      "path": "src/interfaces/http/job-import-controls.js",
+      "before": "5052d51c894e569ca40fdd837c4b1a4e29adfd32cbf9e54fbf0fc421b52b3aea",
+      "beforeNormalized": "5052d51c894e569ca40fdd837c4b1a4e29adfd32cbf9e54fbf0fc421b52b3aea",
+      "after": "072e53a8829878a30a8956c6a08321dabb91f06c7a9d5ead49c0deeaf3a6ec90",
+      "original": "5052d51c894e569ca40fdd837c4b1a4e29adfd32cbf9e54fbf0fc421b52b3aea"
+    },
+    {
+      "path": "src/interfaces/http/review-page.js",
+      "before": "8c0a920b10a9577811637e5f32112d380df9bb0beb1b53bb704f2ee8ed6182b3",
+      "beforeNormalized": "8c0a920b10a9577811637e5f32112d380df9bb0beb1b53bb704f2ee8ed6182b3",
+      "after": "44aab4ff434b9eb00688e10f219d9c3c27b17c802f4b1f5ffb26df85db0affea",
+      "original": "8c0a920b10a9577811637e5f32112d380df9bb0beb1b53bb704f2ee8ed6182b3"
+    },
+    {
+      "path": "tests/application/outreach-bulk-controls.test.js",
+      "before": "361a4b78864c4be2e3e7bb638b377b6d5244cf2c27ad37e6bc358fbb5a61b1cc",
+      "beforeNormalized": "361a4b78864c4be2e3e7bb638b377b6d5244cf2c27ad37e6bc358fbb5a61b1cc",
+      "after": "26cad984fdda6a1a770129988a7ab048e08999566efe05ca9abc88eb3e236f37",
+      "original": "361a4b78864c4be2e3e7bb638b377b6d5244cf2c27ad37e6bc358fbb5a61b1cc"
+    },
+    {
+      "path": "tests/application/bulk-workspace-isolation.test.js",
+      "before": null,
+      "beforeNormalized": null,
+      "after": "82c73a5b31a8e8d4033792d5c6f7a39115b00dd9ad8e178a8304956139a9e8c7",
+      "original": null
+    }
+  ]
+}

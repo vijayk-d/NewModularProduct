@@ -1,0 +1,29 @@
+export function sendText(response, statusCode, text, headers = {}) {
+  response.writeHead(statusCode, {
+    "content-type": "text/plain; charset=utf-8",
+    "x-content-type-options": "nosniff",
+    ...headers
+  });
+
+  response.end(text);
+}
+
+export function sendHtml(response, statusCode, html, headers = {}) {
+  response.writeHead(statusCode, {
+    "content-type": "text/html; charset=utf-8",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer",
+    ...headers
+  });
+
+  response.end(html);
+}
+
+export function sendJson(response, statusCode, payload) {
+  response.writeHead(statusCode, {
+    "content-type": "application/json; charset=utf-8"
+  });
+
+  response.end(JSON.stringify(payload));
+}
