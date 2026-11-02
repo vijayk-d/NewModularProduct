@@ -9,6 +9,7 @@ import crypto from 'node:crypto';
 import { currentReviewSubject, MAX_SUBJECT_LENGTH } from '../../application/review-subject.js';
 import { POLISHING_MODELS, DEFAULT_POLISHING_MODEL, PRICING_CHECKED_AT, normalizePolishingModel } from '../../application/polishing-model-catalog.js';
 import { renderCoverLetterHtml } from './cover-letter-html.js';
+import {normaliseGeneratedListHtml} from './generated-letter-lists.js';
 
 export function escapeHtml(value = '') {
   return String(value)
@@ -716,17 +717,19 @@ export function renderRefinementPanel({
         ${
           values.length
             ? `
-              <fieldset>
+              <fieldset class="organisation-values-choices">
                 <legend>Select verified organisation values for a proposed refinement</legend>
+                <div class="organisation-values-options">
                 ${values.map((value) => `
-                  <label>
+                  <label class="organisation-value-choice">
                     <input
                       type="checkbox"
                       name="selectedResearchPointIds"
                       value="${escapeHtml(value.id)}" checked>
-                    ${escapeHtml(value.text)}
+                    <span>${escapeHtml(value.text)}</span>
                   </label>
                 `).join('')}
+              </div>
               </fieldset>
             `
             : (allowWithoutOrganisationResearch?'<p class="rich-editor-notice">Employer/client unconfirmed. Optional polishing uses JD/CV evidence only; advertiser facts are not employer facts.</p>':'<p class="rich-editor-notice">`No verified organisation values were returned. You can still polish the cover letter using the organisation details and available research sources.`</p>')
@@ -794,7 +797,7 @@ export function renderRefinementPanel({
           role="textbox"
           aria-multiline="true"
           aria-label="Editable proposed cover letter"
-          data-editor-name="Proposed cover letter">${refinementProposal.proposedDraftHtml?sanitizeSnapshotHtml(refinementProposal.proposedDraftHtml).html:renderCoverLetterHtml(refinementProposal.proposedDraft,refinementProposal.highlightSelections?.length?refinementProposal.highlightSelections:refinementProposal.highlightPhrases)}</div>
+          data-editor-name="Proposed cover letter">${normaliseGeneratedListHtml(refinementProposal.proposedDraftHtml?sanitizeSnapshotHtml(refinementProposal.proposedDraftHtml).html:renderCoverLetterHtml(refinementProposal.proposedDraft,refinementProposal.highlightSelections?.length?refinementProposal.highlightSelections:refinementProposal.highlightPhrases))}</div>
         <div class="rich-editor-actions">
           <button
             type="button"
@@ -1773,7 +1776,7 @@ ${renderEmailDomainResolution(reviewId, formData, research)}
         role="textbox"
         aria-multiline="true"
         aria-label="Editable current cover letter draft"
-        data-editor-name="Current cover letter">${typeof currentDraftHtml==='string'&&currentDraftHtml.trim()?sanitizeSnapshotHtml(currentDraftHtml).html:renderCoverLetterHtml(plainText, currentHighlightPhrases)}</div>
+        data-editor-name="Current cover letter">${normaliseGeneratedListHtml(typeof currentDraftHtml==='string'&&currentDraftHtml.trim()?sanitizeSnapshotHtml(currentDraftHtml).html:renderCoverLetterHtml(plainText, currentHighlightPhrases))}</div>
       ${roleConsistencyWarnings(plainText,formData.jobTitle).map(message=>`<p class="notice" data-role-consistency-warning>${escapeHtml(message)}</p>`).join('')}
       <p class="rich-editor-notice">
         Application text/formatting can be saved and resumed. Queue messages remain independent snapshots.

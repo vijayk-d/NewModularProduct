@@ -4,6 +4,7 @@ import os
 import re
 import sys
 from email.message import EmailMessage
+from gmail_message_style import style_email_body
 from pathlib import Path
 import hashlib
 sys.path.insert(0,str(Path(__file__).resolve().parent))
@@ -27,7 +28,7 @@ def _build_message(draft, from_address):
     message = EmailMessage()
     message['To'], message['From'], message['Subject'] = email, from_address, subject
     message.set_content(plain)
-    message.add_alternative(html, subtype='html')
+    message.add_alternative(style_email_body(html, draft.get('emailTheme')), subtype='html')
     attachment = draft.get('attachment')
     if attachment:
         folder = os.getenv('CV_FOLDER', '').strip()

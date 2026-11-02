@@ -1,3 +1,4 @@
+import {assertFrozenDraftPalette} from './frozen-draft-palette.js';
 import {applyGmailSignature,readGmailSignature,letterWithoutSignature} from './gmail-message-presentation.js';
 import {recipientFirstName,assertResolvedMessage} from './outreach-recipient-identity.js';
 import {randomUUID,createHash} from 'node:crypto';import {realpath,stat,readFile} from 'node:fs/promises';import path from 'node:path';
@@ -6,7 +7,7 @@ const hash=b=>createHash('sha256').update(b).digest('hex');
 function fail(m,code='SEND_BLOCKED',statusCode=409){const e=new Error(m);e.code=code;e.statusCode=statusCode;throw e;}
 export function createGmailSendService({repository,mailboxPort,env=process.env,runner=runGmailSendWorker,clock=()=>Date.now(),signatureReader=readGmailSignature}={}){
  const tickets=new Map();
- function getStatus(){const m=mailboxPort.getStatus(),flags=['ENABLE_GMAIL','ENABLE_GMAIL_SENDING'].every(k=>String(env[k]||'').trim().toLowerCase()==='true'),ready=Boolean(m.mailboxCheckEnabled&&m.configurationReady&&repository&&['getSendState','claimSendAttempt','finishSendAttempt'].every(k=>typeof repository[k]==='function'));return {sendingEnabled:flags&&ready,configurationReady:ready,configuredMailbox:m.configuredFromAddress||'',reason:!flags?'Sending disabled. Enable both ENABLE_GMAIL and ENABLE_GMAIL_SENDING explicitly.':!ready?'Configure mailbox checking, OAuth and send storage.':'Sending ready; each email requires explicit confirmation.'};}
+ function getStatus(){const m=mailboxPort.getStatus(),flags=['ENABLE_GMAIL','ENABLE_GMAIL_SENDING'].every(k=>String(env[k]||'').trim().toLowerCase()==='true'),ready=Boolean(m.mailboxCheckEnabled&&m.configurationReady&&repository&&['getSendState','claimSendAttempt','finishSendAttempt'].every(k=>typeof repository[k]==='function'));return {sendingEnabled:flags&&ready,oneClickSendingEnabled:flags&&ready&&(env.NMP_ENV||'development')==='development'&&String(env.PORT||'3000')==='3000'&&String(env.ENABLE_ONE_CLICK_SEND||'')==='true',configurationReady:ready,configuredMailbox:m.configuredFromAddress||'',reason:!flags?'Sending disabled. Enable both ENABLE_GMAIL and ENABLE_GMAIL_SENDING explicitly.':!ready?'Configure mailbox checking, OAuth and send storage.':'Sending ready; each email requires explicit confirmation.'};}
  function gate(){const s=getStatus();if(!s.sendingEnabled)fail(s.reason,'SEND_DISABLED',403);return s.configuredMailbox;}
  function modeFor(item,account){
   const s=repository.getSendState(item,account);
@@ -32,18 +33,28 @@ export function createGmailSendService({repository,mailboxPort,env=process.env,r
   }catch(e){if(e.statusCode)throw e;fail('Selected CV could not be verified.','SEND_CV');}
  }
  return {getStatus,eligibility,cancel({ticket}={}){return {cancelled:tickets.delete(ticket),sent:false};},
- async prepare({queueId}={}){
+ async prepare({queueId,expectedVersion,expectedAccount,expectedRecipient,expectedMode,expectedDraftId}={}){
   const account=gate();if(typeof queueId!=='string'||!queueId)fail('Choose one explicit queue item.');const item=repository.getById(queueId);if(!item)fail('Queue item no longer exists.');
-  const {mode}=modeFor(item,account),version=messageEditVersion(item),draft=mode==='draft'?null:await applyGmailSignature(await withCV(item),{account,env,signatureReader});
+  const {mode}=modeFor(item,account),version=messageEditVersion(item);
+  const bound=[expectedVersion,expectedAccount,expectedRecipient,expectedMode,expectedDraftId].some(v=>v!==undefined);
+  if(bound&&!getStatus().oneClickSendingEnabled)fail('Development one-click sending is disabled.','SEND_ONE_CLICK_DISABLED',403);
+  if(bound&&(!/^[a-f0-9]{64}$/.test(expectedVersion||'')||expectedVersion!==version||String(expectedAccount||'').toLowerCase()!==account.toLowerCase()||String(expectedRecipient||'').toLowerCase()!==item.email.toLowerCase()||expectedMode!==mode||String(expectedDraftId||'')!==String(item.draftId||'')))fail('Selected message/sender/action changed after the Send click. Refresh/review.','SEND_INTENT_CHANGED');
+  const draft=mode==='draft'?null:await applyGmailSignature(await withCV(item),{account,env,signatureReader});
   let r;try{r=await runner({payload:{action:'prepare',mode,expectedAddress:account,recipient:item.email,draftId:mode==='draft'?item.draftId:undefined,draft}});}catch{fail('Preparation failed; nothing sent. Check Python/OAuth setup.','SEND_PREFLIGHT',503);}
   if(r.ok!==true||r.sent!==false||r.sendingAttempted!==false||String(r.sendingAccount||'').toLowerCase()!==account.toLowerCase())fail('Preparation failed; nothing sent: '+(r.error||'invalid receipt'),'SEND_PREFLIGHT');
   const summary=r.summary;if(!summary||typeof r.raw!=='string'||summary.recipient?.toLowerCase()!==item.email.toLowerCase()||hash(Buffer.from(r.raw,'base64url'))!==summary.contentHash)fail('Invalid prepared message receipt.');
+  if(mode==='draft')assertFrozenDraftPalette(item,summary.bodyHtml);
   const plain=letterWithoutSignature(summary.bodyPlainText,summary.bodyHtml),first=recipientFirstName(item),candidate=String(env.CANDIDATE_DISPLAY_NAME||'Vijay DAFAL').trim();
   assertResolvedMessage(summary.bodyPlainText,summary.bodyHtml,summary.subject);
   if(!first||!plain.startsWith(`Dear ${first},`)||!plain.endsWith(candidate))fail('Prepared/Gmail greeting or signoff does not match the resolved identity.','SEND_IDENTITY');
   if(/^Candidate$|\|\s*Candidate\s*$/i.test(String(summary.subject||'')))fail('Correct the generic Candidate subject.','SEND_SUBJECT');
   if(/\u00c2\u00a3|\u00e2\u20ac\u2122|\u00e2\u0080\u0099/.test(plain+String(summary.bodyHtml||'')))fail('Encoding corruption detected (Â£ / â€™). Correct the queued message or actual Gmail draft before sending.','SEND_ENCODING');
   extractOutreachExperienceBody(plain,['micro1']);
+  if(bound&&summary.subject!==prepareDraftSnapshot({...item,status:'new'}).subject)fail('Prepared subject differs from reviewed queue. Review/resynchronise before sending.','SEND_INTENT_CHANGED');
+  if(bound&&mode==='draft'){
+   const reviewed=await withCV(item),normal=s=>String(s||'').replace(/\s+/g,' ').trim();
+   if(normal(plain)!==normal(letterWithoutSignature(reviewed.bodyPlainText,reviewed.bodyHtml))||!Array.isArray(summary.attachments)||summary.attachments.length!==1||summary.attachments[0].sha256!==reviewed.attachment.sha256)fail('Gmail draft body or CV differs from reviewed queue. Review/resynchronise; nothing sent.','SEND_INTENT_CHANGED');
+  }
   if(messageEditVersion(repository.getById(queueId)||{})!==version)fail('Queue changed while preparing; review again.');
   for(const [id,t] of tickets)if(t.expiresAt<=clock())tickets.delete(id);
   if(/* outreach-bulk-controls-v1 */ tickets.size>=50||[...tickets.values()].reduce((n,t)=>n+t.raw.length,0)+r.raw.length>96*1024*1024)fail('Too many pending confirmations; cancel or wait for expiry.');

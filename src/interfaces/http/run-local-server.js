@@ -3,6 +3,7 @@ import {createAssignmentEvidenceStore} from '../../infrastructure/applications/s
 import {createApplicationIntelligenceStore} from '../../infrastructure/applications/sqlite-application-intelligence.js';
 import {createApplicationIntelligence} from '../../application/application-intelligence.js';
 import {createApplicationPackExporter} from '../../infrastructure/applications/application-pack-exporter.js';
+import {createTemplateCoverLetterDocuments} from '../../infrastructure/documents/template-cover-letter.js';
 import {createSqliteJobImportStore} from '../../infrastructure/applications/sqlite-job-import-store.js';
 import { gmailLoadedEnvironment } from '../../application/gmail-runtime-diagnostics.js';
 import {createSqliteReviewStore} from '../../infrastructure/applications/sqlite-review-store.js';
@@ -125,7 +126,7 @@ const server = createLocalServer({
   coverLetterRefinementMaxWords:config.application.coverLetterRefinementMaxWords,
   jobImportService,
   applicationReviewStore,
-  applicationPackExporter:createApplicationPackExporter({cvFolder:config.storage.cvFolder}),
+  applicationPackExporter:createApplicationPackExporter({cvFolder:config.storage.cvFolder,documents:createTemplateCoverLetterDocuments()}),
   cvEvidenceLoader,
   cvDocumentAdapter:createCvDocumentAdapter({cvFolder:config.storage.cvFolder}),
   cvInventoryRepository,

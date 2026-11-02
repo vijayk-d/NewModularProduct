@@ -9,7 +9,7 @@ const fail=(message,statusCode=400)=>{throw Object.assign(new Error(message),{co
 export function safeExportStem(value){let s=String(value||'application').normalize('NFKD').replace(/[^a-zA-Z0-9_-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,100);if(!s||/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(s))s='application';return s;}
 function selected(review){const code=String(review.selectedCvRoleCode||review.prepared?.recommendation?.bestCv?.role_code||'');const cv=(review.prepared?.rankedCvs||[]).map(v=>v.cv).find(v=>v?.role_code===code)||(review.prepared?.recommendation?.bestCv?.role_code===code?review.prepared.recommendation.bestCv:null);return {code,path:cv?.local_path||''};}
 function fingerprint(r){return hash(JSON.stringify([reviewEditorState(r),selected(r),r.formData?.jobTitle||'',r.formData?.organisationName||'',r.formData?.jobAdvertLink||'']));}
-export async function exportApplicationPack({store,request,readCv,pack,word=null}){
+export async function exportApplicationPack({store,request,readCv,pack,word=null,documents=null}){
  if(!request||typeof request!=='object'||Array.isArray(request))fail('An explicit export request is required.');
  const {reviewId,expectedBodyVersion,expectedSubjectVersion,expectedRevision,includeCv,expectedCvRoleCode}=request;
  if(!/^[A-Za-z0-9_-]{1,100}$/.test(String(reviewId||''))||typeof includeCv!=='boolean')fail('Choose an application and explicit CV inclusion.');
@@ -34,7 +34,12 @@ export async function exportApplicationPack({store,request,readCv,pack,word=null
  const subject=state.subject,stem=safeExportStem([review.formData?.organisationName,review.formData?.jobTitle].filter(Boolean).join('-'));
  const html=`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(subject)}</title><style>body{font:16px/1.6 system-ui,sans-serif;max-width:48rem;margin:2rem auto;padding:1rem;color:#18202b}mark{background:#fff2a8}a{overflow-wrap:anywhere}</style></head><body>${clean.html}</body></html>`;
  const files=[{name:'cover-letter.txt',bytes:Buffer.from(plain+'\n','utf8')},{name:'cover-letter.html',bytes:Buffer.from(html,'utf8')}];
- if(word)files.push({name:'cover-letter.docx',bytes:await word(plain)});
+ const documentsResult=documents?await documents({plain,html:clean.html,bodyVersion:state.bodyVersion,subjectVersion:state.subjectVersion,revision:state.revision}):null;
+ if(documentsResult){
+  const names=['cover-letter.docx','cover-letter.pdf','cover-letter-export.json'];
+  if(!Array.isArray(documentsResult)||documentsResult.length!==names.length||documentsResult.some((f,i)=>f.name!==names[i]||!Buffer.isBuffer(f.bytes)||!f.bytes.length))fail('Incomplete or invalid template export.');
+  files.push(...documentsResult);
+ }else if(word)files.push({name:'cover-letter.docx',bytes:await word(plain)});
  let cvNote='Not included (explicit user choice).';
  if(includeCv){if(!cv.path||typeof readCv!=='function')fail('Selected CV metadata/reader is unavailable.');const bytes=await readCv(cv.path);const ext=extname(cv.path).toLowerCase();if(!['.pdf','.docx'].includes(ext))fail('Unsupported CV format.');const name='cv-'+safeExportStem(cv.code)+ext;files.push({name,bytes});cvNote=`${name}\nCV code: ${cv.code}\nCV SHA-256: ${hash(bytes)}`;}
  const current=store.get(reviewId);if(!current||fingerprint(current)!==before)fail('Application or CV selection changed during export. Nothing downloaded; retry after review.',409);

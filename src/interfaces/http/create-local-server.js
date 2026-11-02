@@ -1,3 +1,4 @@
+import {createHistoryDashboardHandler} from './history-dashboard-http.js';
 import {createCoverReferenceLibrary} from '../../application/cover-reference-library.js';
 import {createWritingReferenceHandler} from './writing-reference-http.js';
 import {parseWritingReferenceSelection,resolveWritingReferences,writingReferenceRequest,writingReferenceAudit,writingReferenceCostProof,requireWritingReferenceCostApproval,assertWritingReferenceSnapshot} from '../../application/writing-reference-selection.js';
@@ -217,6 +218,7 @@ export function createLocalServer({
   const handleWritingReferences=createWritingReferenceHandler({getLibrary:getWritingReferenceLibrary,getReview:id=>reviewStore.get(id)});
 
   const handleMaintenance=createMaintenanceHandler();
+  const handleHistoryDashboard=createHistoryDashboardHandler();
   const handleAssignmentEvidence=createAssignmentEvidenceHandler({store:assignmentEvidenceStore});
   const handleScenarioPolishing=createScenarioPolishingHandler({library:assignmentEvidenceStore,reviews:reviewStore});
   const scenarioInput=(values,review)=>values.has('scenarioSelections')?values.get('scenarioSelections'):JSON.stringify(review.polishingScenarios?.references||[]);
@@ -422,6 +424,7 @@ export function createLocalServer({
     if(await handleCvDocument(request,response,url))return;
     if(await handleIntelligence(request,response,url))return;
     if(await handleMaintenance(request,response,url))return;
+    if(await handleHistoryDashboard(request,response,url))return;
     if(await handleAssignmentEvidence(request,response,url))return;
     if(await handleScenarioPolishing(request,response,url))return;
     if (await handleOutreach(request, response, url)) return;
@@ -1498,7 +1501,7 @@ export function createLocalServer({
       sendHtml(
         response,
         200,
-        await renderCompleteReview({
+        (await renderCompleteReview({
           formData: updatedReview.formData,
           prepared: updatedReview.prepared,
           reviewId,
@@ -1507,7 +1510,7 @@ export function createLocalServer({
           refinementProposal: updatedReview.refinementProposal,
           selectedCvRoleCode: updatedReview.selectedCvRoleCode,
           cvSelectionMessage: updatedReview.cvSelectionMessage
-        })
+        })).replace('id="cover-letter-draft"','id="cover-letter-draft" data-focus-after-accept="true"')
       );
       return;
     }

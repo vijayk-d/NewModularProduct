@@ -31,7 +31,7 @@ export function zipStored(files){
  }
  const directory=Buffer.concat(central),end=Buffer.alloc(22);end.writeUInt32LE(0x06054b50);end.writeUInt16LE(files.length,8);end.writeUInt16LE(files.length,10);end.writeUInt32LE(directory.length,12);end.writeUInt32LE(offset,16);return Buffer.concat([...local,directory,end]);
 }
-export function createApplicationPackExporter({cvFolder}={}){
+export function createApplicationPackExporter({cvFolder,documents=null}={}){
  const readCv=createExportCvReader(cvFolder);let busy=false;
- return async({store,request})=>{if(busy)throw Object.assign(new Error('Another pack is exporting. Wait, then retry.'),{statusCode:409,code:'APPLICATION_EXPORT_BUSY'});busy=true;try{return await exportApplicationPack({store,request,readCv,pack:zipStored,word:text=>createCvDocumentAdapter({cvFolder}).word(text)});}finally{busy=false;}};
+ return async({store,request})=>{if(busy)throw Object.assign(new Error('Another pack is exporting. Wait, then retry.'),{statusCode:409,code:'APPLICATION_EXPORT_BUSY'});busy=true;try{return await exportApplicationPack({store,request,readCv,pack:zipStored,documents,word:text=>createCvDocumentAdapter({cvFolder}).word(text)});}finally{busy=false;}};
 }

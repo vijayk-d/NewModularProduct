@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { snapshotMessage,prepareDraftSnapshot,sanitizeSnapshotHtml,escapeHtml } from './outreach-message-snapshot.js';
 const fail=(message,statusCode=409)=>{const e=new Error(message);e.statusCode=statusCode;throw e;};
-export function messageEditVersion(item){return createHash('sha256').update(JSON.stringify({subject:item.subject,bodyPlainText:item.bodyPlainText,bodyHtml:item.bodyHtml||'',attachment:item.attachment||null,firstname:item.firstname||'',lastname:item.lastname||'',email:item.email,status:item.status,updatedAt:item.updatedAt||''})).digest('hex');}
+export function messageEditVersion(item){return createHash('sha256').update(JSON.stringify({subject:item.subject,bodyPlainText:item.bodyPlainText,bodyHtml:item.bodyHtml||'',attachment:item.attachment||null,...(item.application?.emailTheme!=null?{emailTheme:item.application.emailTheme}:{}),firstname:item.firstname||'',lastname:item.lastname||'',email:item.email,status:item.status,updatedAt:item.updatedAt||''})).digest('hex');}
 export function messagePresentation(item,{attempted=false}={}){
  let editorHtml,invalid=false;
  try{editorHtml=item.bodyHtml?sanitizeSnapshotHtml(item.bodyHtml).html:String(item.bodyPlainText||'').split('\n').map(escapeHtml).join('<br>');}

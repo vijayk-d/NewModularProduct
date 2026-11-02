@@ -1,8 +1,8 @@
 import {attachOutreachSchedule} from './outreach-schedule.js';
 import {renderHistoryRows} from './review-workspace.js';
 import {createQueueRole} from './review-flow-view.js';
-import {partitionQueueSelection,executeBulkSend,showBulkConfirmation,shortSendLabel} from './outreach-bulk.js';
-import { createQueueMessageControl, saveQueuedMessageBeforeDraft } from './queue-message-editor.js';
+import {partitionQueueSelection,executeBulkSend,showBulkConfirmation,executeOneClickBulkSend,executeOneClickSend,shortSendLabel} from './outreach-bulk.js';
+import { createQueueMessageControl, saveQueuedMessageBeforeDraft, queueSendIntentItem } from './queue-message-editor.js';
 import { attachSimpleContacts } from './outreach-simple-contacts.js';
 function startOutreachQueue() {
   const scopeReviewId=document.querySelector('input[name="reviewId"]')?.value||'';
@@ -96,7 +96,7 @@ function startOutreachQueue() {
       }
       actionCell.appendChild(draftButton);
       const sendButton=document.createElement('button');sendButton.type='button';sendButton.dataset.sendQueueId=item.id;
-      sendButton.dataset.sendEligible=item.sendAction?.eligible?'true':'false';sendButton.textContent=shortSendLabel(item.sendAction?.label);sendButton.setAttribute('aria-label',sendButton.textContent+' for '+(item.fullName||item.email));
+      sendButton.dataset.sendEligible=item.sendAction?.eligible?'true':'false';sendButton.textContent=item.sendAction?.mode==='repeat'?'Send again':shortSendLabel(item.sendAction?.label);sendButton.setAttribute('aria-label',sendButton.textContent+' for '+(item.fullName||item.email));
       sendButton.disabled=directBusy||!sendConfiguration?.sendingEnabled||!item.sendAction?.eligible;
       sendButton.title=item.sendAction?.reason||sendConfiguration?.reason||'Sending starts disabled.';
       sendButton.addEventListener('click',()=>sendOne(item));actionCell.appendChild(sendButton);
@@ -203,13 +203,40 @@ function startOutreachQueue() {
   });
   refreshDraftFeature().catch(error=>{draftStatus.textContent=error.message;});
   try{attachSimpleContacts();}catch(error){console.error('Contact UI initialization failed; queue/history initialization continues.',error);}
-  document.addEventListener('outreach-queue-changed',()=>refresh().catch(error=>status.textContent=error.message));
+  document.addEventListener('outreach-queue-changed',event=>{
+   const wantsFocus=event.detail?.focusQueue===true&&event.detail.reviewId===scopeReviewId;
+   const owner=document.activeElement;
+   refresh().then(count=>{
+    if(!wantsFocus||!count||leaving||!section.isConnected||document.querySelector('input[name="reviewId"]')?.value!==scopeReviewId)return;
+    const currentFocus=document.activeElement;
+    if(currentFocus!==owner&&currentFocus!==document.body)return;
+    if(currentFocus!==document.body&&!currentFocus?.closest?.('.organisation-contact-actions'))return;
+    const heading=section.querySelector('h2')||section;heading.setAttribute('tabindex','-1');heading.focus({preventScroll:true});section.scrollIntoView({block:'start',behavior:'auto'});
+   }).catch(error=>status.textContent=error.message);
+  });
   const sendStatus=document.createElement('p');section.querySelector('h2').after(sendStatus);
   async function refreshSendFeature(){
-    try{sendConfiguration=await request('/api/outreach-queue/send-status');sendStatus.textContent=sendConfiguration.reason;}catch(e){sendConfiguration=null;sendStatus.textContent=e.message;}
+    try{sendConfiguration=await request('/api/outreach-queue/send-status');sendStatus.textContent=`From: ${sendConfiguration.configuredMailbox||'unconfigured'}. ${sendConfiguration.reason} ${sendConfiguration.oneClickSendingEnabled?'One-click send ON: Send sends reviewed emails without another popup.':'One-click send OFF: review/confirmation flow remains active.'} Review addresses/drafts first. No automatic retries.`;}catch(e){sendConfiguration=null;sendStatus.textContent=e.message;}
     section.querySelectorAll('[data-send-queue-id]').forEach(b=>b.disabled=directBusy||!sendConfiguration?.sendingEnabled||b.dataset.sendEligible!=='true');syncBulkControls();
   }
+  function setSendInteractionLocked(value){
+    section.querySelectorAll('.outreach-queue-checkbox,.queue-select-all').forEach(b=>{if(value){if(b.dataset.sendPreviousDisabled===undefined)b.dataset.sendPreviousDisabled=String(b.disabled);b.disabled=true;}else if(b.dataset.sendPreviousDisabled!==undefined){b.disabled=b.dataset.sendPreviousDisabled==='true';delete b.dataset.sendPreviousDisabled;}});
+    section.querySelectorAll('.queue-rich-message-editor').forEach(e=>{if(value){if(e.dataset.sendPreviousEditable===undefined)e.dataset.sendPreviousEditable=e.contentEditable;e.contentEditable='false';}else if(e.dataset.sendPreviousEditable!==undefined){e.contentEditable=e.dataset.sendPreviousEditable;delete e.dataset.sendPreviousEditable;}e.closest('details')?.querySelectorAll('button').forEach(b=>{if(value){if(b.dataset.sendPreviousDisabled===undefined)b.dataset.sendPreviousDisabled=String(b.disabled);b.disabled=true;}else if(b.dataset.sendPreviousDisabled!==undefined){b.disabled=b.dataset.sendPreviousDisabled==='true';delete b.dataset.sendPreviousDisabled;}});});
+  }
+  async function saveForSend(id){try{return await saveQueuedMessageBeforeDraft(id);}finally{setSendInteractionLocked(true);}}
   async function sendOne(item){
+    if(!sendConfiguration?.oneClickSendingEnabled)return sendOneLegacy(item);
+    if(directBusy)return;const clickedItem=queueSendIntentItem(item),clickedAccount=sendConfiguration?.configuredMailbox;
+    directBusy=true;setSendInteractionLocked(true);const controls=[...section.querySelectorAll('[data-queue-action],[data-direct-queue-id],[data-send-queue-id]')];controls.forEach(b=>b.disabled=true);
+    let sent=false,receipt='';try{
+      await refreshSendFeature();if(!sendConfiguration?.sendingEnabled)throw new Error(sendStatus.textContent);
+      if(!clickedAccount||String(clickedAccount).toLowerCase()!==String(sendConfiguration.configuredMailbox).toLowerCase())throw new Error('Sending account changed. Review it before another Send click.');
+      const r=await executeOneClickSend({item:clickedItem,account:clickedAccount,userInitiated:true,api:request,save:saveForSend,loadItems:async()=>(await request(queueListUrl)).items,onStage:stage=>status.textContent=stage==='preparing'?'Preparing the reviewed email for sending.':'Sending the reviewed email. Do not repeat the action.'});
+      sent=true;receipt=`Sent messageId: ${r.messageId}`;await refresh();await refreshHistory();status.textContent=receipt;
+    }catch(e){status.textContent=e.data?.sent&&e.data.messageId?`Gmail confirmed sending ${e.data.messageId}. History persistence uncertain; do not retry.`:sent?receipt+' Refresh failed; do not resend.':e.message;try{await refresh();}catch{}}
+    finally{directBusy=false;setSendInteractionLocked(false);controls.forEach(b=>b.disabled=false);await refreshSendFeature();section.querySelectorAll('[data-direct-queue-id]').forEach(b=>b.disabled=!liveDraftConfig?.draftCreationEnabled||!liveDraftConfig?.configurationReady);syncBulkControls();}
+  }
+  async function sendOneLegacy(item){
     if(directBusy)return;directBusy=true;const controls=[...section.querySelectorAll('[data-queue-action],[data-direct-queue-id],[data-send-queue-id]')];controls.forEach(b=>b.disabled=true);
     let sent=false,receipt='';try{
       await refreshSendFeature();if(!sendConfiguration?.sendingEnabled)throw new Error(sendStatus.textContent);
@@ -243,13 +270,16 @@ function startOutreachQueue() {
     const ids=[...tbody.querySelectorAll('.outreach-queue-checkbox:checked')].map(b=>b.value),draft=partitionQueueSelection(bulkQueueItems,ids,'draft'),send=partitionQueueSelection(bulkQueueItems,ids,'send');
     const draftButton=section.querySelector('[data-queue-action="draft-direct"]'),sendButton=section.querySelector('[data-queue-action="send-selected"]'),remove=section.querySelector('[data-queue-action="delete"]');
     draftButton.textContent=`Draft (${draft.eligible.length})`;draftButton.disabled=directBusy||!liveDraftConfig?.draftCreationEnabled||!liveDraftConfig?.configurationReady||!draft.eligible.length;
-    sendButton.textContent=`Send (${send.eligible.length})`;sendButton.disabled=directBusy||!sendConfiguration?.sendingEnabled||!send.eligible.length;
+    sendButton.textContent=`Send ${send.eligible.length} emails`;sendButton.disabled=directBusy||!sendConfiguration?.sendingEnabled||!send.eligible.length;
     remove.textContent=`Remove (${ids.length})`;remove.disabled=directBusy||!ids.length;
     draftButton.setAttribute('aria-label',`Draft ${draft.eligible.length} selected eligible recipients`);sendButton.setAttribute('aria-label',`Send ${send.eligible.length} selected eligible recipients`);remove.setAttribute('aria-label',`Remove ${ids.length} selected queue rows`);
     section.querySelector('[data-queue-action="refresh"]').disabled=directBusy;section.querySelector('[data-queue-action="clear"]').disabled=directBusy||!bulkQueueItems.length;
-    selectionNote.textContent=`${ids.length} selected · ${draft.eligible.length} draftable · ${send.eligible.length} sendable`;
+    const sameContact=send.eligible.length-new Set(send.eligible.map(i=>i.contactId||i.fullName||i.id)).size;
+    const sentContacts=new Set(bulkQueueItems.filter(i=>i.status==='sent'&&i.contactId).map(i=>i.contactId));
+    const priorContact=send.eligible.filter(i=>i.contactId&&sentContacts.has(i.contactId)).length;
+    selectionNote.textContent=`${ids.length} selected · ${draft.eligible.length} draftable · ${send.eligible.length} sendable · ${send.eligible.filter(i=>!i.verified).length} unverified address(es). ${sameContact?'Multiple addresses for the same contact are selected. ':''}${priorContact?'Some contacts already have outreach at another address. ':''}Review before clicking Send.`;
     const master=section.querySelector('.queue-select-all'),total=tbody.querySelectorAll('.outreach-queue-checkbox').length;
-    master.checked=total>0&&ids.length===total;master.indeterminate=ids.length>0&&ids.length<total;master.disabled=directBusy||!total;
+    master.checked=total>0&&ids.length===total;master.indeterminate=ids.length>0&&ids.length<total;master.disabled=directBusy||!total;setSendInteractionLocked(directBusy);
   }
   section.addEventListener('change',e=>{if(e.target.matches('.outreach-queue-checkbox,.queue-select-all'))syncBulkControls();});
   for(const [action,label] of Object.entries({refresh:'Refresh queue','draft-direct':'Draft selected eligible recipients','send-selected':'Send selected eligible recipients','delete':'Remove selected queue rows','clear':'Clear queue; retain Gmail and history'})){
@@ -263,13 +293,16 @@ function startOutreachQueue() {
     panel.appendChild(table);panel.open=results.some(r=>!['sent','cancelled','skipped'].includes(r.kind));
   }
   async function bulkSendSelected(ids){
-    if(directBusy)return;directBusy=true;stopBulk=false;stopBulkButton.hidden=false;stopBulkButton.disabled=false;
+    if(directBusy)return;const clickedItems=bulkQueueItems.filter(i=>ids.includes(i.id)).map(queueSendIntentItem),clickedIds=[...new Set(ids)],clickedAccount=sendConfiguration?.configuredMailbox;directBusy=true;setSendInteractionLocked(true);stopBulk=false;stopBulkButton.hidden=false;stopBulkButton.disabled=false;
     const controls=[...section.querySelectorAll('[data-queue-action],[data-direct-queue-id],[data-send-queue-id]')];controls.forEach(b=>b.disabled=true);syncBulkControls();
     try{
       await refreshSendFeature();if(!sendConfiguration?.sendingEnabled)throw new Error(sendConfiguration?.reason||'Sending unavailable.');
-      const items=(await request(queueListUrl)).items;
-      const batch=await executeBulkSend({items,ids,api:request,save:saveQueuedMessageBeforeDraft,confirm:data=>showBulkConfirmation(data),isStopped:()=>stopBulk,
-        onProgress:p=>status.textContent=`${p.stage==='preparing'?'Preparing':'Sending'} ${p.index}/${p.total} · batch ${p.batchIndex}/${p.batchCount}: ${p.email}. One-second spacing; no automatic retries.`});
+      if(!clickedAccount||String(clickedAccount).toLowerCase()!==String(sendConfiguration.configuredMailbox).toLowerCase())throw new Error('Sending account changed. Review it before another Send click.');
+      const runBatch=sendConfiguration.oneClickSendingEnabled?
+        options=>executeOneClickBulkSend({...options,clickedItems,ids:clickedIds,account:clickedAccount,userInitiated:true,loadItems:async()=>(await request(queueListUrl)).items}):
+        async options=>executeBulkSend({...options,items:(await request(queueListUrl)).items,ids:clickedIds,save:saveQueuedMessageBeforeDraft,confirm:data=>showBulkConfirmation(data)});
+      const batch=await runBatch({api:request,save:saveForSend,isStopped:()=>stopBulk,
+        onProgress:p=>status.textContent=`${({saving:'Saving',preparing:'Preparing',sending:'Sending'})[p.stage]||'Preparing'} ${p.index}/${p.total} · batch ${p.batchIndex}/${p.batchCount}: ${p.email}. One-second spacing; no automatic retries.`});
       renderBulkResults(batch.results);
       const sent=batch.results.filter(r=>['sent','sent_attention'].includes(r.kind)),uncertain=batch.results.filter(r=>r.kind==='uncertain').length;
       const completed=new Set(sent.map(r=>r.id));tbody.querySelectorAll('.outreach-queue-checkbox').forEach(b=>{if(completed.has(b.value))b.checked=false;});
@@ -277,7 +310,7 @@ function startOutreachQueue() {
       try{await refresh();await refreshHistory();}catch{status.textContent=message+' Refresh failed; do not resend completed rows.';return;}
       status.textContent=message;
     }catch(e){status.textContent=e.message;}
-    finally{directBusy=false;stopBulkButton.hidden=true;controls.forEach(b=>b.disabled=false);await refreshSendFeature();section.querySelectorAll('[data-direct-queue-id]').forEach(b=>b.disabled=!liveDraftConfig?.draftCreationEnabled||!liveDraftConfig?.configurationReady);syncBulkControls();}
+    finally{directBusy=false;setSendInteractionLocked(false);stopBulkButton.hidden=true;controls.forEach(b=>b.disabled=false);await refreshSendFeature();section.querySelectorAll('[data-direct-queue-id]').forEach(b=>b.disabled=!liveDraftConfig?.draftCreationEnabled||!liveDraftConfig?.configurationReady);syncBulkControls();}
   }
   async function directDraft(rows){
     if(directBusy||!rows.length)return;

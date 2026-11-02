@@ -1,3 +1,36 @@
 body{font-family:system-ui,sans-serif;color:#152033}.application-save-bar{display:flex;align-items:center;flex-wrap:wrap;gap:.65rem;margin:.6rem 0;padding:.6rem;border:1px solid #d4dce8;border-radius:.4rem}.application-save-bar button{width:auto;min-height:32px;padding:.4rem .7rem}.application-save-bar span{font-size:.9rem}.application-list-scroll{overflow:auto}body>main{max-width:80rem;margin:1rem auto;padding:1rem}.application-list-scroll table{width:100%;border-collapse:collapse}.application-list-scroll th,.application-list-scroll td{padding:.65rem;text-align:left;vertical-align:top;border-bottom:1px solid #ddd;overflow-wrap:anywhere}button:focus-visible,a:focus-visible{outline:2px solid #3158a0;outline-offset:3px}
 
 .application-save-bar label{display:inline-flex;align-items:center;gap:.25rem;margin:0}.application-save-bar input[type=checkbox]{width:auto;min-height:0;margin:0}
+
+/* TEMPLATE_EXPORT_LIST_ALIGNMENT_V1: native markers; no text-padding spaces. */
+body .rich-editor ul,body .rich-editor ol{list-style-position:outside;padding-inline-start:.375in}
+body .rich-editor li{padding-inline-start:.125in}
+
+/* GENERATED_LIST_SPACING_V2: spacing belongs to paragraphs, not stacked list margins. */
+body .rich-editor ul,body .rich-editor ol{margin-block:0}
+body .rich-editor li{margin-block:0}
+body .rich-editor li>p{margin-block:0}
+
+/* CONTROLLED_OUTER_LIST_GAP_V3 */
+body .rich-editor ul,
+body .rich-editor ol {
+    margin-block: 1em;
+    margin-block: 1lh;
+}
+body .rich-editor li ul,
+body .rich-editor li ol {
+    margin-block: 0;
+}
+body .rich-editor li,
+body .rich-editor li > p {
+    margin-block: 0;
+}
+
+/* ORGANISATION_VALUES_WRAP_V1: native checkboxes/IDs unchanged. */
+.review-workspace fieldset.organisation-values-choices{min-width:0}
+.review-workspace .organisation-values-options{display:flex;flex-wrap:wrap;align-items:flex-start;gap:.5rem 1rem;min-width:0}
+.review-workspace .organisation-values-options label.organisation-value-choice{display:inline-flex!important;align-items:flex-start;gap:.35rem;flex:0 1 auto;min-width:0;max-width:min(100%,28rem);margin:0;font-weight:400}
+.review-workspace .organisation-value-choice input[type=checkbox]{flex:0 0 auto;width:18px!important;min-width:18px!important;margin:.2rem 0 0}
+.review-workspace .organisation-value-choice>span{min-width:0;white-space:normal;overflow-wrap:anywhere;line-height:1.5}
+
+.email-palette-controls{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;max-width:100%;margin:.5rem 0}.email-palette-controls legend{font-weight:600}.email-palette-controls p{flex-basis:100%;margin:.25rem 0}.email-palette-controls select{max-width:100%;padding:.4rem}

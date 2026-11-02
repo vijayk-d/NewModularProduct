@@ -1,3 +1,4 @@
+import {freezeEmailPalette} from './email-palette.js';
 import { cvDisplayName } from './gmail-message-presentation.js';
 import { recipientFirstName } from './outreach-recipient-identity.js';
 import { snapshotMessage, prepareDraftSnapshot } from './outreach-message-snapshot.js';
@@ -67,7 +68,7 @@ export function createOutreachQueueService({ repository, contactStore, getReview
           application: {
             jobTitle: form.jobTitle || '', organisationName: form.organisationName || '',
             organisationUrl: form.organisationUrl || '', jobAdvertLink: advert,
-            jobReference: form.jobReference || '', selectedCvRoleCode: review.selectedCvRoleCode || ''
+            jobReference: form.jobReference || '', selectedCvRoleCode: review.selectedCvRoleCode || '', emailTheme:freezeEmailPalette(review.emailTheme)
           },
           subject, ...finalSnapshot,
         ...(finalSnapshot.bodyHtml ? {firstname:recipientFirstName(contact),

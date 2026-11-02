@@ -9,7 +9,7 @@ const required=(value,label)=>{if(typeof value!=='string'||!value.trim())conflic
 const address=(value,label)=>{const text=required(value,label);if(!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(text))conflict(`${label} is invalid.`,'GMAIL_DRAFT_INVALID');return text.toLowerCase();};
 export function draftSnapshotFingerprint(item) {
   return createHash('sha256').update(JSON.stringify({subject:item.subject,bodyPlainText:item.bodyPlainText,
-    bodyHtml:item.bodyHtml||'',attachment:item.attachment||null})).digest('hex');
+    bodyHtml:item.bodyHtml||'',attachment:item.attachment||null,...(item.application?.emailTheme!=null?{emailTheme:item.application.emailTheme}:{})})).digest('hex');
 }
 export function createDraftAttemptLedger(db,mirrorQueue=()=>{}) {
   db.exec(DRAFT_LEDGER_SCHEMA);

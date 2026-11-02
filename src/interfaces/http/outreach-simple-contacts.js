@@ -8,6 +8,15 @@ export function emailCandidateRows(contacts=[]) {
   return (emails.length?emails:['']).map(email=>({key:`${c.id}:${email.toLowerCase()}`,contactId:c.id,firstName:c.firstName||names[0]||'',lastName:c.lastName||names.slice(1).join(' '),role:c.role||'',email,linkedinUrl:c.linkedinUrl||'',verified:c.verified===true&&email.toLowerCase()===String(c.selectedEmail||'').toLowerCase(),source:c.emailSources?.[email.toLowerCase()]||(email.toLowerCase()===String(c.selectedEmail||'').toLowerCase()?c.emailSource:'inferred')||'unknown'}));
  });
 }
+let emailSourceSequence=0;
+export function applyEmailSourcePresentation(row){
+ const input=row.querySelector('.candidate-email'),hint=row.querySelector('small');if(!input||!hint)return;
+ const source=String(hint.textContent||'').trim().toLowerCase(),styled=source==='inferred'||source==='manual';
+ input.dataset.emailSource=source;
+ hint.className=styled?'email-source-metadata':'';
+ if(styled){if(!hint.id)hint.id='candidate-email-source-'+(++emailSourceSequence);input.dataset.emailSourceDescription=hint.id;input.setAttribute('aria-describedby',hint.id);input.title=input.value+'\nEmail source: '+(source==='manual'?'manually entered':'inferred')+'. Source is not a verification status.';}
+ else{if(input.dataset.emailSourceDescription){input.removeAttribute?.('aria-describedby');delete input.dataset.emailSourceDescription;}input.title=input.value;}
+}
 export function attachSimpleContacts(){
  const form=document.querySelector('form[action="/recruiter-contacts/link"]');if(!form||form.dataset.simpleAttached)return;
  form.dataset.simpleAttached='true';form.noValidate=true;
@@ -38,12 +47,13 @@ export function attachSimpleContacts(){
    if(key==='email'){td.className='contact-email-cell';const hint=document.createElement('small');hint.textContent=value.emailSource||value.source||'manual';td.appendChild(hint);}
    input.addEventListener('input',()=>{
     if(key==='email')input.title=input.value;
-    if(key==='email')tr.querySelector('small').textContent=tr.dataset.suggestingEmail==='true'?'inferred':'manual';
+    if(key==='email'){tr.querySelector('small').textContent=tr.dataset.suggestingEmail==='true'?'inferred':'manual';applyEmailSourcePresentation(tr);}
     box.checked=true;remember(tr);
     if(data.contactId&&key!=='email')for(const other of document.querySelectorAll('[data-candidate-key]'))if(other!==tr&&other.dataset.contactId===data.contactId){other.querySelector('.'+cls).value=input.value;remember(other);}
     count();
    });
   }
+  applyEmailSourcePresentation(tr);
   const cells=[...tr.cells];cells[1].className='candidate-person';const names=document.createElement('div');names.className='candidate-name-fields';names.append(cells[1].firstElementChild,cells[2].firstElementChild);cells[1].replaceChildren(names);cells[2].remove();
   for(const [i,label] of ['Select','Person','Email candidate','Role'].entries())tr.cells[i].dataset.label=label;
   const actionCell=tr.insertCell();actionCell.dataset.label='Actions';const actions=document.createElement('div');actions.className='contact-row-actions';actionCell.appendChild(actions);
@@ -54,7 +64,7 @@ export function attachSimpleContacts(){
    const v=values(tr),first=part(v.firstName),last=part(v.lastName);
    if(!first||!last||!/^([a-z0-9-]+\.)+[a-z]{2,63}$/i.test(domain)){status.textContent='Enter first/last names and a valid domain first.';return;}
    const input=tr.querySelector('.candidate-email');input.value=`${first}.${last}@${domain}`;tr.dataset.suggestingEmail='true';tr.querySelector('small').textContent='inferred';try{input.dispatchEvent(new Event('input',{bubbles:true}));}finally{delete tr.dataset.suggestingEmail;}
-   tr.querySelector('small').textContent='inferred';status.textContent='Address inferred from names and domain. Check it before selecting.';
+   tr.querySelector('small').textContent='inferred';applyEmailSourcePresentation(tr);status.textContent='Address inferred from names and domain. Check it before selecting.';
   }));
   if(!data.contactId)actions.appendChild(makeButton('Remove row',()=>{const i=manual.findIndex(v=>v.key===data.key);if(i>=0)manual.splice(i,1);edits.delete(data.key);tr.remove();count();}));
  }
@@ -80,7 +90,8 @@ export function attachSimpleContacts(){
    for(const tr of selected)edits.delete(tr.dataset.candidateKey);
    const keys=new Set(rows.filter(v=>!v.contactId).map(v=>v.clientKey));for(let i=manual.length-1;i>=0;i--)if(keys.has(manual[i].clientKey))manual.splice(i,1);
    const accounting=queueReceipt(rows,result);status.textContent=receiptText(accounting);status.dataset.queueAccounting=JSON.stringify(accounting);renderQueueReceipt(status,rows,result,document);
-   document.dispatchEvent(new CustomEvent('outreach-queue-changed'));
+   const focusOwner=document.activeElement;const canMoveQueueFocus=focusOwner===document.body||Boolean(focusOwner?.closest?.('.organisation-contact-actions'));
+   document.dispatchEvent(new CustomEvent('outreach-queue-changed',{detail:{reviewId,focusQueue:body===organisation&&canMoveQueueFocus&&accounting.unaccounted===0&&(accounting.added+accounting.updated+accounting.duplicates)>0}}));
    try{await refreshImportedContacts(reviewId);}catch{status.textContent+=' Saved, but contacts could not refresh.';}
   }catch(error){status.textContent=error.message;}finally{busy=false;if(submit)submit.disabled=false;document.querySelectorAll('.organisation-contact-actions button').forEach(b=>b.disabled=false);count();}
  }
@@ -104,7 +115,7 @@ export function attachSimpleContacts(){
  form.insertBefore(makeButton('Add contact row',()=>{const clientKey=crypto.randomUUID(),data={key:`manual:${clientKey}`,clientKey,source:'manual',checked:true};manual.push(data);row(available,data,false);available.lastElementChild.querySelector('.candidate-first').focus();count();}),form.firstChild);
  const actions=form.querySelector('.linked-contact-actions');if(actions)actions.appendChild(makeButton('Queue selected linked contacts',()=>add(linked)));
  const domainField=document.getElementById('email-domain-input');let domainTimer;
- function refreshInferredDomain(){const domain=businessDomain(domainField?.value);if(!domain)return;let changes=0;for(const tr of document.querySelectorAll('[data-candidate-key]')){const hint=tr.querySelector('small'),email=tr.querySelector('.candidate-email');if(!email||hint?.textContent!=='inferred')continue;const next=resolveEmailRow({email:email.value,source:'inferred',verified:tr.dataset.emailVerified==='true'},null,domain);if(next.email!==email.value){email.value=next.email;email.title=email.value;remember(tr);changes++;}}for(const body of [available,linked,organisation]){if(!body)continue;const seen=new Map();for(const row of [...body.rows]){const email=row.querySelector('.candidate-email');if(!email)continue;const key=JSON.stringify([row.dataset.contactId||row.dataset.clientKey,email.value.toLowerCase()]);const prior=seen.get(key);if(!prior){seen.set(key,row);continue;}prior.querySelector('[type="checkbox"]').checked=prior.querySelector('[type="checkbox"]').checked||row.querySelector('[type="checkbox"]').checked;if(row.querySelector('small')?.textContent!=='inferred')prior.querySelector('small').textContent=row.querySelector('small')?.textContent||'manual';if(row.dataset.emailVerified==='true')prior.dataset.emailVerified='true';remember(prior);edits.delete(row.dataset.candidateKey);row.remove();}}count();if(changes)status.textContent=changes+' inferred address row(s) updated to '+domain+'. Review them before queueing; existing queue/Gmail snapshots were not changed.';}
+ function refreshInferredDomain(){const domain=businessDomain(domainField?.value);if(!domain)return;let changes=0;for(const tr of document.querySelectorAll('[data-candidate-key]')){const hint=tr.querySelector('small'),email=tr.querySelector('.candidate-email');if(!email||hint?.textContent!=='inferred')continue;const next=resolveEmailRow({email:email.value,source:'inferred',verified:tr.dataset.emailVerified==='true'},null,domain);if(next.email!==email.value){email.value=next.email;email.title=email.value;applyEmailSourcePresentation(tr);remember(tr);changes++;}}for(const body of [available,linked,organisation]){if(!body)continue;const seen=new Map();for(const row of [...body.rows]){const email=row.querySelector('.candidate-email');if(!email)continue;const key=JSON.stringify([row.dataset.contactId||row.dataset.clientKey,email.value.toLowerCase()]);const prior=seen.get(key);if(!prior){seen.set(key,row);continue;}prior.querySelector('[type="checkbox"]').checked=prior.querySelector('[type="checkbox"]').checked||row.querySelector('[type="checkbox"]').checked;if(row.querySelector('small')?.textContent!=='inferred')prior.querySelector('small').textContent=row.querySelector('small')?.textContent||'manual';if(row.dataset.emailVerified==='true')prior.dataset.emailVerified='true';applyEmailSourcePresentation(prior);remember(prior);edits.delete(row.dataset.candidateKey);row.remove();}}count();if(changes)status.textContent=changes+' inferred address row(s) updated to '+domain+'. Review them before queueing; existing queue/Gmail snapshots were not changed.';}
  domainField?.addEventListener('change',refreshInferredDomain);domainField?.addEventListener('input',()=>{clearTimeout(domainTimer);domainTimer=setTimeout(refreshInferredDomain,350);});
  refreshImportedContacts(reviewId).catch(error=>status.textContent=error.message);count();
 }

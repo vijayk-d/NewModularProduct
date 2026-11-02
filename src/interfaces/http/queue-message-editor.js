@@ -15,7 +15,8 @@ async function save(state){
  try{await state.saving;}catch(error){state.status.textContent=error.message;throw error;}
  finally{state.saving=null;state.editor.contentEditable=state.latest.canEditMessage?'true':'false';state.updateButtons();}
 }
-export async function saveQueuedMessageBeforeDraft(queueId){const state=edits.get(queueId);if(state?.dirty||state?.saving)await save(state);}
+export function queueSendIntentItem(item){const state=edits.get(item.id);return structuredClone(state?{...item,...state.latest,sendAction:state.latest.sendAction||item.sendAction,editVersion:state.version||item.editVersion}:item);}
+export async function saveQueuedMessageBeforeDraft(queueId){const state=edits.get(queueId),beforeVersion=state?.version;if(state?.dirty||state?.saving)await save(state);return state?{beforeVersion,editVersion:state.version}:null;}
 export function createQueueMessageControl(item){
  const existing=edits.get(item.id),state=existing||{dirty:false,saving:null};state.latest=item;
  if(!state.dirty&&!state.saving){state.html=item.editorHtml;state.plain=item.bodyPlainText;state.version=item.editVersion;}

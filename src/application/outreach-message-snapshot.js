@@ -1,3 +1,4 @@
+import {freezeEmailPalette} from './email-palette.js';
 import {renderLinkedRoleOpening,restoreLinkedOpeningPlain,canonicalLinkedOpeningPlain} from '../domain/shared/linked-role-opening.js';
 import { recipientFirstName } from './outreach-recipient-identity.js';
 import {normalizeLegacyAdvertSnapshot} from '../domain/shared/legacy-advert-normalization.js';
@@ -112,7 +113,7 @@ export function prepareDraftSnapshot(item) {
   const attachment=item.attachment ? structuredClone(item.attachment) : null;
   if(item.application?.selectedCvRoleCode && !attachment) invalid('This queue item lacks selected-CV attachment metadata. Remove it and requeue the reviewed application.');
   return {queueId:item.id,recipient:{email:item.email,firstname:values.firstname,lastname:values.lastname},
-    subject:personalize(item.subject,values),bodyPlainText:body,bodyHtml:stripEditorHighlightMetadata(html),attachment};
+    subject:personalize(item.subject,values),bodyPlainText:body,bodyHtml:stripEditorHighlightMetadata(html),attachment,...(item.application?.emailTheme!=null?{emailTheme:freezeEmailPalette(item.application.emailTheme)}:{})};
 }
 
 

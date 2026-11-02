@@ -1,0 +1,26 @@
+import {createRequire} from 'node:module';import {fileURLToPath} from 'node:url';import {spawn} from 'node:child_process';import fs from 'node:fs';import path from 'node:path';
+const defaultRoot=fileURLToPath(new URL('../../../',import.meta.url));
+const failure=(code,message)=>Object.assign(new Error(message),{code,statusCode:409});
+export function safeEnvironment(env){const out={};for(const [k,v]of Object.entries(env))if(/^(PATH|PATHEXT|SYSTEMROOT|SYSTEMDRIVE|WINDIR|COMSPEC|TEMP|TMP|USERPROFILE|HOME|APPDATA|LOCALAPPDATA|PROGRAMFILES|PROGRAMFILES\(X86\)|PROGRAMW6432)$/i.test(k))out[k]=v;return out;}
+export function detectPdfEngine({projectRoot=defaultRoot,env=process.env}={}){
+ let chromium;try{chromium=createRequire(path.join(path.resolve(projectRoot),'package.json'))('@playwright/test').chromium;}catch{return {available:false,code:'PDF_LIBRARY_MISSING',message:'The project Playwright dependency is not installed. Nothing downloaded or launched.'};}
+ const bundled=chromium.executablePath();if(fs.existsSync(bundled))return {available:true,engine:'chromium',chromium,executablePath:bundled};
+ const folders=[env.ProgramFiles,env['ProgramFiles(x86)'],env.ProgramW6432,env.LOCALAPPDATA,env.PROGRAMFILES,env['PROGRAMFILES(X86)']].filter(Boolean);
+ for(const folder of folders){const file=path.join(folder,'Microsoft','Edge','Application','msedge.exe');if(fs.existsSync(file))return {available:true,engine:'msedge',chromium,executablePath:file};}
+ return {available:false,code:'PDF_BROWSER_MISSING',message:'No bundled Chromium or standard installed Edge executable found. No download attempted.'};
+}
+export function docxPrintLayout(bytes,{env=process.env,spawnImpl=spawn}={}){return new Promise((resolve,reject)=>{
+ let child,timer,done=false,out='';const finish=(e,v)=>{if(done)return;done=true;clearTimeout(timer);if(e){try{child?.kill();}catch{}reject(e);}else resolve(v);};
+ try{if(!Buffer.isBuffer(bytes)||bytes.length>10*1024*1024)throw failure('PDF_DOCX_LIMIT','Generated Word document exceeds PDF input limit.');child=spawnImpl(env.PYTHON||(process.platform==='win32'?'python':'python3'),['-B',fileURLToPath(new URL('../../../python-worker/cover_letter_pdf_layout.py',import.meta.url))],{stdio:['pipe','pipe','pipe'],env:{...safeEnvironment(env),PYTHONUTF8:'1',PYTHONIOENCODING:'utf-8:strict'}});timer=setTimeout(()=>finish(failure('PDF_LAYOUT_TIMEOUT','PDF layout conversion timed out.')),15000);child.on('error',()=>finish(failure('PDF_LAYOUT_START','Local PDF layout worker could not start.')));child.stdin.on('error',()=>finish(failure('PDF_LAYOUT_INPUT','PDF layout input failed.')));child.stdout.setEncoding('utf8');child.stdout.on('data',s=>{out+=s;if(Buffer.byteLength(out)>3*1024*1024)finish(failure('PDF_LAYOUT_LIMIT','PDF layout exceeds limit.'));});child.stdout.on('error',()=>finish(failure('PDF_LAYOUT_OUTPUT','PDF layout output failed.')));child.stderr.on('data',()=>{});child.stderr.on('error',()=>{});child.on('close',code=>{if(done)return;try{const v=JSON.parse(out);if(code!==0||v.ok!==true||typeof v.html!=='string')throw failure(/^PDF_[A-Z_]+$/.test(v.code||'')?v.code:'PDF_LAYOUT_FAILED','The generated DOCX uses an unsupported or invalid PDF layout. No partial pack downloaded.');finish(null,v);}catch(e){finish(e.code?e:failure('PDF_LAYOUT_RESPONSE','Invalid PDF layout response.'));}});child.stdin.end(JSON.stringify({docx:bytes.toString('base64')}),'utf8');}catch(e){finish(e.code?e:failure('PDF_LAYOUT_START','PDF layout worker unavailable.'));}
+});}
+export async function renderCoverLetterPdf(bytes,{projectRoot=defaultRoot,env=process.env,detect=detectPdfEngine,layoutWorker=docxPrintLayout}={}){
+ const engine=detect({projectRoot,env});if(!engine.available)throw failure(engine.code,engine.message);
+ const layout=await layoutWorker(bytes,{env});let browser,timer;
+ try{
+  browser=await engine.chromium.launch({executablePath:engine.executablePath,headless:true,timeout:15000,env:safeEnvironment(env),args:['--disable-background-networking','--no-first-run','--no-default-browser-check']});
+  const render=async()=>{const context=await browser.newContext({serviceWorkers:'block'});await context.route('**/*',route=>route.abort());const page=await context.newPage();page.setDefaultTimeout(10000);await page.setContent(layout.html,{waitUntil:'domcontentloaded',timeout:10000});await page.evaluate(()=>document.fonts.ready);const pdf=await page.pdf({preferCSSPageSize:true,printBackground:true,displayHeaderFooter:false,tagged:true});if(!Buffer.isBuffer(pdf)||pdf.length>10*1024*1024||!pdf.subarray(0,5).equals(Buffer.from('%PDF-')))throw failure('PDF_OUTPUT_INVALID','PDF engine returned invalid output.');return {bytes:pdf,engine:engine.engine,browserVersion:browser.version(),layout:layout.layout};};
+  const timeout=new Promise((resolve,reject)=>{timer=setTimeout(()=>{browser?.close().catch(()=>{});reject(failure('PDF_RENDER_TIMEOUT','Local PDF rendering timed out; no pack downloaded.'));},30000);});
+  return await Promise.race([render(),timeout]);
+ }catch(e){throw e.code?e:failure('PDF_RENDER_FAILED','Local browser PDF rendering failed. Check the local engine before retrying; no Word/Gmail operation was used.');}
+ finally{clearTimeout(timer);if(browser)await browser.close().catch(()=>{});}
+}

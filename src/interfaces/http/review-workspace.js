@@ -1,5 +1,13 @@
 export function restoreReviewActionSection(doc=document){
  const route=doc.defaultView?.location?.pathname;
+ if(route==='/cover-letter-refinement/apply'){
+  const editor=doc.getElementById?.('cover-letter-draft');
+  if(editor&&editor.getAttribute('data-focus-after-accept')==='true'){
+  editor.removeAttribute('data-focus-after-accept');editor.focus({preventScroll:true});
+  if(typeof editor.setSelectionRange==='function')editor.setSelectionRange(0,0);
+  else if(doc.createRange&&doc.defaultView?.getSelection){const range=doc.createRange();range.selectNodeContents(editor);range.collapse(true);const selection=doc.defaultView.getSelection();selection.removeAllRanges();selection.addRange(range);}
+  editor.scrollIntoView({block:'start',behavior:'auto'});return true;}
+ }
  const selectors={'/cover-letter-refinement':'.refinement-panel','/cover-letter-refinement/apply':'.panel--current','/cover-letter-refinement/reassess-length':'.refinement-panel','/organisation-research':'.panel--research','/review-cv-selection':'.panel--decision','/review-role-title':'.panel--vacancy'};
  const selector=selectors[route];if(!selector)return false;
  const section=doc.querySelector(selector);if(!section)return false;

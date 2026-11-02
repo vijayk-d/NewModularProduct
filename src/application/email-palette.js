@@ -1,0 +1,2 @@
+export const EMAIL_PALETTE=Object.freeze({sky:'#f3f9ff',mint:'#f1faf4',lavender:'#f6f2fc',rose:'#fff3f5',ivory:'#fff8ec',white:'#ffffff'});
+export function freezeEmailPalette(value){if(value==null)return {version:1,id:'sky',backgroundColor:EMAIL_PALETTE.sky};if(typeof value!=='object'||Array.isArray(value)||value.version!==1||!Object.hasOwn(EMAIL_PALETTE,value.id)||value.backgroundColor!==EMAIL_PALETTE[value.id])throw Object.assign(Error('Invalid frozen email palette.'),{statusCode:400});return {version:1,id:value.id,backgroundColor:EMAIL_PALETTE[value.id]};}

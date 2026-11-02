@@ -1,3 +1,4 @@
+import {emailThemeInfo,saveEmailTheme} from '../../application/email-theme.js';
 import {readFile} from 'node:fs/promises';
 import {saveApplicationReview,reviewEditorState} from '../../application/save-application-review.js';
 const escape=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
@@ -7,8 +8,8 @@ async function body(req){if(!String(req.headers['content-type']||'').startsWith(
 export function createApplicationReviewHandler({store,renderReview,sendJson,sendHtml,sendText,applicationPackExporter=null,letterUpdates=null}){
  return async(req,res,url)=>{
   const method=req.method||'GET',route=url.pathname,api=/^\/api\/application-reviews(?:\/([A-Za-z0-9_-]{1,100}))?$/.exec(route),resume=/^\/applications\/([A-Za-z0-9_-]{1,100})$/.exec(route);
-  const asset=['/workspace-review-v2.js','/review-flow-view.js','/contact-workflow-policy.js','/contact-history-display.js','/review-workspace.css','/review-workspace.js','/application-review-controls.js','/application-review-controls.css','/application-export-controls.js','/unsent-letter-update-controls.js','/rich-highlight-controls.js'].includes(route);
-  if(!((method==='GET'&&(route==='/applications'||resume||api||asset))||(method==='POST'&&['/api/application-reviews/save','/api/application-reviews/export','/api/application-reviews/unsent-update/preview','/api/application-reviews/unsent-update/apply','/api/application-reviews/unsent-update/cancel'].includes(route))))return false;
+  const asset=['/workspace-review-v2.js','/review-flow-view.js','/contact-workflow-policy.js','/contact-history-display.js','/review-workspace.css','/review-workspace.js','/application-review-controls.js','/application-review-controls.css','/application-export-controls.js','/unsent-letter-update-controls.js','/rich-highlight-controls.js','/palette-preview.js'].includes(route);
+  if(!((method==='GET'&&(route==='/applications'||resume||api||asset))||(method==='POST'&&['/api/application-reviews/theme','/api/application-reviews/save','/api/application-reviews/export','/api/application-reviews/unsent-update/preview','/api/application-reviews/unsent-update/apply','/api/application-reviews/unsent-update/cancel'].includes(route))))return false;
   try{
    const origin=req.headers.origin;if((origin&&origin!==`http://${req.headers.host}`&&origin!==`https://${req.headers.host}`)||req.headers['sec-fetch-site']==='cross-site'){sendJson(res,403,{ok:false,error:'Cross-origin application access is not allowed.'});return true;}
    if(asset){const code=await readFile(new URL('.'+route,import.meta.url),'utf8');sendText(res,200,code,{'content-type':route.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8','cache-control':'no-store'});return true;}
@@ -19,9 +20,10 @@ export function createApplicationReviewHandler({store,renderReview,sendJson,send
     if(!Buffer.isBuffer(result.bytes)||!/^[-A-Za-z0-9_]+-application\.zip$/.test(result.filename))throw new Error('Invalid export response.');
     res.writeHead(200,{'content-type':'application/zip','content-disposition':`attachment; filename="${result.filename}"`,'content-length':result.bytes.length,'cache-control':'no-store','x-content-type-options':'nosniff'});res.end(result.bytes);return true;
    }
+   if(method==='POST'&&route==='/api/application-reviews/theme'){sendJson(res,200,saveEmailTheme(store,await body(req)));return true;}
    if(method==='POST'){sendJson(res,200,{ok:true,...saveApplicationReview(store,await body(req))});return true;}
    if(resume){const id=resume[1];if(!store.has(id)){sendJson(res,404,{ok:false,error:'Saved application not found. Old in-memory reviews cannot be reconstructed automatically.'});return true;}sendHtml(res,200,await renderReview({reviewId:id}));return true;}
-   if(api?.[1]){const review=store.get(api[1]);if(!review){sendJson(res,404,{ok:false,error:'Saved application not found.'});return true;}sendJson(res,200,{ok:true,reviewId:api[1],...reviewEditorState(review),durable:store.durable===true});return true;}
+   if(api?.[1]){const review=store.get(api[1]);if(!review){sendJson(res,404,{ok:false,error:'Saved application not found.'});return true;}sendJson(res,200,{ok:true,reviewId:api[1],...reviewEditorState(review),...emailThemeInfo(review),durable:store.durable===true});return true;}
    const q=String(url.searchParams.get('q')||'').slice(0,200),page=Math.max(1,parseInt(url.searchParams.get('page')||'1',10)||1);
    let data;if(typeof store.summaries==='function')data=store.summaries({query:q,page,size:20});else{const items=[...store].map(([id,r])=>({id,jobTitle:r.formData?.jobTitle||'',organisation:r.formData?.organisationName||'',subject:r.currentDraftSubject||r.prepared?.coverLetter?.subject||'',cvCode:r.selectedCvRoleCode||'',advertUrl:r.formData?.jobAdvertLink||''})).filter(r=>!q||[r.jobTitle,r.organisation,r.subject].some(v=>v.toLowerCase().includes(q.toLowerCase())));const pages=Math.max(1,Math.ceil(items.length/20)),p=Math.min(page,pages);data={items:items.slice((p-1)*20,p*20),total:items.length,page:p,pages};}
    if(route==='/applications')sendHtml(res,200,dashboard(data,q));else sendJson(res,200,{ok:true,...data});return true;
