@@ -71,3 +71,6 @@ __pycache__/
 /docs/*-source-????????T??????Z.json
 /docs/scenario-source-text/
 /docs/scenario-polishing-source.zip
+
+# Python virtual environment (bootstrap-dev.ps1)
+.venv/
