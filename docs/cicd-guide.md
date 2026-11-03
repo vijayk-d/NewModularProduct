@@ -60,7 +60,8 @@ Keep branches to a day or two. Long branches drift and conflict.
 - Switch them on at http://127.0.0.1:3100/settings/features, then restart production (Ctrl+C in its window, then `Start-Production.ps1`).
 - Every change is recorded in `shared\config\features-audit.log`.
 - A feature can't be switched on until the features it needs are on (sending needs Gmail and mailbox check).
-- Development-only features (one-click send, Quality V2, cloud scheduling, template cover letter) cannot be switched on in production.
+- One-click send (needs "Send emails") and Cover-letter quality V2 (needs "Cover-letter polishing") can be switched on in production; both start OFF.
+- Development-only features (cloud scheduling, template cover letter) cannot be switched on in production.
 - Switching a feature off is the fastest "rollback" for a feature problem — no redeploy needed.
 
 When adding a feature that should be toggleable, add it to `src/config/feature-toggles.js` (`FEATURES`, default off) and a test in `tests/config/feature-toggles.test.js`.

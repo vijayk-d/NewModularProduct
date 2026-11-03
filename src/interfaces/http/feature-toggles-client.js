@@ -38,7 +38,9 @@ async function toggle(f, enabled) {
   if (busy || !state) return;
   let confirmed = false;
   if (enabled && f.risk === 'sends-email') {
-    confirmed = window.confirm(`Turn on "${f.label}" in ${state.environment}?\nAfter a restart, reviewed emails can be sent to real contacts from the configured Gmail account. Each send still needs a click and duplicate protection stays on.`);
+    confirmed = window.confirm(f.id === 'one-click-send'
+      ? `Turn on "${f.label}" in ${state.environment}?\nAfter a restart, clicking Send sends the reviewed email straight away, without the extra confirmation popup. Duplicate protection and the reviewed-content check stay on.`
+      : `Turn on "${f.label}" in ${state.environment}?\nAfter a restart, reviewed emails can be sent to real contacts from the configured Gmail account. Each send still needs a click and duplicate protection stays on.`);
     if (!confirmed) { $('status').textContent = 'Not changed.'; return; }
   } else if (enabled && f.risk === 'paid-api' && !window.confirm(`Turn on "${f.label}"? It makes paid Perplexity API calls after a restart.`)) { $('status').textContent = 'Not changed.'; return; }
   busy = true; render(state); $('status').textContent = 'Saving…';
