@@ -50,8 +50,8 @@ $private | Group-Object { ($_.Path -split '/')[0] } | Sort-Object Count -Descend
 Write-Host "`n=== 5. References to files that are not in the repository ===" -ForegroundColor Yellow
 $tracked = @{}; git ls-files | ForEach-Object { $tracked[$_] = $true }
 $refs = Select-String -Path 'src\application\maintenance-commands.js', 'docs\*.md', 'tools\deploy\*.md', 'tools\maintenance\*.md', '*.md' -Pattern '(tools|scripts|docs|src)[\\/][A-Za-z0-9_.\\/-]+\.(py|ps1|mjs|js|md|bat|cmd)' -AllMatches -ErrorAction SilentlyContinue |
-    ForEach-Object { foreach ($m in $_.Matches) { $m.Value.Replace('\', '/') } } | Sort-Object -Unique
+    ForEach-Object { foreach ($m in $_.Matches) { $m.Value -replace '[\\/]+', '/' } } | Sort-Object -Unique
 $missing = $refs | Where-Object { -not $tracked.ContainsKey($_) }
-if ($missing) { $missing | ForEach-Object { $state = if (Test-Path -LiteralPath $_) { 'exists locally, NOT in GitHub' } else { 'missing everywhere' }; Write-Host "  $_  ->  $state" } } else { Write-Host '  None.' }
+if ($missing) { $missing | ForEach-Object { $state = if ($_ -like 'tools/patches/*') { 'one-time patch package, intentionally not in Git (.gitignore)' } elseif (Test-Path -LiteralPath $_) { 'exists locally, NOT in GitHub - commit it' } else { 'missing everywhere' }; Write-Host "  $_  ->  $state" } } else { Write-Host '  None.' }
 
 Write-Host "`nNothing was changed. Paste sections 1, 2 and 5 to decide what to commit." -ForegroundColor Cyan
