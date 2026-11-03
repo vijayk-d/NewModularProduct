@@ -38,6 +38,7 @@ import { createSelectedCvEvidenceLoader } from '../../application/selected-cv-ev
 import { createLocalServer } from './create-local-server.js';
 import { installCvLibrary } from './cv-library-v1.js';
 import {resolveCvLibraryRuntime,assertSharedCvReady} from '../../config/shared-cv-library-runtime.js';
+import {resolveEvidenceLibraryPath} from '../../config/evidence-library-runtime.js';
 
 const DEFAULT_TEMPLATE_ID = 'standard-cover-letter';
 const deployment=deploymentRuntime({env:process.env,projectRoot:fileURLToPath(new URL('../../../',import.meta.url))});
@@ -119,7 +120,10 @@ if(deployment.mode==='development'){
 }
 
 let assignmentEvidenceStore=null;
-if(deployment.mode==='development'){try{assignmentEvidenceStore=createAssignmentEvidenceStore({filePath:path.join(deployment.state,'assignment-evidence-library-v1.db')});}catch{console.warn('[ASSIGNMENT_EVIDENCE] LOCAL_STORE_UNAVAILABLE');}}
+try{
+ const filePath=resolveEvidenceLibraryPath({env:process.env,mode:deployment.mode,state:deployment.state});
+ if(filePath)assignmentEvidenceStore=createAssignmentEvidenceStore({filePath});
+}catch{console.warn('[ASSIGNMENT_EVIDENCE] LOCAL_STORE_UNAVAILABLE');}
 
 const server = createLocalServer({
   assignmentEvidenceStore,

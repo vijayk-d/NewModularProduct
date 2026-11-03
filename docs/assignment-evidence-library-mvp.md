@@ -16,3 +16,28 @@ No AI ingestion/extraction, paid calls, automatic company/metric inference, CV r
 
 ## Acceptance
 Create an assignment and scenario, save/reload, approve supported wording, download private and approved outputs, inspect history, then change assignment context and confirm approved output excludes stale wording. Reopen after a server restart to verify local persistence. No existing application letter or queue should change.
+
+## Shared library and production (3 Nov 2026)
+
+This section supersedes the original MVP's development-only storage and deferred integration notes. With the existing absolute `NMP_CV_LIBRARY_DIRECTORY` configured identically in development and production, both use `<NMP_CV_LIBRARY_DIRECTORY>\evidence\assignment-evidence-library-v1.db` and edit the same private library, not separate copies. The evidence folder is created automatically. Keep this shared directory outside both application checkouts/releases, protect its permissions and back it up; SQLite data is not encrypted.
+
+The **Evidence library** toggle defaults on in development and off in production. Existing production feature files with no entry leave it off. Enable it in production at `http://127.0.0.1:3100/settings/features` after shipping, then restart production normally for the setting to take effect. Without a shared directory production remains unavailable; development without one retains its existing state-directory database. Verification continues to use isolated injected fixtures. Navigation hides the link when the toggle is off; unavailable direct page/API requests retain their existing 503 response.
+
+### One-off copy from development
+
+Save browser edits and stop both development (3000) and the production supervisor/server (3100) normally before copying. From the updated development checkout run Windows PowerShell 5.1:
+
+```powershell
+Set-Location D:\monorepo\NewModularProduct
+powershell -ExecutionPolicy Bypass -File tools\maintenance\move-evidence-to-shared.ps1
+# If development .env does not specify the existing shared CV directory:
+# powershell -ExecutionPolicy Bypass -File tools\maintenance\move-evidence-to-shared.ps1 -SharedDir 'D:\YourExistingSharedCvLibrary'
+```
+
+The script reads development `.env` only, checks `NMP_STATE_DIRECTORY` plus the normal `output` location, and refuses missing/ambiguous sources, running servers, or an existing shared database/sidecars. It copies, never moves, the database and any `-wal`/`-shm` files, with timestamped backups next to the original. For safety it refuses a configured development state outside `DevRoot`; review such a nonstandard layout manually rather than pointing it at production. No production data folder is read, migrated or overwritten. If interrupted after copying starts, preserve all files and inspect the partial destination manually; do not overwrite it or rerun blindly.
+
+Restart development (`npm start`) and check `/evidence-library`, then stop development again before `tools\deploy\ship.cmd`. After the release, enable **Evidence library** in production Settings and restart production. Ensure production has the same absolute shared CV directory setting; do not replace the shared database with an older development copy once shared editing begins.
+
+### Calls and polishing
+
+The evidence library and scenario search/ranking make no paid calls and do not access or send email. Selecting ranked evidence can be handed off to saved applications; polishing with selected evidence uses one normal cover-letter polish call when cover-letter polishing is enabled. This works with **Cover-letter quality V2** off; the evidence library has no dependency on that toggle.

@@ -9,6 +9,37 @@ import { createFeatureTogglesHandler } from '../../src/interfaces/http/feature-t
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'nmp-toggles-'));
 
+test('evidence library is local, independent, development-on and production-off by default', () => {
+  const entry = FEATURES.find(f => f.id === 'evidence-library');
+  assert.equal(entry.label, 'Evidence library');
+  assert.equal(entry.risk, 'local');
+  assert.deepEqual(entry.requires || [], []);
+  for (const mode of ['development', 'production']) {
+    const file = path.join(tmp(), 'features.json');
+    const env = { NMP_ENV: mode };
+    applyFeatureToggles(env, { file });
+    const evidence = describeFeatures(env, { file }).features.find(f => f.id === entry.id);
+    assert.equal(evidence.running, mode === 'development');
+    assert.equal(evidence.effective, mode === 'development');
+    setFeature(env, { id: entry.id, enabled: mode !== 'development', expectedRevision: evidence.running ? 0 : 1 }, { file });
+    applyFeatureToggles(env, { file });
+    assert.equal(env.ENABLE_EVIDENCE_LIBRARY, mode === 'development' ? 'false' : 'true');
+  }
+});
+
+test('existing files default evidence on only in development, explicit off is respected', () => {
+  for (const mode of ['development', 'production']) {
+    const file = path.join(tmp(), 'features.json');
+    fs.writeFileSync(file, JSON.stringify({ version: 1, revision: 1, features: {} }));
+    const env = { NMP_ENV: mode, ENABLE_EVIDENCE_LIBRARY: 'true' };
+    applyFeatureToggles(env, { file });
+    assert.equal(env.ENABLE_EVIDENCE_LIBRARY, mode === 'development' ? 'true' : 'false');
+    setFeature(env, { id: 'evidence-library', enabled: false, expectedRevision: 1 }, { file });
+    applyFeatureToggles(env, { file });
+    assert.equal(env.ENABLE_EVIDENCE_LIBRARY, 'false');
+  }
+});
+
 test('production file lives in shared/config next to shared/data', () => {
   const root = path.resolve('/prod');
   assert.equal(featureFilePath({ NMP_ENV: 'production', NMP_STATE_DIRECTORY: path.join(root, 'shared', 'data') }), path.join(root, 'shared', 'config', 'features.json'));
