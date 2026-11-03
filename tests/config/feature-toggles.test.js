@@ -68,7 +68,28 @@ test('setFeature saves, bumps revision, rejects stale revision and needs confirm
   view = setFeature(env, { id: 'gmail-sending', enabled: true, expectedRevision: 2, confirmed: true }, { file });
   view = setFeature(env, { id: 'gmail', enabled: false, expectedRevision: 3 }, { file });
   assert.equal(view.features.find(f => f.id === 'gmail-sending').saved, false, 'dependents switch off with their parent');
-  assert.throws(() => setFeature(env, { id: 'one-click-send', enabled: true, expectedRevision: 4 }, { file }), /Unknown or locked/);
+  assert.throws(() => setFeature(env, { id: 'cloud-scheduling', enabled: true, expectedRevision: 4 }, { file }), /Unknown or locked/);
+});
+
+test('one-click send and quality V2 are switchable in production, off by default, and depend on their parents', () => {
+  const file = path.join(tmp(), 'features.json');
+  const env = { NMP_ENV: 'production', ENABLE_ONE_CLICK_SEND: 'true', ENABLE_COVER_LETTER_QUALITY_V2: 'true' };
+  fs.writeFileSync(file, JSON.stringify({ version: 1, revision: 1, features: { gmail: true, 'gmail-mailbox-check': true, 'gmail-sending': true, 'cover-letter-refinement': true } }));
+  applyFeatureToggles(env, { file });
+  assert.equal(env.ENABLE_ONE_CLICK_SEND, 'false', 'existing production files keep new features OFF');
+  assert.equal(env.ENABLE_COVER_LETTER_QUALITY_V2, 'false');
+  assert.throws(() => setFeature(env, { id: 'one-click-send', enabled: true, expectedRevision: 1 }, { file }), /confirmation/);
+  let view = setFeature(env, { id: 'one-click-send', enabled: true, expectedRevision: 1, confirmed: true }, { file });
+  view = setFeature(env, { id: 'cover-letter-quality-v2', enabled: true, expectedRevision: 2 }, { file });
+  const e2 = { NMP_ENV: 'production' };
+  applyFeatureToggles(e2, { file });
+  assert.equal(e2.ENABLE_ONE_CLICK_SEND, 'true');
+  assert.equal(e2.ENABLE_COVER_LETTER_QUALITY_V2, 'true');
+  view = setFeature(env, { id: 'gmail', enabled: false, expectedRevision: 3 }, { file });
+  assert.equal(view.features.find(f => f.id === 'one-click-send').saved, false, 'switching Gmail off also switches one-click off');
+  view = setFeature(env, { id: 'cover-letter-refinement', enabled: false, expectedRevision: 4 }, { file });
+  assert.equal(view.features.find(f => f.id === 'cover-letter-quality-v2').saved, false);
+  assert.ok(!view.developmentOnly.some(f => ['one-click-send', 'cover-letter-quality-v2'].includes(f.id)));
 });
 
 test('invalid file is reported, not guessed', () => {

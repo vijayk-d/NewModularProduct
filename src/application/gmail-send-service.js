@@ -5,9 +5,11 @@ import {randomUUID,createHash} from 'node:crypto';import {realpath,stat,readFile
 import {prepareDraftSnapshot} from './outreach-message-snapshot.js';import {messageEditVersion} from './queue-message-editor.js';import {extractOutreachExperienceBody} from './compose-outreach-letter.js';import {runGmailSendWorker} from './gmail-send-worker-runner.js';
 const hash=b=>createHash('sha256').update(b).digest('hex');
 function fail(m,code='SEND_BLOCKED',statusCode=409){const e=new Error(m);e.code=code;e.statusCode=statusCode;throw e;}
+// One-click send: development on 3000 or production (switched on via /settings/features). Never verification.
+export function oneClickEnvironment(env=process.env){const mode=env.NMP_ENV||'development';return (mode==='development'&&String(env.PORT||'3000')==='3000')||mode==='production';}
 export function createGmailSendService({repository,mailboxPort,env=process.env,runner=runGmailSendWorker,clock=()=>Date.now(),signatureReader=readGmailSignature}={}){
  const tickets=new Map();
- function getStatus(){const m=mailboxPort.getStatus(),flags=['ENABLE_GMAIL','ENABLE_GMAIL_SENDING'].every(k=>String(env[k]||'').trim().toLowerCase()==='true'),ready=Boolean(m.mailboxCheckEnabled&&m.configurationReady&&repository&&['getSendState','claimSendAttempt','finishSendAttempt'].every(k=>typeof repository[k]==='function'));return {sendingEnabled:flags&&ready,oneClickSendingEnabled:flags&&ready&&(env.NMP_ENV||'development')==='development'&&String(env.PORT||'3000')==='3000'&&String(env.ENABLE_ONE_CLICK_SEND||'')==='true',configurationReady:ready,configuredMailbox:m.configuredFromAddress||'',reason:!flags?'Sending disabled. Enable both ENABLE_GMAIL and ENABLE_GMAIL_SENDING explicitly.':!ready?'Configure mailbox checking, OAuth and send storage.':'Sending ready; each email requires explicit confirmation.'};}
+ function getStatus(){const m=mailboxPort.getStatus(),flags=['ENABLE_GMAIL','ENABLE_GMAIL_SENDING'].every(k=>String(env[k]||'').trim().toLowerCase()==='true'),ready=Boolean(m.mailboxCheckEnabled&&m.configurationReady&&repository&&['getSendState','claimSendAttempt','finishSendAttempt'].every(k=>typeof repository[k]==='function'));return {sendingEnabled:flags&&ready,oneClickSendingEnabled:flags&&ready&&oneClickEnvironment(env)&&String(env.ENABLE_ONE_CLICK_SEND||'')==='true',configurationReady:ready,configuredMailbox:m.configuredFromAddress||'',reason:!flags?'Sending disabled. Enable both ENABLE_GMAIL and ENABLE_GMAIL_SENDING explicitly.':!ready?'Configure mailbox checking, OAuth and send storage.':'Sending ready; each email requires explicit confirmation.'};}
  function gate(){const s=getStatus();if(!s.sendingEnabled)fail(s.reason,'SEND_DISABLED',403);return s.configuredMailbox;}
  function modeFor(item,account){
   const s=repository.getSendState(item,account);
@@ -37,7 +39,7 @@ export function createGmailSendService({repository,mailboxPort,env=process.env,r
   const account=gate();if(typeof queueId!=='string'||!queueId)fail('Choose one explicit queue item.');const item=repository.getById(queueId);if(!item)fail('Queue item no longer exists.');
   const {mode}=modeFor(item,account),version=messageEditVersion(item);
   const bound=[expectedVersion,expectedAccount,expectedRecipient,expectedMode,expectedDraftId].some(v=>v!==undefined);
-  if(bound&&!getStatus().oneClickSendingEnabled)fail('Development one-click sending is disabled.','SEND_ONE_CLICK_DISABLED',403);
+  if(bound&&!getStatus().oneClickSendingEnabled)fail('One-click sending is disabled.','SEND_ONE_CLICK_DISABLED',403);
   if(bound&&(!/^[a-f0-9]{64}$/.test(expectedVersion||'')||expectedVersion!==version||String(expectedAccount||'').toLowerCase()!==account.toLowerCase()||String(expectedRecipient||'').toLowerCase()!==item.email.toLowerCase()||expectedMode!==mode||String(expectedDraftId||'')!==String(item.draftId||'')))fail('Selected message/sender/action changed after the Send click. Refresh/review.','SEND_INTENT_CHANGED');
   const draft=mode==='draft'?null:await applyGmailSignature(await withCV(item),{account,env,signatureReader});
   let r;try{r=await runner({payload:{action:'prepare',mode,expectedAddress:account,recipient:item.email,draftId:mode==='draft'?item.draftId:undefined,draft}});}catch{fail('Preparation failed; nothing sent. Check Python/OAuth setup.','SEND_PREFLIGHT',503);}

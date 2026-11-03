@@ -8,7 +8,8 @@ const canonical=s=>String(s??'').replace(/\r\n?/g,'\n').trim();
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const types=['past_experience','capability','outcome','prospective','values','motivation'];
 const fail=(message,code='REFINEMENT_EVIDENCE_V2_REJECTED')=>{throw Object.assign(new Error(message+' Current letter unchanged; no automatic paid retry.'),{code,statusCode:400,auditReasonCode:auditReason(message)});};
-export function qualityV2Enabled(env=process.env){return (env.NMP_ENV||'development')==='development'&&String(env.PORT||'3000')==='3000'&&['127.0.0.1','localhost','::1'].includes(env.HOST||'127.0.0.1')&&env[QUALITY_V2_FLAG]==='true';}
+// Development on 3000, or production when switched on at /settings/features. Never verification.
+export function qualityV2Enabled(env=process.env){const mode=env.NMP_ENV||'development';return ((mode==='development'&&String(env.PORT||'3000')==='3000')||mode==='production')&&['127.0.0.1','localhost','::1'].includes(env.HOST||'127.0.0.1')&&env[QUALITY_V2_FLAG]==='true';}
 export function buildEvidenceContract(request){
  const bank=new Map(),sources=[];
  const add=(id,kind,field,text,allowedClaimTypes)=>{const value=canonical(text);if(!value)return;if(value.length>120000)fail('Evidence source is too large.','REFINEMENT_EVIDENCE_V2_INPUT');bank.set(id,{text:value,allowedClaimTypes});sources.push({id,kind,sourceField:field,textHash:hash(value),allowedClaimTypes});};

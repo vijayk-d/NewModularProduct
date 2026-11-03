@@ -47,7 +47,8 @@ It runs the full test suite before it commits anything. If production already ru
 - New features reach production switched off. When the file is first created, it copies the current `production.env` values, so nothing changes silently.
 - A feature stays off until the features it needs are on. For example, "Send emails" needs "Gmail connection" and "Mailbox check".
 - Turning on "Send emails" asks for confirmation. Duplicate protection and per-send clicks still apply.
-- Features that the code limits to development (one-click send, Quality V2, cloud scheduling, template cover letter) are listed on the page but can't be switched on.
+- One-click send (needs "Send emails") and Cover-letter quality V2 (needs "Cover-letter polishing") are switchable in production and start OFF.
+- Features that the code limits to development (cloud scheduling, template cover letter) are listed on the page but can't be switched on.
 - If the file is unreadable, production starts with every toggled feature off and prints a `[FEATURE_TOGGLES] ERROR` line in the production log.
 
 ## Continuous integration
