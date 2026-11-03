@@ -2,6 +2,15 @@
 
 Run from `D:\monorepo\NewModularProduct` in PowerShell. Development uses port 3000, production uses port 3100.
 
+See also: the live library at <http://127.0.0.1:3000/maintenance>, [developer setup](developer-setup.md) and the [CI/CD and rollback guide](cicd-guide.md).
+
+## Setup
+
+| Task | Command |
+|---|---|
+| Set up or repair development | `powershell -ExecutionPolicy Bypass -File tools\maintenance\bootstrap-dev.ps1` |
+| Find code/docs that exist only on this PC | `powershell -ExecutionPolicy Bypass -File tools\maintenance\audit-repo-completeness.ps1` |
+
 ## Daily flow
 
 | Task | Command |

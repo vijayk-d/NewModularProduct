@@ -1,3 +1,4 @@
+// Read-only command reference for /maintenance. Nothing here is executed by the server.
 export const MAINTENANCE_COMMANDS = Object.freeze([
   {
     "id": "start-dev",
@@ -8,6 +9,46 @@ export const MAINTENANCE_COMMANDS = Object.freeze([
     "caution": "Use the development checkout, not the production folder.",
     "effect": "Starts process",
     "directory": "D:\\monorepo\\NewModularProduct"
+  },
+  {
+    "directory": "D:\\monorepo\\NewModularProduct",
+    "id": "ship",
+    "title": "Ship to production (one command)",
+    "category": "Daily use",
+    "command": "tools\\deploy\\ship.cmd",
+    "purpose": "Runs every test, commits, pushes master, delivers to production and waits for health.",
+    "caution": "Stop development (3000) first. Must be on master and not behind GitHub. Stops at the first failure.",
+    "effect": "Changes production"
+  },
+  {
+    "directory": "D:\\monorepo\\NewModularProduct",
+    "id": "ship-test",
+    "title": "Run every test (same as CI)",
+    "category": "Testing",
+    "command": "tools\\deploy\\ship.cmd -TestOnly",
+    "purpose": "Runs the full Node, Python and Playwright suite without committing or delivering.",
+    "caution": "Stop development (3000) first.",
+    "effect": "Runs tests"
+  },
+  {
+    "directory": "D:\\monorepo\\NewModularProduct",
+    "id": "bootstrap-dev",
+    "title": "Bootstrap development environment",
+    "category": "Setup",
+    "command": "powershell -ExecutionPolicy Bypass -File tools\\maintenance\\bootstrap-dev.ps1",
+    "purpose": "npm ci, Python .venv, .env from template, template and inventory, Playwright, smoke tests.",
+    "caution": "Safe to re-run; never overwrites .env or private data. Needs Git, Node 24+, Python 3.11+.",
+    "effect": "Local setup"
+  },
+  {
+    "directory": "D:\\monorepo\\NewModularProduct",
+    "id": "repo-audit",
+    "title": "Repository completeness audit",
+    "category": "Setup",
+    "command": "powershell -ExecutionPolicy Bypass -File tools\\maintenance\\audit-repo-completeness.ps1",
+    "purpose": "Lists code and docs that exist only on this PC, and references to files not in GitHub.",
+    "caution": "Read-only. Commit what it finds by name (git add <path>), never git add with a dot.",
+    "effect": "Read-only"
   },
   {
     "id": "git-status",
@@ -55,7 +96,7 @@ export const MAINTENANCE_COMMANDS = Object.freeze([
     "category": "Testing",
     "command": "python tools/AssignmentEvidenceLibrary/install.py --root . --verify",
     "purpose": "Checks installed files, syntax and focused regressions.",
-    "caution": "Already-installed package: do not use --apply again.",
+    "caution": "Already-installed package: do not use --apply again. Note: tools/AssignmentEvidenceLibrary is not in GitHub (local only) — run the completeness audit.",
     "effect": "Runs tests",
     "directory": "D:\\monorepo\\NewModularProduct"
   },
@@ -65,7 +106,7 @@ export const MAINTENANCE_COMMANDS = Object.freeze([
     "category": "Testing",
     "command": "python tools/AssignmentEvidenceLibrary/install.py --root . --browser",
     "purpose": "Runs the isolated in-memory evidence-library browser test.",
-    "caution": "Requires installed package and existing Playwright/Chromium. No live provider services.",
+    "caution": "Requires installed package and existing Playwright/Chromium. No live provider services. Note: tools/AssignmentEvidenceLibrary is not in GitHub (local only) — run the completeness audit.",
     "effect": "Isolated browser test",
     "directory": "D:\\monorepo\\NewModularProduct"
   },
@@ -113,9 +154,9 @@ export const MAINTENANCE_COMMANDS = Object.freeze([
     "id": "push",
     "title": "Push reviewed branch to GitHub",
     "category": "Git and checkpoint",
-    "command": "git push origin feat/review-provider-output",
-    "purpose": "Publishes committed work on the current project branch.",
-    "caution": "Only after reviewing branch/remote/commits for private data. Does not include uncommitted files or deploy production. Resolve remote changes normally; never force-push as a routine fix.",
+    "command": "git push origin master",
+    "purpose": "Pushes master to GitHub; GitHub Actions then runs the full test suite on Windows.",
+    "caution": "ship.cmd already pushes. Use this only after ship -NoPush. Never force-push.",
     "effect": "Remote write",
     "directory": "D:\\monorepo\\NewModularProduct"
   },
@@ -153,11 +194,41 @@ export const MAINTENANCE_COMMANDS = Object.freeze([
     "id": "start-prod",
     "title": "Start production supervisor",
     "category": "Production",
-    "command": "& \"D:\\NewModularProduct-Production\\start-production.bat\"",
-    "purpose": "Starts the production-owned supervisor on port 3100.",
-    "caution": "Only if not already running; keep its console open. The development launcher is not a production launcher.",
+    "command": "powershell -ExecutionPolicy Bypass -File tools\\deploy\\Start-Production.ps1",
+    "purpose": "Starts production on port 3100 and clears a stale \"Supervisor lock exists\" safely.",
+    "caution": "Stops nothing unless you add -StopOrphan. Close production with Ctrl+C, not the window X.",
     "effect": "Starts production process",
     "directory": "D:\\monorepo\\NewModularProduct"
+  },
+  {
+    "directory": "D:\\monorepo\\NewModularProduct",
+    "id": "prod-status-only",
+    "title": "Production status (change nothing)",
+    "category": "Production",
+    "command": "powershell -ExecutionPolicy Bypass -File tools\\deploy\\Start-Production.ps1 -StatusOnly",
+    "purpose": "Reports lock, port 3100 and health without starting or stopping anything.",
+    "caution": "None; read-only.",
+    "effect": "Read-only"
+  },
+  {
+    "directory": "D:\\monorepo\\NewModularProduct",
+    "id": "stop-orphan",
+    "title": "Stop orphaned production server, then start",
+    "category": "Recovery",
+    "command": "powershell -ExecutionPolicy Bypass -File tools\\deploy\\Start-Production.ps1 -StopOrphan",
+    "purpose": "Stops a NewModularProduct node process left holding port 3100, then starts production.",
+    "caution": "Use only when -StatusOnly reports an orphan. Never deletes data.",
+    "effect": "Changes production"
+  },
+  {
+    "directory": "D:\\monorepo\\NewModularProduct",
+    "id": "feature-toggles",
+    "title": "Feature toggles",
+    "category": "Production",
+    "command": "start http://127.0.0.1:3100/settings/features",
+    "purpose": "Switch production features on or off; restart production to apply.",
+    "caution": "Gmail sending needs Gmail and mailbox check first. Each email still needs explicit confirmation.",
+    "effect": "Changes production settings"
   },
   {
     "id": "rollback",
@@ -175,8 +246,8 @@ export const MAINTENANCE_COMMANDS = Object.freeze([
     "category": "Diagnostics",
     "command": "python tools/WorkflowStabilisation/capture.py --root .",
     "purpose": "Creates the source report for development support.",
-    "caution": "Review for hard-coded private information before sharing. No .env, CV or database uploads. The current collector omits fixtures and some maintenance utilities, so a capture is not a complete runnable checkout.",
+    "caution": "Review for hard-coded private information before sharing. No .env, CV or database uploads. The current collector omits fixtures and some maintenance utilities, so a capture is not a complete runnable checkout. Note: tools/WorkflowStabilisation is not in GitHub (local only).",
     "effect": "Writes source report",
     "directory": "D:\\monorepo\\NewModularProduct"
   }
-].map(Object.freeze));
+]);
