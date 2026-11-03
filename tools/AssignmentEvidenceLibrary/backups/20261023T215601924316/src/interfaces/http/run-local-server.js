@@ -1,0 +1,188 @@
+#!/usr/bin/env node
+import {createApplicationIntelligenceStore} from '../../infrastructure/applications/sqlite-application-intelligence.js';
+import {createApplicationIntelligence} from '../../application/application-intelligence.js';
+import {createApplicationPackExporter} from '../../infrastructure/applications/application-pack-exporter.js';
+import {createSqliteJobImportStore} from '../../infrastructure/applications/sqlite-job-import-store.js';
+import { gmailLoadedEnvironment } from '../../application/gmail-runtime-diagnostics.js';
+import {createSqliteReviewStore} from '../../infrastructure/applications/sqlite-review-store.js';
+import { createOutreachRepository } from '../../infrastructure/outreach/sqlite-outreach-repository.js';
+
+import { createRecruiterContactStore } from "../../application/recruiter-contact-store.js";
+import { createRecruiterContactImportService } from "../../application/import-recruiter-contacts.js";
+import {deploymentRuntime} from '../../config/deployment-runtime.js';
+import {createAchievementEvidenceService} from '../../application/achievement-evidence.js';
+import { loadRuntimeConfig } from '../../config/load-runtime-config.js';
+import {
+  createFileTemplateRepository
+} from '../../infrastructure/templates/file-template-repository.js';
+import {
+  createJsonCvInventoryRepository
+} from '../../infrastructure/cv-inventory/json-cv-inventory-repository.js';
+import {
+  prepareApplicationFromRepositories
+} from '../../application/prepare-application-from-repositories.js';
+import {
+  researchOrganization
+} from '../../application/research-organization.js';
+import {
+  createPerplexityCompanyResearchAdapter
+} from '../../infrastructure/research/perplexity-company-research-adapter.js';
+import {
+  createPerplexityCoverLetterRefinementAdapter
+} from '../../infrastructure/refinement/perplexity-cover-letter-refinement-adapter.js';
+import { createCvDocumentAdapter } from '../../infrastructure/documents/cv-document-adapter.js';
+import { createSelectedCvEvidenceLoader } from '../../application/selected-cv-evidence-loader.js';
+import { createLocalServer } from './create-local-server.js';
+
+const DEFAULT_TEMPLATE_ID = 'standard-cover-letter';
+const deployment=deploymentRuntime({env:process.env,projectRoot:fileURLToPath(new URL('../../../',import.meta.url))});
+
+const config = loadRuntimeConfig({
+  env: process.env
+});
+
+process.stdout.write('[GMAIL_CONFIGURATION] '+JSON.stringify({environment:gmailLoadedEnvironment(process.env)},null,2)+'\n');
+
+const localDiagnosticsEnabled =
+  config.features.localDebugLogging === true;
+
+if (localDiagnosticsEnabled) {
+  process.stdout.write(
+    `[LOCAL_DIAGNOSTICS] startup ` +
+    `debugEnabled=true ` +
+    `cvInventoryPathProvided=${Boolean(config.storage.cvInventoryPath)} ` +
+    `templateDirectoryProvided=${Boolean(config.storage.templateDirectory)}\n`
+  );
+}
+const templateRepository = createFileTemplateRepository({
+  templateDirectory: config.storage.templateDirectory
+});
+
+const cvInventoryRepository = createJsonCvInventoryRepository({
+  inventoryPath: config.storage.cvInventoryPath
+});
+
+const companyResearchPort = config.features.enablePerplexityResearch
+  ? createPerplexityCompanyResearchAdapter({
+      apiKey: config.integrations.perplexity.apiKey
+    })
+  : null;
+
+const coverLetterRefinementPort =
+  config.features.enableCoverLetterRefinement
+    ? createPerplexityCoverLetterRefinementAdapter({
+        apiKey: config.integrations.perplexity.apiKey,
+        model: config.integrations.perplexity.refinementModel
+      })
+    : null;
+
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const projectRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../"
+);
+
+const recruiterContactStore = createRecruiterContactStore({
+  filePath: deployment.contacts
+});
+
+const recruiterContactImportService = createRecruiterContactImportService({
+  contactStore: recruiterContactStore
+});
+
+const outreachRepository = createOutreachRepository({
+  filePath: deployment.outreach
+});
+
+const achievementEvidenceService=createAchievementEvidenceService({inventoryRepository:cvInventoryRepository,documentExtractor:createCvDocumentAdapter({cvFolder:process.env.CV_FOLDER})});
+const cvEvidenceLoader = createSelectedCvEvidenceLoader({
+  inventoryRepository: cvInventoryRepository,
+  linkedinRelativePath: String(process.env.CANDIDATE_LINKEDIN_PDF || '').trim(),
+  documentExtractor: createCvDocumentAdapter({ cvFolder: process.env.CV_FOLDER })
+});
+
+const applicationReviewStore=createSqliteReviewStore({filePath:deployment.reviews});
+const jobImportService=createSqliteJobImportStore({filePath:deployment.imports});
+let applicationIntelligence=null,applicationIntelligenceStore=null;
+if(deployment.mode==='development'){
+ try{applicationIntelligenceStore=createApplicationIntelligenceStore({filePath:path.join(deployment.state,'application-intelligence-v1.db')});applicationIntelligence=createApplicationIntelligence({reviews:applicationReviewStore,outreach:outreachRepository,store:applicationIntelligenceStore,inventory:cvInventoryRepository,documentExtractor:createCvDocumentAdapter({cvFolder:config.storage.cvFolder})});}
+ catch{applicationIntelligenceStore?.close();applicationIntelligenceStore=null;console.warn('[APPLICATION_INTELLIGENCE] LOCAL_STORE_UNAVAILABLE');}
+}
+
+const server = createLocalServer({
+  applicationIntelligence,
+  coverLetterRefinementMaxWords:config.application.coverLetterRefinementMaxWords,
+  jobImportService,
+  applicationReviewStore,
+  applicationPackExporter:createApplicationPackExporter({cvFolder:config.storage.cvFolder}),
+  cvEvidenceLoader,
+  cvDocumentAdapter:createCvDocumentAdapter({cvFolder:config.storage.cvFolder}),
+  cvInventoryRepository,
+  achievementEvidenceService,
+  outreachRepository,
+  recruiterContactImportService,
+  recruiterContactStore,
+  researchOrganization: companyResearchPort
+    ? (request) => researchOrganization(
+        request,
+        { companyResearchPort }
+      )
+    : null,
+  coverLetterRefinementPort,
+  localDiagnosticsEnabled,
+  prepareApplication(request) {
+    if (localDiagnosticsEnabled) {
+      process.stdout.write(
+        `[LOCAL_DIAGNOSTICS] application_prepare_requested ` +
+        `jobTitleProvided=${Boolean(request.jobDescriptionOverrides?.role)} ` +
+        `jobDescriptionCharacters=${String(request.jobDescriptionText || '').length} ` +
+        `jobAdvertProvided=${Boolean(request.jobAdvertLink)} ` +
+        `preferredRoleCodeCount=${Array.isArray(request.preferredRoleCodes) ? request.preferredRoleCodes.length : 0} ` +
+        `cvHighlightCount=${Array.isArray(request.cvHighlights) ? request.cvHighlights.length : 0}\n`
+      );
+    }
+
+    return prepareApplicationFromRepositories({
+      request: {
+        ...request,
+        candidateProfile: {
+          ...(request.candidateProfile || {}),
+          displayName: (
+            String(process.env.CANDIDATE_DISPLAY_NAME || '').trim() ||
+            String(request.candidateProfile?.displayName || '').trim() ||
+            String(request.candidateProfile?.name || '').trim() ||
+            String(request.candidateProfile?.firstName || '').trim()
+          )
+        }
+      },
+      templateId: DEFAULT_TEMPLATE_ID,
+      templateRepository,
+      cvInventoryRepository
+    }).then((prepared) => {
+      if (localDiagnosticsEnabled) {
+        process.stdout.write(
+          `[LOCAL_DIAGNOSTICS] application_prepare_completed ` +
+          `recommendedRoleCode=${prepared.recommendation?.bestCv?.role_code || 'none'} ` +
+          `atsScore=${Number.isFinite(prepared.recommendation?.ats?.score) ? prepared.recommendation.ats.score : 'none'}\n`
+        );
+      }
+
+      return prepared;
+    });
+  }
+});
+
+server.listen(config.server.port, config.server.host, () => {
+  process.stdout.write(
+    `Application UI available at http://${config.server.host}:${config.server.port}\n`
+  );
+});
+
+server.on("close", () => {outreachRepository.close();applicationReviewStore.close();jobImportService.close();applicationIntelligenceStore?.close();});
+
+
+
+// Wait for active HTTP requests before closing persistent stores.
+for(const signal of ['SIGINT','SIGTERM',...(process.platform==='win32'?['SIGBREAK']:[])])process.on(signal,()=>server.close(()=>process.exit(0)));
