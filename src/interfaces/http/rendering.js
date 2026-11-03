@@ -262,7 +262,7 @@ export function renderApplicationForm({
 </head>
 <body>
   <main>
-    <h1>Application preparation</h1><p><a href="/applications">Saved applications</a> · <a id="cv-library-front-link" href="/cv-library" hidden>CV Library</a> <a href="/maintenance">Maintenance &amp; Commands</a> <a href="/evidence-library">Assignment evidence library (development)</a> · <a href="/outreach-queue">Outreach queue</a></p>
+    <h1>Application preparation</h1><p><a id="cv-library-front-link" href="/cv-library" hidden>CV Library</a></p>
     <p class="intro">Prepare and review a local application draft before manually sending it.</p>
 ${errorSummary}    <form id="application-form" method="post" action="/applications" autocomplete="on">
 <div class="form-draft-tools"><button id="clear-saved-form" type="button" class="secondary-button">Clear saved test data</button></div>

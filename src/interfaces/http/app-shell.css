@@ -1,0 +1,35 @@
+/* Shared shell: floating top navigation + environment marker. Loaded on every page. */
+html[data-nmp-env]{--nmp-env:#15803d;--nmp-env-soft:#eef8f1;--nmp-env-ink:#14532d}
+html[data-nmp-env=production]{--nmp-env:#b91c1c;--nmp-env-soft:#fdf0ee;--nmp-env-ink:#7f1d1d}
+html[data-nmp-env=verification]{--nmp-env:#6d28d9;--nmp-env-soft:#f4f0fd;--nmp-env-ink:#4c1d95}
+html[data-nmp-env],html[data-nmp-env] body{background-color:var(--nmp-env-soft)!important}
+html[data-nmp-env] body{border-top:5px solid var(--nmp-env);min-height:100vh;box-sizing:border-box}
+.nmp-shell__env-short{display:none}
+.nmp-shell{position:fixed;top:10px;left:50%;transform:translateX(-50%);width:min(96rem,calc(100vw - 20px));z-index:1000;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:nowrap;margin:0;box-sizing:border-box;padding:6px 10px;background:#fff;border:1px solid #cbd5e1;border-left:6px solid var(--nmp-env);border-radius:12px;box-shadow:0 6px 22px rgba(15,23,42,.12);font:500 14px/1.2 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#1e293b}
+.nmp-shell *{box-sizing:border-box}
+.nmp-shell__nav{display:flex;align-items:center;gap:4px;flex-wrap:nowrap;margin:0;padding:0}
+.nmp-shell__group{display:flex;align-items:center;gap:2px;padding-right:6px;margin-right:4px;border-right:1px solid #e2e8f0}
+.nmp-shell__link,.nmp-shell__item{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:6px 9px;border-radius:8px;color:#334155;text-decoration:none;white-space:nowrap;background:none;border:0;font:inherit;cursor:pointer}
+.nmp-shell__link:hover,.nmp-shell__item:hover,.nmp-shell__menu:focus-within>.nmp-shell__menu-button{background:#f1f5f9;color:#0f172a}
+.nmp-shell__link[aria-current=page],.nmp-shell__item[aria-current=page],.nmp-shell__menu.is-active>.nmp-shell__menu-button{background:#e0ecff;color:#1d4ed8;font-weight:650}
+.nmp-shell a:focus-visible,.nmp-shell button:focus-visible{outline:3px solid #2563eb;outline-offset:1px}
+.nmp-shell svg{flex:none}
+.nmp-shell__menu{position:relative}
+.nmp-shell__menu-button svg:last-child{width:14px;height:14px;opacity:.7}
+.nmp-shell__dropdown{display:none;position:absolute;left:0;top:100%;min-width:220px;padding:6px;margin:0;background:#fff;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 10px 28px rgba(15,23,42,.18);z-index:1001}
+.nmp-shell__menu:hover>.nmp-shell__dropdown,.nmp-shell__menu:focus-within>.nmp-shell__dropdown{display:flex;flex-direction:column;gap:2px}
+.nmp-shell__menu::after{content:"";position:absolute;left:0;right:0;top:100%;height:6px}
+.nmp-shell__right{display:flex;align-items:center;gap:8px;margin-left:auto}
+.nmp-shell__env{display:inline-flex;align-items:center;gap:4px;padding:6px 11px;border-radius:999px;background:var(--nmp-env);color:#fff;font-size:13px;letter-spacing:.02em;white-space:nowrap}
+.nmp-shell__env strong{text-transform:uppercase;letter-spacing:.06em}
+.nmp-shell__switch{font-size:13px;color:var(--nmp-env-ink);text-decoration:none;padding:6px 8px;border-radius:8px;white-space:nowrap}
+.nmp-shell__switch:hover{background:var(--nmp-env-soft);text-decoration:underline}
+@media (max-width:1180px){.nmp-shell__group .nmp-shell__link:not([aria-current]) span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}}
+@media (max-width:640px){.nmp-shell__switch{display:none}}
+@media print{.nmp-shell{display:none}html[data-nmp-env] body{border-top:0}}
+html[data-nmp-env]{scroll-padding-top:84px}
+.nmp-shell-spacer{height:66px}
+@media (max-width:900px){.nmp-shell__menu-button span,.nmp-shell__group .nmp-shell__link span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}.nmp-shell__group{padding-right:2px;margin-right:2px}}
+@media (max-width:640px){.nmp-shell__env-long,.nmp-shell__env-port{display:none}.nmp-shell__env-short{display:inline!important}.nmp-shell{padding:5px 6px}.nmp-shell__link{padding:6px 7px}}
+@media (max-width:1100px){html[data-nmp-env] .workspace-section-nav{top:72px;z-index:900}}
+@media print{.nmp-shell-spacer{display:none}}

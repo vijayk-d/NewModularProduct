@@ -49,6 +49,9 @@ import { renderApplicationReview, renderRefinementPanel, renderOrganisationResea
 import { readFormBody } from './form-body.js';
 import { sendText, sendHtml, sendJson } from './responses.js';
 import { createServer } from 'node:http';
+import { readFileSync as readShellFile } from 'node:fs';
+import { attachShell } from './app-shell.js';
+const APP_SHELL_CSS = readShellFile(new URL('./app-shell.css', import.meta.url), 'utf8');
 import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { acceptRefinedCoverLetter } from '../../application/accept-refined-cover-letter.js';
 import { attachReviewPageListeners } from './review-page.js';
@@ -415,6 +418,8 @@ export function createLocalServer({
     if(!/^(?:localhost|127\.0\.0\.1|\[::1\])(?::[0-9]{1,5})?$/i.test(String(request.headers.host||''))){sendJson(response,403,{ok:false,error:'This local application accepts loopback Host names only.'});return;}
     const method = request.method || 'GET';
     const url = new URL(request.url || '/', 'http://localhost');
+    if(method==='GET'&&url.pathname==='/app-shell.css'){response.writeHead(200,{'content-type':'text/css; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'});response.end(APP_SHELL_CSS);return;}
+    attachShell(response,url.pathname);
     if(method==='GET'&&url.pathname==='/healthz'){sendJson(response,200,{ok:true,service:'NewModularProduct',environment:process.env.NMP_ENV||'development',release:process.env.NMP_RELEASE_COMMIT||'development'});return;}
     if(await handleWritingReferences(request,response,url))return;
     if(await handleCoverReferences(request,response,url))return;
