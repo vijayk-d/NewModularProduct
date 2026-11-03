@@ -2,6 +2,12 @@ import test from 'node:test';import assert from 'node:assert/strict';import {onc
 import {injectShell,allowShellStyles,renderShell,shellEnvironment,NAV_GROUPS} from '../../../src/interfaces/http/app-shell.js';
 import {createLocalServer} from '../../../src/interfaces/http/create-local-server.js';
 const page='<!doctype html><html lang="en"><head><title>Outreach queue</title></head><body class="x"><main>Hi</main></body></html>';
+test('evidence navigation follows the running environment toggle',()=>{
+ assert.match(renderShell('/',{NMP_ENV:'development'}),/href="\/evidence-library"/);
+ assert.doesNotMatch(renderShell('/',{NMP_ENV:'development',ENABLE_EVIDENCE_LIBRARY:'false'}),/href="\/evidence-library"/);
+ assert.doesNotMatch(renderShell('/',{NMP_ENV:'production'}),/href="\/evidence-library"/);
+ assert.match(renderShell('/',{NMP_ENV:'production',ENABLE_EVIDENCE_LIBRARY:'true'}),/href="\/evidence-library"/);
+});
 test('every main page is in the navigation once',()=>{const hrefs=NAV_GROUPS.flatMap(g=>g.items.map(i=>i.href));assert.equal(new Set(hrefs).size,hrefs.length);for(const h of ['/','/applications','/outreach-queue','/outreach-scheduling','/evidence-library','/cover-letter-library','/cv-library','/dashboard','/maintenance','/settings/features'])assert.ok(hrefs.includes(h),h);});
 test('injects shell, stylesheet and environment marker once',()=>{const out=injectShell(page,'/outreach-queue',{NMP_ENV:'development',PORT:'3000'});assert.match(out,/<html data-nmp-env="development" lang="en">/);assert.match(out,/<link rel="stylesheet" href="\/app-shell.css"><\/head>/);assert.match(out,/<body class="x" data-nmp-env="development"><header class="nmp-shell"/);assert.match(out,/href="\/outreach-queue" title="Outreach queue" aria-current="page"/);assert.match(out,/<title>Outreach queue<\/title>/);assert.equal(injectShell(out,'/outreach-queue',{}),out);});
 test('production is labelled in the tab title and badge and links to development',()=>{const out=injectShell(page,'/dashboard',{NMP_ENV:'production',PORT:'3100'});assert.match(out,/<title>PRODUCTION · Outreach queue<\/title>/);assert.match(out,/data-nmp-env="production"/);assert.match(out,/>Production<\/strong>/);assert.match(out,/href="http:\/\/127.0.0.1:3000\/dashboard"/);});

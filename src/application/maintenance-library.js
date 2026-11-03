@@ -38,6 +38,7 @@ const DOCS = Object.freeze([
 
 const PS = 'powershell -ExecutionPolicy Bypass -File ';
 const UTILITIES = Object.freeze([
+  { name: 'Copy evidence to shared library', path: 'tools/maintenance/move-evidence-to-shared.ps1', command: PS + 'tools\\maintenance\\move-evidence-to-shared.ps1', effect: 'Copies private data', note: 'One-off copy and backup; stop both servers first. Reads SharedDir from development .env or -SharedDir. Never overwrites a shared database.' },
   { name: 'Ship to production', path: 'tools/deploy/ship.cmd', command: 'tools\\deploy\\ship.cmd', effect: 'Changes production', note: 'Tests, commits, pushes master, delivers, waits for health. Options: -TestOnly (tests only), -NoPush.' },
   { name: 'Bootstrap development', path: 'tools/maintenance/bootstrap-dev.ps1', command: PS + 'tools\\maintenance\\bootstrap-dev.ps1', effect: 'Local setup', note: 'npm ci, .venv, .env from template, template/inventory, Playwright, smoke tests. Safe to re-run.' },
   { name: 'Repository completeness audit', path: 'tools/maintenance/audit-repo-completeness.ps1', command: PS + 'tools\\maintenance\\audit-repo-completeness.ps1', effect: 'Read-only', note: 'Lists code/docs that exist only on this PC and references to files not in GitHub.' },

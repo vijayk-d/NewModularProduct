@@ -8,6 +8,7 @@ import path from 'node:path';
 // - Development/verification: the file is optional; without it the .env values are used unchanged.
 // - Changes are saved immediately and take effect when the server restarts.
 export const FEATURES = Object.freeze([
+  { id: 'evidence-library', env: 'ENABLE_EVIDENCE_LIBRARY', developmentDefault: true, label: 'Evidence library', description: 'Shared assignment evidence and local ranking. No paid calls or email access; polishing remains a separate feature.', risk: 'local' },
   { id: 'gmail', env: 'ENABLE_GMAIL', label: 'Gmail connection', description: 'Lets the app use the configured Gmail account. Every Gmail feature below needs this.', risk: 'mailbox' },
   { id: 'gmail-mailbox-check', env: 'ENABLE_GMAIL_MAILBOX_CHECK', requires: ['gmail'], label: 'Mailbox check', description: 'Verifies the authenticated mailbox matches the configured sender address.', risk: 'mailbox' },
   { id: 'gmail-drafts', env: 'ENABLE_GMAIL_DRAFT_CREATION', requires: ['gmail'], label: 'Gmail drafts', description: 'Creates Gmail drafts from queued emails. Nothing is sent.', risk: 'mailbox' },
@@ -28,6 +29,22 @@ export const DEVELOPMENT_ONLY = Object.freeze([
 
 const byId = new Map(FEATURES.map(f => [f.id, f]));
 const truthy = v => ['true', '1', 'yes'].includes(String(v ?? '').trim().toLowerCase());
+
+export function featureEnabled(id, env = process.env) {
+  const feature = byId.get(id);
+  if (!feature) return false;
+  return env[feature.env] === undefined
+    ? String(env.NMP_ENV || 'development') === 'development' && feature.developmentDefault === true
+    : truthy(env[feature.env]);
+}
+
+function savedStates(env, doc) {
+  if (!doc) return Object.fromEntries(FEATURES.map(f => [f.id, featureEnabled(f.id, env)]));
+  const defaults = String(env.NMP_ENV || 'development') === 'development'
+    ? Object.fromEntries(FEATURES.filter(f => f.developmentDefault === true).map(f => [f.id, true]))
+    : {};
+  return { ...defaults, ...doc.features };
+}
 
 export function featureFilePath(env = process.env) {
   if (env.NMP_FEATURES_PATH) return path.resolve(env.NMP_FEATURES_PATH);
@@ -80,7 +97,7 @@ export function applyFeatureToggles(env = process.env, { file = featureFilePath(
     appendAudit(file, { at: now(), action: 'seeded-from-environment', features });
     seeded = true;
   }
-  const effective = effectiveStates(doc.features);
+  const effective = effectiveStates(savedStates(env, doc));
   for (const f of FEATURES) env[f.env] = effective[f.id] ? 'true' : 'false';
   return { mode, file, applied: true, seeded, revision: doc.revision };
 }
@@ -91,7 +108,7 @@ function appendAudit(file, entry) {
 
 export function describeFeatures(env = process.env, { file = featureFilePath(env) } = {}) {
   const doc = readFeatureFile(file);
-  const saved = doc ? doc.features : Object.fromEntries(FEATURES.map(f => [f.id, truthy(env[f.env])]));
+  const saved = savedStates(env, doc);
   const effective = effectiveStates(saved);
   return {
     environment: String(env.NMP_ENV || 'development'),
@@ -101,7 +118,7 @@ export function describeFeatures(env = process.env, { file = featureFilePath(env
     revision: doc ? doc.revision : 0,
     updatedAt: doc ? doc.updatedAt : null,
     features: FEATURES.map(f => {
-      const running = truthy(env[f.env]);
+      const running = featureEnabled(f.id, env);
       return { id: f.id, env: f.env, label: f.label, description: f.description, risk: f.risk, requires: f.requires || [], saved: saved[f.id] === true, effective: effective[f.id], running, restartNeeded: running !== effective[f.id] };
     }),
     developmentOnly: DEVELOPMENT_ONLY.map(f => ({ ...f, running: f.env ? truthy(env[f.env]) : null }))
@@ -113,9 +130,9 @@ export function setFeature(env = process.env, { id, enabled, expectedRevision, c
   if (!f) throw Object.assign(new Error('Unknown or locked feature.'), { status: 400 });
   if (typeof enabled !== 'boolean') throw Object.assign(new Error('enabled must be true or false.'), { status: 400 });
   if (enabled && f.risk === 'sends-email' && confirmed !== true) throw Object.assign(new Error('Sending needs explicit confirmation.'), { status: 400 });
-  const current = readFeatureFile(file) || { version: 1, revision: 0, features: Object.fromEntries(FEATURES.map(x => [x.id, truthy(env[x.env])])) };
+  const current = readFeatureFile(file) || { version: 1, revision: 0, features: savedStates(env, null) };
   if (expectedRevision !== current.revision) throw Object.assign(new Error('Toggles changed elsewhere. Reload the page.'), { status: 409 });
-  const features = { ...current.features, [id]: enabled };
+  const features = { ...savedStates(env, current), [id]: enabled };
   // Switching a feature off also switches off anything that depends on it, so saved state stays honest.
   if (!enabled) { let changed = true; while (changed) { changed = false; for (const other of FEATURES) if (features[other.id] && (other.requires || []).some(r => features[r] === false || features[r] === undefined)) { features[other.id] = false; changed = true; } } }
   const doc = { version: 1, revision: current.revision + 1, updatedAt: now(), features };

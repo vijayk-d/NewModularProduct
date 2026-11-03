@@ -1,5 +1,6 @@
 // Shared application shell: one floating top navigation bar and a clear environment marker
 // (colour, badge, production tab title) on every HTML page. Pure HTML/CSS, no client script.
+import { featureEnabled } from '../../config/feature-toggles.js';
 
 const icon = (d) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="${d}"/></svg>`;
 const I = Object.freeze({
@@ -32,7 +33,7 @@ export const NAV_GROUPS = Object.freeze([
   { label: 'Libraries', icon: I.book, items: [
     { href: '/cover-letter-library', label: 'Cover-letter library', icon: I.letter },
     { href: '/cv-library', label: 'CV library', icon: I.cv },
-    { href: '/evidence-library', label: 'Evidence library', icon: I.evidence },
+    { href: '/evidence-library', label: 'Evidence library', icon: I.evidence, feature: 'evidence-library' },
   ] },
   { label: 'System', icon: I.tools, items: [
     { href: '/settings/features', label: 'Feature toggles', icon: I.toggle },
@@ -60,7 +61,7 @@ const link = (item, path, cls) => `<a class="${cls}" href="${item.href}" title="
 export function renderShell(pathname = '/', env = process.env) {
   const e = shellEnvironment(env);
   const other = e.id === 'production' ? { label: 'Development', url: 'http://127.0.0.1:3000' + pathname } : e.id === 'development' ? { label: 'Production', url: 'http://127.0.0.1:3100' + pathname } : null;
-  const groups = NAV_GROUPS.map((g) => {
+  const groups = NAV_GROUPS.map(g => ({ ...g, items: g.items.filter(i => !i.feature || featureEnabled(i.feature, env)) })).map((g) => {
     if (g.primary) return `<div class="nmp-shell__group" role="group" aria-label="${esc(g.label)}">${g.items.map((i) => link(i, pathname, 'nmp-shell__link')).join('')}</div>`;
     const active = g.items.some((i) => isCurrent(i, pathname));
     return `<div class="nmp-shell__menu${active ? ' is-active' : ''}"><button type="button" class="nmp-shell__link nmp-shell__menu-button" aria-haspopup="true">${icon(g.icon)}<span>${esc(g.label)}</span>${icon(I.chevron)}</button><div class="nmp-shell__dropdown" role="group" aria-label="${esc(g.label)}">${g.items.map((i) => link(i, pathname, 'nmp-shell__item')).join('')}</div></div>`;
