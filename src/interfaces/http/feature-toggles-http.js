@@ -9,7 +9,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:10px 8px
 td small{display:block;color:#4a5568;margin-top:3px}.state{font-weight:600}.on{color:#1b6b34}.off{color:#6b7280}.warn{color:#8a4b00;font-weight:600}
 button{font:inherit;padding:7px 14px;white-space:nowrap;border-radius:6px;border:1px solid #9aa9bd;background:#fff;cursor:pointer}button:disabled{opacity:.5;cursor:default}
 [role=status]{min-height:1.4em;font-weight:600}a{color:#1d4ed8}</style></head>
-<body><main><p><a href="/">Back to the app</a></p><h1>Feature toggles</h1>
+<body><main><h1>Feature toggles</h1>
 <p>Environment: <span id="env" class="env">loading</span> · Release <code id="release"></code></p>
 <p id="note">Changes are saved straight away and take effect after a restart. Production: press Ctrl+C in the production window, then run Start-Production.ps1.</p>
 <p role="status" aria-live="polite" id="status"></p>

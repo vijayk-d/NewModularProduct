@@ -74,7 +74,7 @@ export function createOutreachHttpHandler({ repository, contactStore, getReview,
           'x-content-type-options': 'nosniff'
         });
         response.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Outreach queue</title></head>
-          <body><main><h1>Outreach queue</h1><p><a href="/">Prepare an application</a> | <a href="/outreach-scheduling">Email scheduling</a></p>
+          <body><main><h1>Outreach queue</h1>
           <p>Draft and Send are separate actions. Sending requires explicit enablement and confirmation.</p></main>
           <script type="module" src="/outreach-queue.js"></script></body></html>`);
         return true;

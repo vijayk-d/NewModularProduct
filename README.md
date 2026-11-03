@@ -7,6 +7,8 @@ Local job-application software: prepares role-specific CVs and cover letters fro
 | Development | http://127.0.0.1:3000 | `D:\monorepo\NewModularProduct` (this repository) |
 | Production | http://127.0.0.1:3100 | `D:\NewModularProduct-Production` (releases built from `master`) |
 
+Every page has the same floating top bar (Applications, Outreach, Libraries, System) and an environment marker: green border and badge = Development, red border, badge and "PRODUCTION ·" tab title = Production, purple = release verification.
+
 Everything you need, in one page: **http://127.0.0.1:3000/maintenance** (or 3100) — environments with live health, all pages, GitHub links, documentation and utilities.
 
 ## Five-minute setup (new PC)

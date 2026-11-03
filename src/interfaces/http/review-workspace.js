@@ -59,7 +59,7 @@ export function enhanceReview(doc=document){
  for(const field of doc.querySelectorAll('textarea.subject-editor-input'))bindSubject(field,doc);
  for(const button of doc.querySelectorAll('button,input[type="submit"]'))button.dataset.uiAction=actionStyle(button);
  const main=doc.querySelector('main'),current=doc.querySelector('.panel--current'),decision=doc.querySelector('.panel--decision');if(current&&decision&&current.parentElement===decision.parentElement&&!doc.documentElement?.dataset?.uiEditorPromoted){decision.before(current);if(doc.documentElement)doc.documentElement.dataset.uiEditorPromoted='true';}
- if(main&&!doc.querySelector('.workspace-nav')){const nav=doc.createElement('nav');nav.className='workspace-nav';nav.setAttribute('aria-label','Application workspaces');for(const [href,label] of [['/','New application'],['/applications','Saved applications'],['/maintenance','Maintenance & Commands'],['/evidence-library','Evidence library (development)'],['/outreach-queue','Outreach queue']]){const a=doc.createElement('a');a.href=href;a.textContent=label;if(doc.defaultView?.location.pathname===href||(href==='/applications'&&doc.defaultView?.location.pathname.startsWith('/applications/')))a.setAttribute('aria-current','page');nav.appendChild(a);}main.prepend(nav);}
+ // Page-to-page navigation now comes from the shared top bar (app-shell.js).
  enhanceWorkspaceV2(doc);
 }
 if(typeof document!=='undefined'){
