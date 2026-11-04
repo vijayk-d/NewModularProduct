@@ -56,10 +56,11 @@ export function advertStatusIndex(jobIds,snapshot){
  return {statuses,coverage:{historyAvailable:snapshot.historyAvailable,unidentifiedHistoricalRecords:unidentified,scope:'Local saved reviews and recorded mail operations only; no full Gmail or portal audit.'}};
 }
 export function listAdvertsWithStatus({service,reviews,outreach,page=1,pageSize=50,status='all'}){
- const opts=jobImportListOptions({page,pageSize});if(status!=='all'&&!ADVERT_STATUSES.includes(status))throw jobError('Choose a valid advert status.');
+ const opts=jobImportListOptions({page,pageSize});if(status!=='all'&&status!=='removed'&&!ADVERT_STATUSES.includes(status))throw jobError('Choose a valid advert status.');
  const all=[];for(let p=1;p<=100;p++){const data=service.list({page:p,pageSize:100});if(!Array.isArray(data.items)||!Number.isInteger(data.pages)||data.pages>100)throw jobError('Advert status listing exceeds bounded coverage.',503);all.push(...data.items);if(p>=data.pages)break;}
+ const hiddenIds=typeof service.hiddenIds==='function'?service.hiddenIds():new Set(),removed=all.filter(r=>hiddenIds.has(r.jobId)),visible=all.filter(r=>!hiddenIds.has(r.jobId));
  const snapshot=readSnapshot(reviews,outreach),index=advertStatusIndex(all.map(r=>r.jobId),snapshot),counts=Object.fromEntries(ADVERT_STATUSES.map(s=>[s,0]));
- const items=all.map(r=>{const workflow=index.statuses.get(r.jobId);counts[workflow.status]++;return {...r,workflow};}).filter(r=>status==='all'||r.workflow.status===status);
+ const items=all.map(r=>{const workflow=index.statuses.get(r.jobId),isRemoved=hiddenIds.has(r.jobId);if(!isRemoved)counts[workflow.status]++;return {...r,workflow,removed:isRemoved};}).filter(r=>status==='removed'?r.removed:!r.removed&&(status==='all'||r.workflow.status===status));
  const total=items.length,pages=Math.max(1,Math.ceil(total/opts.pageSize)),p=Math.min(opts.page,pages);
- return {items:items.slice((p-1)*opts.pageSize,p*opts.pageSize),page:p,pageSize:opts.pageSize,pages,total,unfilteredTotal:all.length,statusCounts:counts,statusFilter:status,coverage:index.coverage};
+ return {items:items.slice((p-1)*opts.pageSize,p*opts.pageSize),page:p,pageSize:opts.pageSize,pages,total,unfilteredTotal:visible.length,removedCount:removed.length,statusCounts:counts,statusFilter:status,coverage:index.coverage};
 }
