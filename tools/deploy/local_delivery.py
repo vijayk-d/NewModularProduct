@@ -337,10 +337,44 @@ def deliver(args):
 def production_env(prod,release,commit):
  env=base_env();env.update(NMP_ENV='production',NMP_RELEASE_COMMIT=commit,NMP_STATE_DIRECTORY=str(prod/'shared/data'),DATA_DIRECTORY=str(prod/'shared/data'),HOST='127.0.0.1',PORT='3100',CV_INVENTORY_PATH=str(prod/'shared/reference/cv-inventory.json'),TEMPLATE_DIRECTORY=str(release/'tools/deploy/assets'),PYTHON=str(python_at(release)),NMP_ALLOW_DEVELOPMENT_INTEGRATIONS='false');return env
 
+def pid_image(pid):
+ # Returns the executable path of a live process, '' if alive but unreadable, None if not running.
+ if os.name=='nt':
+  import ctypes
+  from ctypes import wintypes
+  k=ctypes.WinDLL('kernel32',use_last_error=True);k.OpenProcess.restype=wintypes.HANDLE
+  h=k.OpenProcess(0x1000,False,int(pid))
+  if not h:return '' if ctypes.get_last_error()==5 else None
+  try:
+   code=wintypes.DWORD()
+   if k.GetExitCodeProcess(h,ctypes.byref(code)) and code.value!=259:return None
+   buf=ctypes.create_unicode_buffer(1024);size=wintypes.DWORD(1024)
+   return buf.value if k.QueryFullProcessImageNameW(h,0,buf,ctypes.byref(size)) else ''
+  finally:k.CloseHandle(h)
+ try:os.kill(int(pid),0)
+ except ProcessLookupError:return None
+ except PermissionError:return ''
+ try:return os.readlink('/proc/%d/exe'%int(pid))
+ except OSError:return ''
+def clear_stale_lock(prod,lock):
+ # A lock is stale when its PID is gone or is not a Python process (PID reused after restart/X-close).
+ # A live Python supervisor is never touched. The stale lock is moved aside, never deleted.
+ try:raw=lock.read_text(encoding='utf-8').strip()
+ except OSError:return False
+ status=read(prod/'supervisor-status.json',{})
+ fresh=isinstance(status.get('heartbeat'),(int,float)) and time.time()-status['heartbeat']<15
+ image=pid_image(raw) if raw.isdigit() else None
+ if image is not None and (image=='' or 'python' in Path(image).name.lower()):
+  fail('Production supervisor already running (PID '+raw+', heartbeat '+('fresh' if fresh else 'stale')+'). Use its window, or stop it first.')
+ dest=prod/('supervisor.lock.stale-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ'))
+ lock.replace(dest);print('Stale supervisor lock (PID '+(raw or '?')+' not running) moved to '+str(dest),flush=True);return True
 def serve(args):
  prod=prod_root(args);lock=prod/'supervisor.lock'
  try:fd=os.open(lock,os.O_CREAT|os.O_EXCL|os.O_WRONLY)
- except FileExistsError:fail('Supervisor lock exists; inspect the current production window/status first.')
+ except FileExistsError:
+  clear_stale_lock(prod,lock)
+  try:fd=os.open(lock,os.O_CREAT|os.O_EXCL|os.O_WRONLY)
+  except FileExistsError:fail('Supervisor lock exists; inspect the current production window/status first.')
  os.write(fd,str(os.getpid()).encode());os.close(fd);session=uuid.uuid4().hex;child=None;running=None;log=None;closed=False
  atomic(prod/'supervisor-control.json',{'session':session,'paused':False})
  print('Production supervisor on 127.0.0.1:3100. Ctrl+C requests graceful shutdown.',flush=True)
