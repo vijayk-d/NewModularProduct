@@ -299,4 +299,12 @@ class SchedulerSourcePolicyTests(unittest.TestCase):
   for name in ['apps-script/gmail-scheduler/.env','apps-script/gmail-scheduler/.clasp.json','apps-script/gmail-scheduler/credentials.json','apps-script/gmail-scheduler/token.json','apps-script/gmail-scheduler/private.key','apps-script/gmail-scheduler/backups/Code.gs']:
    self.assertFalse(d.safe_source(name),name)
 
+ def test_stale_supervisor_lock_is_moved_aside_but_live_one_is_kept(self):
+  tmp=tempfile.TemporaryDirectory();self.addCleanup(tmp.cleanup);self.prod=Path(tmp.name);lock=self.prod/'supervisor.lock';lock.write_text('999999')
+  with contextlib.redirect_stdout(io.StringIO()):self.assertTrue(d.clear_stale_lock(self.prod,lock))
+  self.assertFalse(lock.exists());self.assertEqual(len(list(self.prod.glob('supervisor.lock.stale-*'))),1)
+  lock.write_text(str(os.getpid()))
+  with self.assertRaisesRegex(RuntimeError,'already running'):d.clear_stale_lock(self.prod,lock)
+  self.assertTrue(lock.exists())
+
 if __name__=='__main__':unittest.main()
