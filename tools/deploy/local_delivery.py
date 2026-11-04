@@ -361,7 +361,8 @@ def clear_stale_lock(prod,lock):
  # A live Python supervisor is never touched. The stale lock is moved aside, never deleted.
  try:raw=lock.read_text(encoding='utf-8').strip()
  except OSError:return False
- status=read(prod/'supervisor-status.json',{})
+ try:status=read(prod/'supervisor-status.json',{}) or {}
+ except ValueError:status={}  # empty/corrupt after power loss; disposable heartbeat file
  fresh=isinstance(status.get('heartbeat'),(int,float)) and time.time()-status['heartbeat']<15
  image=pid_image(raw) if raw.isdigit() else None
  if image is not None and (image=='' or 'python' in Path(image).name.lower()):
