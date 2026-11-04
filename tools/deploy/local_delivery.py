@@ -4,7 +4,7 @@ from pathlib import Path,PurePosixPath
 from datetime import datetime,timezone
 ROOT=Path(os.getenv('NMP_SOURCE_ROOT') or Path(__file__).resolve().parents[2]).resolve()
 FLAGS=['ENABLE_GMAIL','ENABLE_GMAIL_SENDING','ENABLE_GMAIL_DRAFT_CREATION','ENABLE_GMAIL_MAILBOX_CHECK','ENABLE_GMAIL_SIGNATURE','ENABLE_PERPLEXITY_RESEARCH','ENABLE_COVER_LETTER_REFINEMENT']
-STORES=['outreach.db','application-reviews-v1.db','job-imports-v1.db','imported-recruiter-contacts.json']
+STORES=['outreach.db','application-reviews-v1.db','job-imports-v1.db','job-imports-v1-hidden.db','imported-recruiter-contacts.json']
 def fail(s):raise RuntimeError(s)
 def stamp():return datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
 def sha(b):return hashlib.sha256(b).hexdigest()

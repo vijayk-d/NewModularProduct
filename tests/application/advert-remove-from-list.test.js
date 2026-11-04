@@ -15,3 +15,7 @@ for(const [name,make] of [['memory',()=>createJobImportService(createMemoryJobIm
   assert.throws(()=>s.setHidden('999',true),/No stored advert/);assert.throws(()=>s.setHidden('x',true),/Valid job ID/);
   s.close?.();
  });
+import {mkdtempSync,rmSync,existsSync} from 'node:fs';import os from 'node:os';import path from 'node:path';import {DatabaseSync} from 'node:sqlite';
+test('hidden list uses a separate file; main import schema is unchanged',()=>{const dir=mkdtempSync(path.join(os.tmpdir(),'nmp-hide-'));try{const f=path.join(dir,'job-imports.db'),s=createSqliteJobImportStore({filePath:f});s.receive(input('7'));s.setHidden('7',true);s.close();
+ const main=new DatabaseSync(f);assert.equal(main.prepare("SELECT count(*) n FROM sqlite_master WHERE name='job_import_hidden'").get().n,0);main.close();assert.ok(existsSync(path.join(dir,'job-imports-hidden.db')));
+ const again=createSqliteJobImportStore({filePath:f});assert.ok(again.hiddenIds().has('7'));again.close();}finally{rmSync(dir,{recursive:true,force:true});}});
