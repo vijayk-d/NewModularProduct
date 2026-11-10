@@ -9,6 +9,8 @@ export const LETTER_TONES = Object.freeze([
  {value:'collaborative',label:'Collaborative leadership',instruction:'Emphasise documented stakeholder alignment, cross-functional collaboration and team enablement while preserving actual ownership and contribution.'},
  {value:'technical',label:'Technical and delivery-focused',instruction:'Use precise technical and delivery language grounded in supplied evidence. Explain execution and outcomes without dense jargon or unsupported expertise.'}
 ]);
+export const EVIDENCE_ROI_POLICY='Tone changes voice only, never letter structure or evidence. Write each evidence item as its own plaintext line starting with the literal \u2022 character and a space, with exactly one organisation per bullet; never present evidence as unbulleted sentences. Make each bullet ROI-led: At ORGANISATION, I RESULT by ACTION. Lead with the measurable result that permitted evidence states for the same organisation and the same piece of work, keeping figure, unit and period exactly as written; if no permitted metric exists, state the concrete business outcome rather than activity alone. Prefer evidence items that carry a sourced result over activity-only items. Never invent, estimate, round, combine or move metrics between organisations, and do not upgrade a supporting role into ownership.';
+export function letterToneInstruction(value='professional'){const tone=normalizeLetterTone(value);return LETTER_TONES.find(item=>item.value===tone).instruction+' '+EVIDENCE_ROI_POLICY;}
 export function normalizeLetterTone(value = 'professional') {
   const tone = String(value || 'professional').trim();
   if (!LETTER_TONES.some(item => item.value === tone)) {
