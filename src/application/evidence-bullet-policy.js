@@ -16,10 +16,12 @@ export function selectScenariosForRole(scenarios=[],jobDescriptionText='',max=MA
  const ends=[...new Set(scenarios.map(s=>periodEnd(s.period)).filter(e=>e>0))].sort((a,b)=>b-a);
  const scored=scenarios.map((s,i)=>{let score=0;const r=ends.indexOf(periodEnd(s.period));if(r===0)score+=2;else if(r===1)score+=1;for(const w of stems(s.approvedWording))if(jd.has(w))score++;if(!jdAi&&AI.test(s.approvedWording))score-=2;if(METRIC.test(s.approvedWording))score+=1;return {s,i,score};})
   .sort((a,b)=>b.score-a.score||periodEnd(b.s.period)-periodEnd(a.s.period)||a.i-b.i);
- const kept=[],dropped=[],orgs=new Set();
- for(const x of scored){const k=orgKey(x.s);if(kept.length<max&&!(k&&orgs.has(k))){kept.push(x.s);if(k)orgs.add(k);}else dropped.push(x.s);}
- kept.sort((x,y)=>periodEnd(y.period)-periodEnd(x.period));
- const warnings=dropped.length?['Evidence limited to '+kept.length+' role-relevant scenario bullet(s), one per organisation. Not used: '+dropped.map(s=>(s.organisation?s.organisation+': ':'')+s.approvedWording.slice(0,60)+(s.approvedWording.length>60?'…':'')).join(' | ')+'. Reselect if a different choice is preferred.']:[];
+ // User-selected scenarios are all kept. Order: newest employment first, relevance breaks ties; same organisation kept adjacent for one combined bullet.
+ const firstIndex=new Map();scored.forEach((x,i)=>{const k=orgKey(x.s)||('#'+x.i);if(!firstIndex.has(k))firstIndex.set(k,{i,end:periodEnd(x.s.period)});else firstIndex.get(k).end=Math.max(firstIndex.get(k).end,periodEnd(x.s.period));});
+ const g=x=>firstIndex.get(orgKey(x.s)||('#'+x.i));
+ const kept=scored.slice().sort((a,b)=>g(b).end-g(a).end||g(a).i-g(b).i||periodEnd(b.s.period)-periodEnd(a.s.period)).map(x=>x.s),dropped=[];
+ const counts=new Map();for(const s of kept){const k=orgKey(s);if(k)counts.set(k,(counts.get(k)||0)+1);}
+ const warnings=[...counts].filter(([,n])=>n>1).map(([k,n])=>k+' has '+n+' selected scenarios; they are combined into one bullet for that organisation.');
  return {kept,dropped,warnings};
 }
 export function evidenceBulletWarnings(draft='',scenarios=[],evidenceText=''){
@@ -28,8 +30,9 @@ export function evidenceBulletWarnings(draft='',scenarios=[],evidenceText=''){
  const w=[];
  if(plain.length)w.push(plain.length+' evidence line(s) lack the • bullet marker.');
  const ev=[...bullets,...plain];
- if(ev.length>MAX_EVIDENCE_BULLETS)w.push(ev.length+' evidence items; the letter allows '+MAX_EVIDENCE_BULLETS+'.');
+ const allowed=Math.max(MAX_EVIDENCE_BULLETS,new Set(scenarios.map(orgKey).filter(Boolean)).size);if(ev.length>allowed)w.push(ev.length+' evidence items; expected at most '+allowed+'.');
  const orgOf=l=>orgKey({organisation:(/^(?:•\s*)?At ([^,]{1,80}),/.exec(l)?.[1]||'')});
+ for(const k of new Set(scenarios.map(orgKey).filter(Boolean)))if(!ev.some(l=>orgOf(l)===k))w.push('Selected '+k+' scenario is missing from the letter.');
  const seen=new Map();for(const l of ev){const o=orgOf(l);if(o)seen.set(o,(seen.get(o)||0)+1);}
  for(const [o,n]of seen)if(n>1)w.push(o+' appears in '+n+' evidence items; use one per organisation.');
  for(const l of ev){const o=orgOf(l)||l.slice(0,30);if(WEAK.test(l))w.push('Weak verb in '+o+' evidence ("'+WEAK.exec(l)[0]+'"); state the owned action or outcome if the source supports it.');
