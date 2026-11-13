@@ -10,6 +10,6 @@ test('adapter itself limits, orders and reports scenario evidence (server path)'
  const order=['s3','s2','s1'].map(id=>sent.indexOf('\\"id\\":\\"'+id+'\\"')>=0?sent.indexOf('\\"id\\":\\"'+id+'\\"'):sent.indexOf('"id":"'+id+'"'));
  assert.ok(order.every(i=>i>=0),'kept scenarios sent');assert.ok(order[0]<order[1]&&order[1]<order[2],'most recent first');
  assert.ok(!sent.includes('"id":"s0"')&&!sent.includes('\\"id\\":\\"s0\\"'),'oldest dropped');
- assert.ok(r.warnings.some(w=>/Not used/.test(w)));assert.ok(r.warnings.some(w=>/lack the • bullet/.test(w)));
+ assert.ok(r.warnings.some(w=>/Not used/.test(w)));assert.ok(r.warnings.some(w=>/markers were added locally/.test(w)));assert.match(r.proposedDraft,/• At SKY/);
  assert.equal(r.polishParameters.tone,'Consultative and problem-solving');assert.equal(r.polishParameters.scenariosUsed,3);assert.equal(r.polishParameters.evidenceOrder,'SKY → DNB');
 });
