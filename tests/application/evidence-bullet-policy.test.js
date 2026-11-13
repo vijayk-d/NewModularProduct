@@ -26,3 +26,19 @@ test('flags missing bullets, excess items, repeated organisation, weak verbs and
  assert.match(w,/lack the • bullet/);assert.match(w,/4 evidence items/);assert.match(w,/SKY appears in 2/);assert.match(w,/Weak verb in DNB/);assert.match(w,/SKY evidence is activity-only/);
  assert.deepEqual(evidenceBulletWarnings('Intro.\n• At SKY, I improved engagement by 30% through PI planning.\n• At DNB, I led Salesforce integration delivery.',sc),[]);
 });
+import {periodEnd,polishParameters} from '../../src/application/evidence-bullet-policy.js';
+import {approvedScenarioRequest} from '../../src/application/scenario-polishing.js';
+test('kept scenarios are ordered most recent employment first',()=>{
+ const s=[{id:'dnb',organisation:'DNB',period:'2015 - 2017',approvedWording:'I coordinated delivery risks for clients.',evidenceState:'user-confirmed'},
+  {id:'sky',organisation:'SKY',period:'Mar 2019 – Jun 2021',approvedWording:'I coached delivery teams on risks.',evidenceState:'user-confirmed'},
+  {id:'lex',organisation:'LEXISNEXIS',period:'2023 – present',approvedWording:'I managed client delivery risks.',evidenceState:'user-confirmed'}];
+ assert.deepEqual(selectScenariosForRole(s,jd).kept.map(x=>x.id),['lex','sky','dnb']);
+ assert.equal(periodEnd('Jan 2020 to Current'),9999);assert.equal(periodEnd(''),-1);
+ const r=approvedScenarioRequest({snapshots:[{scenarioId:'s1',approvedWording:'x',evidenceState:'user-confirmed'}],organisations:['SKY'],periods:['2019–2021']});
+ assert.equal(r.approvedScenarioEvidence[0].period,'2019–2021');
+});
+test('polish parameters summarise tone, size and evidence',()=>{
+ const p=polishParameters({request:{letterTone:'consultative',jobDescriptionText:jd},draft:'Hi\n• At SKY, I improved engagement by 30%.\nAt DNB, I led delivery.',quality:{mode:'standard',wordCount:12,targetMinimum:300,maximumWords:400},selection:{kept:[1,2],dropped:[3]},toneLabel:'Consultative and problem-solving'});
+ assert.equal(p.tone,'Consultative and problem-solving');assert.equal(p.evidenceItems,2);assert.equal(p.bulletedItems,1);assert.equal(p.itemsWithMetric,1);
+ assert.equal(p.evidenceOrder,'SKY → DNB');assert.equal(p.scenariosSelected,3);assert.equal(p.targetWords,'300–400');assert.equal(p.jobMentionsAi,false);assert.ok(p.characters>0);
+});

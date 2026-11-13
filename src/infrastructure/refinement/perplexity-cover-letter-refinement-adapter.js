@@ -1,3 +1,4 @@
+import {selectScenariosForRole,evidenceBulletWarnings,polishParameters} from '../../application/evidence-bullet-policy.js';
 import {normalizeWritingReferenceExamples,WRITING_REFERENCE_POLICY} from '../../application/writing-reference-selection.js';
 import {savePrivateFailure,providerCategory} from '../../application/cover-letter-v2-diagnostics.js';
 import {letterStructurePolicy} from '../../application/structured-letter-policy.js';
@@ -8,7 +9,7 @@ import {validateContextualHighlights,roleConsistencyWarnings} from '../../applic
 import {qualityV2Enabled,QUALITY_V2_INSTRUCTIONS,evidenceContractForPrompt,extendQualityV2Schema,validateQualityV2,qualityV2Review,reconcileQualityV2,qualityV2RoleFocus} from '../../application/cover-letter-quality-v2.js';
 import {SENIOR_COVER_LETTER_INSTRUCTIONS} from '../../application/senior-cover-letter-instructions.js';
 import {coverLetterBudget} from '../../application/cover-letter-budget.js';
-import {assertLetterLength} from '../../domain/cover-letter/letter-quality-policy.js';
+import {assertLetterLength,assessLetterQuality} from '../../domain/cover-letter/letter-quality-policy.js';
 import { assertCompletedRefinement } from '../../application/refinement-completion-status.js';
 import { LETTER_TONES, letterToneInstruction, normalizeLetterTone, normalizeExcludedEmployers, assertLetterBodySafe, selectAlignedHighlights } from '../../application/cover-letter-controls.js';
 import { composeOutreachLetter } from '../../application/compose-outreach-letter.js';
@@ -293,6 +294,8 @@ export function createPerplexityCoverLetterRefinementAdapter({
 
   return {
     async refine(request) {
+      const scenarioSelection=selectScenariosForRole(request.approvedScenarioEvidence||[],request.jobDescriptionText);
+      if(scenarioSelection.kept.length)request={...request,approvedScenarioEvidence:scenarioSelection.kept};
       const selectedModel = request.polishingModel == null ? model : normalizePolishingModel(request.polishingModel);
       const attemptStartedAt = Date.now();
       let attemptPayload = null;
@@ -367,8 +370,11 @@ export function createPerplexityCoverLetterRefinementAdapter({
         throw error;
       }
 
+      const letterQuality=assessLetterQuality(proposal.proposedDraft,{mode:request.letterLengthMode||'standard',maxWords:request.maxWords||500});
       return {
         ...proposal,
+        warnings:[...scenarioSelection.warnings,...(proposal.warnings||[]),...evidenceBulletWarnings(proposal.proposedDraft,request.approvedScenarioEvidence||[])],
+        polishParameters:polishParameters({request:{...request,polishingModel:selectedModel},draft:proposal.proposedDraft,quality:letterQuality,selection:scenarioSelection,toneLabel:LETTER_TONES.find(t=>t.value===normalizeLetterTone(request.letterTone))?.label}),
         model: selectedModel,
         attemptMetadata: buildPolishingAttempt({requestModel:selectedModel,response:attemptPayload,
           durationMs:Date.now()-attemptStartedAt,tone:request.letterTone || 'professional',
@@ -410,7 +416,7 @@ export function buildPolishingApiRequest(request, selectedModel) {
                 content: [
                   {
                     type: 'input_text',
-                    text: (qualityV2Enabled()?QUALITY_V2_INSTRUCTIONS:SENIOR_COVER_LETTER_INSTRUCTIONS)+(request.writingReferenceExamples?.length?' '+WRITING_REFERENCE_POLICY:'')+(request.approvedScenarioEvidence?.length?' Selected approvedScenarioEvidence is additional explicitly user-approved candidate evidence, including when achievementSelectionExplicit is true. Use its approvedWording as the basis for each scenario claim. Make each scenario sentence show recruiter-relevant return on investment: lead with the measurable result, then how it was achieved (pattern: \'At ORGANISATION, I delivered/reduced/secured RESULT by ACTION, enabling LASTING EFFECT.\'). Take the result only from approvedWording or from a metric that the supplied draft letter (originalCoverLetter), selectedCvText, selectedCvHighlights or approvedAchievementEvidence explicitly states for the same organisation and the same piece of work; keep the figure, unit and period exactly as written. If no such metric exists, state the concrete business outcome from approvedWording (for example faster decisions, reduced support demand, release readiness) instead of activity alone; never invent, estimate, round or combine figures. Avoid weak verbs such as supported, helped, involved in or focused on when the source documents ownership or delivery; do not upgrade a supporting role into ownership. Keep each action and outcome with its original organisation and assignment as expressed there; if attribution is absent, do not infer it. Do not quote source IDs or narrate evidence verification. Do not manufacture problems, causation, metrics, methods or strategic responsibility. Distinguish past achievements from prospective approaches; do not assume the target employer has the same internal problem or promise repeated results. The user deliberately selected these scenarios for this application: include every selected approved scenario, each as one concise sentence that names its organisation field (for example \'At ORGANISATION, I ...\'), ordered by relevance to the role. Present each as its own literal • bullet with exactly one organisation per bullet; never put two organisations in one bullet. Selected scenarios take precedence over other CV examples; add other CV examples only if the word limit still allows. The zero-to-two example limit applies to unselected CV examples, not to selected scenarios. Combine compatible points only without merging distinct employer/project attribution, inventing links or duplicating achievements.':'')
+                    text: (qualityV2Enabled()?QUALITY_V2_INSTRUCTIONS:SENIOR_COVER_LETTER_INSTRUCTIONS)+(request.writingReferenceExamples?.length?' '+WRITING_REFERENCE_POLICY:'')+(request.approvedScenarioEvidence?.length?' Selected approvedScenarioEvidence is additional explicitly user-approved candidate evidence, including when achievementSelectionExplicit is true. Use its approvedWording as the basis for each scenario claim. Make each scenario sentence show recruiter-relevant return on investment: lead with the measurable result, then how it was achieved (pattern: \'At ORGANISATION, I delivered/reduced/secured RESULT by ACTION, enabling LASTING EFFECT.\'). Take the result only from approvedWording or from a metric that the supplied draft letter (originalCoverLetter), selectedCvText, selectedCvHighlights or approvedAchievementEvidence explicitly states for the same organisation and the same piece of work; keep the figure, unit and period exactly as written. If no such metric exists, state the concrete business outcome from approvedWording (for example faster decisions, reduced support demand, release readiness) instead of activity alone; never invent, estimate, round or combine figures. Avoid weak verbs such as supported, helped, involved in or focused on when the source documents ownership or delivery; do not upgrade a supporting role into ownership. Keep each action and outcome with its original organisation and assignment as expressed there; if attribution is absent, do not infer it. Do not quote source IDs or narrate evidence verification. Do not manufacture problems, causation, metrics, methods or strategic responsibility. Distinguish past achievements from prospective approaches; do not assume the target employer has the same internal problem or promise repeated results. The user deliberately selected these scenarios for this application: include every selected approved scenario, each as one concise sentence that names its organisation field (for example \'At ORGANISATION, I ...\'), in exactly the supplied order, which is most recent employment first; never reorder them oldest first. Present each as its own literal • bullet with exactly one organisation per bullet; never put two organisations in one bullet. Selected scenarios take precedence over other CV examples; add other CV examples only if the word limit still allows. The zero-to-two example limit applies to unselected CV examples, not to selected scenarios. Combine compatible points only without merging distinct employer/project attribution, inventing links or duplicating achievements.':'')
                   }
                 ]
               },
