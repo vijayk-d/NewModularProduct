@@ -1,4 +1,4 @@
-import {selectScenariosForRole,evidenceBulletWarnings,polishParameters} from '../../application/evidence-bullet-policy.js';
+import {selectScenariosForRole,evidenceBulletWarnings,polishParameters,bulletEvidenceLines} from '../../application/evidence-bullet-policy.js';
 import {normalizeWritingReferenceExamples,WRITING_REFERENCE_POLICY} from '../../application/writing-reference-selection.js';
 import {savePrivateFailure,providerCategory} from '../../application/cover-letter-v2-diagnostics.js';
 import {letterStructurePolicy} from '../../application/structured-letter-policy.js';
@@ -370,10 +370,12 @@ export function createPerplexityCoverLetterRefinementAdapter({
         throw error;
       }
 
+      const unbulleted=evidenceBulletWarnings(proposal.proposedDraft,[]).some(x=>/lack the • bullet/.test(x));
+      proposal={...proposal,proposedDraft:bulletEvidenceLines(proposal.proposedDraft)};
       const letterQuality=assessLetterQuality(proposal.proposedDraft,{mode:request.letterLengthMode||'standard',maxWords:request.maxWords||500});
       return {
         ...proposal,
-        warnings:[...scenarioSelection.warnings,...(proposal.warnings||[]),...evidenceBulletWarnings(proposal.proposedDraft,request.approvedScenarioEvidence||[])],
+        warnings:[...scenarioSelection.warnings,...(proposal.warnings||[]),...(unbulleted?['Evidence lines arrived without • markers; markers were added locally without changing wording.']:[]),...evidenceBulletWarnings(proposal.proposedDraft,request.approvedScenarioEvidence||[],[request.selectedCvText,...(request.selectedCvHighlights||[])].join(' '))],
         polishParameters:polishParameters({request:{...request,polishingModel:selectedModel},draft:proposal.proposedDraft,quality:letterQuality,selection:scenarioSelection,toneLabel:LETTER_TONES.find(t=>t.value===normalizeLetterTone(request.letterTone))?.label}),
         model: selectedModel,
         attemptMetadata: buildPolishingAttempt({requestModel:selectedModel,response:attemptPayload,
