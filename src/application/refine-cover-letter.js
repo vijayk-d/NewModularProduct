@@ -1,4 +1,3 @@
-import { selectScenariosForRole, evidenceBulletWarnings } from './evidence-bullet-policy.js';
 import {normalizeWritingReferenceExamples} from './writing-reference-selection.js';
 import {normalizeApprovedScenarioEvidence} from './scenario-polishing.js';
 import {lengthPolicy,normalizeLengthMode} from '../domain/cover-letter/letter-quality-policy.js';
@@ -186,14 +185,11 @@ function normalizeRefinementResult(result) {
 
 export async function refineCoverLetter(request = {}, ports = {}) {
   const port = requireRefinementPort(ports);
-  let normalizedRequest = normalizeRefinementRequest(request);
-  const selection = selectScenariosForRole(normalizedRequest.approvedScenarioEvidence, normalizedRequest.jobDescriptionText);
-  if (selection.dropped.length) normalizedRequest = { ...normalizedRequest, approvedScenarioEvidence: selection.kept };
+  const normalizedRequest = normalizeRefinementRequest(request);
 
   try {
-    const result = normalizeRefinementResult(await port.refine(normalizedRequest));
-    if (result.proposedDraft) result.warnings = [...selection.warnings, ...result.warnings, ...evidenceBulletWarnings(result.proposedDraft, normalizedRequest.approvedScenarioEvidence || [])];
-    return result;
+    const result = await port.refine(normalizedRequest);
+    return normalizeRefinementResult(result);
   } catch (error) {
     return {
       review: normalizeReview(),

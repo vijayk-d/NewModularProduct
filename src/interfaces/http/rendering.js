@@ -664,6 +664,13 @@ export function renderOrganisationResearch(research, organisationUrl = '') {
   `;
 }
 
+const POLISH_PARAMETER_LABELS=[['tone','Letter tone'],['lengthMode','Length mode'],['words','Words (visible letter)'],['targetWords','Target word range'],['characters','Characters (letter text)'],['narrativeParagraphs','Narrative paragraphs'],['evidenceItems','Evidence items'],['bulletedItems','Items with • marker'],['itemsWithMetric','Items with a metric'],['evidenceOrder','Evidence order'],['scenariosSelected','Scenarios selected'],['scenariosUsed','Scenarios used'],['jobMentionsAi','Job mentions AI'],['model','Requested model'],['webSearch','Web search allowed'],['writingExamples','Writing examples'],['researchPoints','Research points'],['explicitAchievements','Explicit achievement selection'],['advertiserRelationship','Advertiser relationship']];
+function renderPolishParameters(p){
+  if(!p||typeof p!=='object')return '';
+  const show=v=>v===true?'Yes':v===false?'No':v==null||v===''?'Unreported':String(v);
+  return `<details open data-polish-parameters><summary>Polish parameters</summary><dl>${POLISH_PARAMETER_LABELS.filter(([k])=>k in p).map(([k,l])=>`<dt>${escapeHtml(l)}</dt><dd>${escapeHtml(show(p[k]))}</dd>`).join('')}</dl></details>`;
+}
+
 function renderPolishingAttempt(attempt) {
   if (!attempt) return '';
   const count = value => typeof value === 'number' && Number.isFinite(value) ? String(value) : 'Unreported';
@@ -770,6 +777,7 @@ export function renderRefinementPanel({
       <section class="refinement-proposal panel--proposal">
         <h2>Proposed cover-letter refinement</h2>
         <p>This proposal has not changed the current draft.</p>
+      ${renderPolishParameters(refinementProposal.polishParameters)}
       ${refinementProposal.scenarioEvidenceSnapshot?.snapshots?.length?`<details data-scenario-provenance><summary>Scenario evidence used for this proposal</summary><ul>${refinementProposal.scenarioEvidenceSnapshot.snapshots.map(s=>`<li>${escapeHtml(s.scenarioId)} — scenario version ${s.scenarioRevision}, assignment version ${s.assignmentRevision}; ${escapeHtml(s.evidenceState)}<p>${escapeHtml(s.approvedWording)}</p></li>`).join('')}</ul><p>User-approved wording, not independently verified. Private passages are not included.</p></details>`:''}
         ${refinementProposal.attemptMetadata ? `<p class="rich-editor-notice">This proposal's requested model: ${escapeHtml(refinementProposal.attemptMetadata.requestedModel || 'Unreported')}; returned model: ${escapeHtml(refinementProposal.attemptMetadata.returnedModel || 'Unreported')}.</p>` : '<p class="rich-editor-notice">Model not recorded for this proposal.</p>'}
         <label for="proposed-cover-letter-subject">Proposed subject</label>

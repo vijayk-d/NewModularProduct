@@ -1284,7 +1284,7 @@ export function createLocalServer({
       if(writingState.references.length)refinementProposal={...refinementProposal,writingReferenceSnapshot:writingReferenceAudit(writingState)};
       if(scenarioState.references.length)refinementProposal={...refinementProposal,scenarioEvidenceSnapshot:scenarioState};
       const quality=assertLetterLength(refinementProposal.proposedDraft,{mode:letterLengthMode,maxWords:coverLetterRefinementMaxWords,advertUrl:review.formData.jobAdvertLink});
-      refinementProposal={...refinementProposal,letterLengthMode,quality,qualityAdvertUrl:review.formData.jobAdvertLink};
+      refinementProposal={...refinementProposal,letterLengthMode,quality,qualityAdvertUrl:review.formData.jobAdvertLink};if(refinementProposal.polishParameters)refinementProposal={...refinementProposal,polishParameters:{...refinementProposal.polishParameters,words:quality.wordCount,narrativeParagraphs:quality.narrativeParagraphs,targetWords:quality.targetMinimum+'–'+quality.maximumWords}};
       rejectedRefinementProposal=null;
       } catch (error) {
         if (isContactStoreLoadError(error)) throw error;
