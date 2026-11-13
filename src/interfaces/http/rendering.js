@@ -664,6 +664,22 @@ export function renderOrganisationResearch(research, organisationUrl = '') {
   `;
 }
 
+// Two LinkedIn routes: global people search (organisation, location, role) and the company People tab (role keyword).
+export function linkedInCompanySlug(...urls){for(const u of urls){const m=/^https?:\/\/(?:[\w-]+\.)?linkedin\.com\/company\/([^/?#]+)/i.exec(String(u||'').trim());if(m){try{return decodeURIComponent(m[1]).trim();}catch{return m[1];}}}return '';}
+export function stakeholderSearchLinks(formData={},location=''){
+  const name=String(formData.organisationName||'').trim();if(!name)return {global:[],company:[],slug:'',slugGuessed:false};
+  const global=[['Directors','Director'],['Heads of function','Head'],['Talent and recruitment','Talent, Recruiter']].map(([label,keywords])=>{const query=[name,formData.jobLocation||location,keywords].flatMap(v=>String(v||'').split(',').map(x=>x.trim()).filter(Boolean)).join(', ');return {label,url:'https://www.linkedin.com/search/results/people/?keywords='+encodeURIComponent(query)+'&origin=GLOBAL_SEARCH_HEADER'};});
+  let slug=linkedInCompanySlug(formData.organisationUrl,formData.stakeholderSource),slugGuessed=false;
+  if(!slug){slug=name.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/&/g,' and ').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');slugGuessed=true;}
+  const company=slug?[['Directors','director'],['Heads of function','head'],['Talent','talent'],['Recruiters','recruiter']].map(([label,k])=>({label,url:'https://www.linkedin.com/company/'+encodeURIComponent(slug)+'/people/?keywords='+encodeURIComponent(k)})):[];
+  return {global,company,slug,slugGuessed};
+}
+function renderStakeholderSearchLinks(formData,prepared){
+  const r=stakeholderSearchLinks(formData,prepared?.jobDescription?.location);if(!r.global.length)return '';
+  const a=l=>`<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(l.label)}</a>`;
+  return `<nav aria-label="Additional stakeholder searches"><p>LinkedIn people search: ${r.global.map(a).join(' · ')}</p>${r.company.length?`<p>Company People tab${r.slugGuessed?' (page guessed from organisation name; add the LinkedIn company URL if wrong)':''}: ${r.company.map(a).join(' · ')}</p>`:''}</nav>`;
+}
+
 const POLISH_PARAMETER_LABELS=[['tone','Letter tone'],['lengthMode','Length mode'],['words','Words (visible letter)'],['targetWords','Target word range'],['characters','Characters (letter text)'],['narrativeParagraphs','Narrative paragraphs'],['evidenceItems','Evidence items'],['bulletedItems','Items with • marker'],['itemsWithMetric','Items with a metric'],['evidenceOrder','Evidence order'],['scenariosSelected','Scenarios selected'],['scenariosUsed','Scenarios used'],['jobMentionsAi','Job mentions AI'],['model','Requested model'],['webSearch','Web search allowed'],['writingExamples','Writing examples'],['researchPoints','Research points'],['explicitAchievements','Explicit achievement selection'],['advertiserRelationship','Advertiser relationship']];
 function renderPolishParameters(p){
   if(!p||typeof p!=='object')return '';
@@ -1716,7 +1732,7 @@ export function renderApplicationReview({
       <p><strong>Role:</strong> ${escapeHtml(role)}</p>
       <p><strong>Location:</strong> ${escapeHtml(location)}</p>
       ${organisation}${organisationUrl}${stakeholderSource}${reference}${advert}
-${formData.organisationName ? `<nav aria-label="Additional stakeholder searches">${[['Directors','Director'],['Heads of function','Head'],['Talent and recruitment','Talent, Recruiter']].map(([label,keywords])=>{const query=[formData.organisationName,formData.jobLocation||prepared.jobDescription?.location,keywords].flatMap(v=>String(v||'').split(',').map(x=>x.trim()).filter(Boolean)).join(', ');const url='https://www.linkedin.com/search/results/people/?keywords='+encodeURIComponent(query)+'&origin=GLOBAL_SEARCH_HEADER';return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${label}</a>`;}).join(' · ')}</nav>` : ''}
+${renderStakeholderSearchLinks(formData,prepared)}
     </section>
 
     <section class="panel panel--decision">
