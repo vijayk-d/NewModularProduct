@@ -681,14 +681,37 @@ export function publishEmailDomain(domain, storage = globalThis.localStorage, do
   try { storage.setItem(EMAIL_DOMAIN_STORAGE_KEY, JSON.stringify({ domain: value, organisation, savedAt: new Date().toISOString() })); } catch { return; }
   try { doc?.dispatchEvent?.(new CustomEvent('nmp-email-domain-saved')); } catch {}
 }
+export function openSearchTabsStep(button, openImpl) {
+  let urls = []; let labels = [];
+  try { urls = JSON.parse(button.dataset.openSearchTabs || '[]'); } catch {}
+  try { labels = JSON.parse(button.dataset.openSearchTabLabels || '[]'); } catch {}
+  const title = button.dataset.openSearchTabsTitle || button.textContent;
+  let next = Number(button.dataset.openSearchTabsNext || 0); if (!(next >= 0 && next < urls.length)) next = 0;
+  const start = next;
+  // Browsers usually allow one pop-up per click; open as many as allowed, then continue on the next click.
+  while (next < urls.length) {
+    const tab = openImpl(urls[next], '_blank');
+    if (!tab) break;
+    try { tab.opener = null; } catch {}
+    next++;
+  }
+  const opened = next - start;
+  if (next >= urls.length) {
+    button.dataset.openSearchTabsNext = '0'; button.textContent = title;
+    return { opened, remaining: 0, message: `Opened ${opened} tab${opened === 1 ? '' : 's'}${start ? ' (all searches now open)' : ''}.` };
+  }
+  button.dataset.openSearchTabsNext = String(next);
+  const label = labels[next] || `search ${next + 1}`;
+  button.textContent = `${title}: open ${label} (${next + 1} of ${urls.length})`;
+  return { opened, remaining: urls.length - next, message: `Opened ${opened} tab${opened === 1 ? '' : 's'}; the browser blocked the rest. Click the button again to open ${label}, or allow pop-ups for this site to open all at once.` };
+}
 function attachSearchTabButtons() {
   for (const button of document.querySelectorAll('[data-open-search-tabs]')) {
     if (button.dataset.tabsAttached) continue; button.dataset.tabsAttached = 'true';
     button.addEventListener('click', () => {
-      let urls = []; try { urls = JSON.parse(button.dataset.openSearchTabs || '[]'); } catch {}
-      let opened = 0; for (const url of urls) { const tab = window.open(url, '_blank'); if (tab) { try { tab.opener = null; } catch {} opened++; } }
+      const result = openSearchTabsStep(button, (url, target) => window.open(url, target));
       const status = button.closest('nav')?.querySelector('[data-open-search-tabs-status]');
-      if (status) status.textContent = opened < urls.length ? `Opened ${opened} of ${urls.length} tabs. Allow pop-ups for this site, or use the individual links.` : `Opened ${urls.length} tabs.`;
+      if (status) status.textContent = result.message;
     });
   }
 }
