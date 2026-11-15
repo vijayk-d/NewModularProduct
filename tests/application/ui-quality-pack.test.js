@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {publishEmailDomain,EMAIL_DOMAIN_STORAGE_KEY} from '../../src/interfaces/http/review-page.js';
+import {publishEmailDomain,EMAIL_DOMAIN_STORAGE_KEY,openSearchTabsStep} from '../../src/interfaces/http/review-page.js';
 import {scenarioCatalogue} from '../../src/application/scenario-polishing.js';
 test('saved email domain is published for the contact bridge',()=>{
  const m=new Map(),storage={setItem:(k,v)=>m.set(k,v)};
@@ -20,4 +20,18 @@ test('bridge reuses the stored domain and remembers destination',async()=>{
 test('polish approval is shown beside the button, not a browser dialog',async()=>{
  const s=await readFile(new URL('../../src/interfaces/http/polishing-cost-controls.js',import.meta.url),'utf8');
  assert.ok(!s.includes('window.confirm'));assert.ok(s.includes('data-polishing-run-summary'));
+});
+
+test('search tab button opens all tabs, or continues one per click when pop-ups are blocked', () => {
+  const mk = () => ({ textContent: 'Company People tab', dataset: { openSearchTabs: JSON.stringify(['u1','u2','u3','u4']), openSearchTabLabels: JSON.stringify(['Directors','Heads of function','Talent','Recruiters']), openSearchTabsTitle: 'Company People tab' } });
+  const all = mk(); const opened = [];
+  assert.equal(openSearchTabsStep(all, u => (opened.push(u), {})).remaining, 0);
+  assert.deepEqual(opened, ['u1','u2','u3','u4']);
+  const blocked = mk(); const seen = [];
+  const oneAllowed = () => { let used = false; return u => { if (used) return null; used = true; seen.push(u); return {}; }; };
+  let r = openSearchTabsStep(blocked, oneAllowed());
+  assert.equal(r.remaining, 3); assert.match(blocked.textContent, /Heads of function \(2 of 4\)/);
+  openSearchTabsStep(blocked, oneAllowed()); openSearchTabsStep(blocked, oneAllowed());
+  r = openSearchTabsStep(blocked, oneAllowed());
+  assert.equal(r.remaining, 0); assert.deepEqual(seen, ['u1','u2','u3','u4']); assert.equal(blocked.textContent, 'Company People tab');
 });
