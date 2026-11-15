@@ -1,5 +1,5 @@
 import {attachWritingReferenceControls} from './writing-reference-controls.js';
-export function attachPolishingCostControls(doc=document, fetchImpl=fetch, confirmImpl=message=>window.confirm(message)) {
+export function attachPolishingCostControls(doc=document, fetchImpl=fetch, confirmImpl=null) {
   attachWritingReferenceControls(doc,fetchImpl);
   const form=doc.querySelector('form[action="/cover-letter-refinement"]');
   if(!form||form.dataset.costGuardAttached==='true')return;
@@ -8,6 +8,12 @@ export function attachPolishingCostControls(doc=document, fetchImpl=fetch, confi
   const status=form.querySelector('[data-polishing-cost-status]');
   const button=form.querySelector('button[type="submit"]');
   if(!select||!status||!button)return;
+  // The approval text is shown beside the button instead of a browser dialog; clicking Polish is the approval.
+  let summary=form.querySelector('[data-polishing-run-summary]');
+  if(!summary&&button.insertAdjacentElement){summary=doc.createElement('p');summary.setAttribute('data-polishing-run-summary','');summary.setAttribute('role','status');summary.setAttribute('aria-live','polite');summary.className='polishing-run-summary';button.insertAdjacentElement('afterend',summary);}
+  const showSummary=message=>{if(summary)summary.textContent=message;return true;};
+  if(!confirmImpl)confirmImpl=showSummary;
+  function polishSummary(result,model){const relationship=form.querySelector('[name="advertiserRelationship"]:checked')?.value;return `Clicking Polish cover letter uses ${model.label} (${model.provider}).\nAdvertiser relationship: ${relationship||'saved selection'}.\nLetter length: ${result.letterLengthMode||'standard'}; complete-letter maximum ${result.fullLetterMaximumWords||400} words.\nApproximate input: ${result.estimatedInputTokens} tokens. Output-token budget: ${result.outputTokenBudget}.\nToken subtotal at that budget: $${model.estimatedTokenCostUsd.toFixed(6)} USD.\n${result.webSearchAllowed?'Additional fast-search charges and result tokens are excluded.':'Web search disabled.'}\nThis is not a guaranteed final charge. ${form.dataset.scenarioCount||0} approved scenario(s), ${form.dataset.scenarioBytes||0} scenario-input bytes, are included. ${result.writingReferenceCount||0} selected writing-example excerpt(s), ${result.writingReferenceCharacters||0} characters, are included in this estimate and request. Your CV evidence, selected approved scenarios and these excerpts go to the selected provider through Perplexity. No automatic paid retries.`;}
   const personalInstructions=()=>String(form.querySelector('[name="instructions"]')?.value||'').replace(/\r\n?/g,'\n').trim();
   const instructionField=form.querySelector('[name="instructions"]');
   instructionField?.addEventListener('input',()=>{for(const field of form.querySelectorAll('[name="polishingCostConfirmed"],[name="polishingConfirmedInstructions"]'))field.value='';status.textContent='Personal instructions changed. The next polish will refresh the cost estimate and ask for confirmation.';});
@@ -39,6 +45,7 @@ export function attachPolishingCostControls(doc=document, fetchImpl=fetch, confi
     const model=result.models.find(item=>item.id===chosen);
     if(!model)throw new Error('Selected model is unavailable. No polishing call was made.');
     status.textContent=`${model.label}: approximately ${result.estimatedInputTokens} input tokens, ${result.outputTokenBudget} output-token budget; $${model.estimatedTokenCostUsd.toFixed(6)} token subtotal. ${result.assumption} ${result.limitation} ${result.webSearchAllowed?'Fast search is allowed: $0.001 per invocation plus result tokens.':'Web search is disabled.'} Local estimate only; no Perplexity call was made.`;
+    showSummary(polishSummary(result,model));
     if(select.dispatchEvent){const E=doc.defaultView?.Event||globalThis.Event;select.dispatchEvent(new E('polishing-options-updated',{bubbles:true}));}
     return {result,model};
   }
@@ -64,7 +71,7 @@ export function attachPolishingCostControls(doc=document, fetchImpl=fetch, confi
       if(scenarios!==scenarioInput())throw new Error('Scenario selection changed; review the estimate again.');
       assertWritingReady();if(writingRefs!==writingInput())throw new Error('Writing examples changed; review the estimate again.');
       
-      const approved=confirmImpl(`Polish using ${model.label} (${model.provider})?\nAdvertiser relationship: ${relationship||'saved selection'}.\nLetter length: ${result.letterLengthMode||'standard'}; complete-letter maximum ${result.fullLetterMaximumWords||400} words.\nApproximate input: ${result.estimatedInputTokens} tokens. Output-token budget: ${result.outputTokenBudget}.\nToken subtotal at that budget: $${model.estimatedTokenCostUsd.toFixed(6)} USD.\n${result.webSearchAllowed?'Additional fast-search charges and result tokens are excluded.':'Web search disabled.'}\nThis is not a guaranteed final charge. ${form.dataset.scenarioCount||0} approved scenario(s), ${form.dataset.scenarioBytes||0} scenario-input bytes, are included. ${result.writingReferenceCount||0} selected writing-example excerpt(s), ${result.writingReferenceCharacters||0} characters, are included in this estimate and request. Your CV evidence, selected approved scenarios and these excerpts go to the selected provider through Perplexity. No automatic paid retries.`);
+      const approved=confirmImpl(polishSummary(result,model));
       if(instructions!==personalInstructions())throw new Error('Personal instructions changed; review the estimate again.');
       if(scenarios!==scenarioInput())throw new Error('Scenario selection changed; review the estimate again.');
       assertWritingReady();if(writingRefs!==writingInput())throw new Error('Writing examples changed; review the estimate again.');
