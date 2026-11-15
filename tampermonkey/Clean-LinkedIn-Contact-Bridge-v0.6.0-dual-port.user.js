@@ -1,19 +1,32 @@
 // ==UserScript==
 // @name         New Modular Product - Clean LinkedIn Contact Bridge
 // @namespace    local.new-modular-product
-// @version      0.5.0
+// @version      0.6.0
 // @description  Review clean LinkedIn People contacts and import to production (3100), development (3000), or both.
 // @match        https://www.linkedin.com/company/*/people/*
 // @match        https://www.linkedin.com/search/results/people/*
+// @match        http://127.0.0.1:3000/*
+// @match        http://127.0.0.1:3100/*
+// @match        http://localhost:3000/*
+// @match        http://localhost:3100/*
 // @connect      127.0.0.1
 // @connect      localhost
 // @run-at       document-idle
 // @noframes
 // @grant        GM_xmlhttpRequest
+// @grant        GM_getValue
+// @grant        GM_setValue
 // ==/UserScript==
 
 (() => {
   "use strict";
+  // On the local app: copy the domain saved with "Save domain" into this script's storage, then stop.
+  const DOMAIN_KEY="nmp.lastSavedEmailDomain";
+  if(/^(?:127\.0\.0\.1|localhost)$/.test(location.hostname)){
+    const sync=()=>{try{const v=JSON.parse(localStorage.getItem(DOMAIN_KEY)||"null");if(v&&typeof v.domain==="string"&&v.domain.trim())GM_setValue("emailDomain",{domain:v.domain.trim().toLowerCase(),organisation:String(v.organisation||""),savedAt:String(v.savedAt||""),port:location.port});}catch{}};
+    sync();document.addEventListener("nmp-email-domain-saved",sync);window.addEventListener("storage",event=>{if(event.key===DOMAIN_KEY)sync();});
+    return;
+  }
   const BUTTON_ID = "clean-linkedin-contact-import";
   const PANEL_ID = "clean-linkedin-contact-import-results";
   const API_PATH = "/api/recruiters/import";
@@ -21,7 +34,7 @@
     Object.freeze({id:"production",label:"Production (3100)",origin:"http://127.0.0.1:3100"}),
     Object.freeze({id:"development",label:"Development (3000)",origin:"http://127.0.0.1:3000"})
   ]);
-  let importing = false, previousUrl = location.href;
+  let importing = false, previousUrl = location.href, lastDomainSource = "";
   const roleKeywords = ["talent acquisition","talent","recruiter","recruitment","chief people","people officer","head","director","manager","partner","human resources","hr"];
   const clean = value => String(value || "")
     .replace(/\u00c2\u00b7/g,"·").replace(/\u00c2\u00a3/g,"£")
@@ -82,9 +95,17 @@
     if(domain.length>253 || labels.length<2 || !labels.every(label=>label.length<=63 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label)) || !/^[a-z]{2,63}$/.test(labels.at(-1)) || blocked.some(value=>domain===value || domain.endsWith(`.${value}`)))throw new Error("Enter a valid business domain. Nothing was imported.");
     return domain;
   }
-  function requestImportDomain() {
-    const supplied=window.prompt("Enter the organisation email domain for THIS import.\nUse a domain only, not a URL or email address.\nThis is not remembered between imports.","");
-    return supplied===null ? null : validImportDomain(supplied);
+  function storedImportDomain() {
+    const v=GM_getValue("emailDomain",null);
+    if(!v||typeof v.domain!=="string"||!v.domain.trim())return null;
+    try{return {domain:validImportDomain(v.domain),organisation:v.organisation||"",savedAt:v.savedAt||""};}catch{return null;}
+  }
+  function requestImportDomain(askAlways=false) {
+    const stored=askAlways?null:storedImportDomain();
+    if(stored){lastDomainSource=`saved in the app${stored.organisation?" for "+stored.organisation:""}${stored.savedAt?" at "+new Date(stored.savedAt).toLocaleString():""}`;return stored.domain;}
+    const supplied=window.prompt("Enter the organisation email domain for this import.\nUse a domain only, not a URL or email address.\nIt is remembered until you save another domain in the app or enter a new one here.",storedImportDomain()?.domain||"");
+    if(supplied===null)return null;
+    const domain=validImportDomain(supplied);GM_setValue("emailDomain",{domain,organisation:"",savedAt:new Date().toISOString(),port:"prompt"});lastDomainSource="entered here";return domain;
   }
   function extractProfiles(emailDomain) {
     const contacts=[],seen=new Set(),allAnchors=document.querySelectorAll('a[href*="/in/"]');
@@ -168,7 +189,7 @@
     const panel=document.createElement("section");panel.id=PANEL_ID;panel.setAttribute("aria-label","LinkedIn contact import review");
     Object.assign(panel.style,{position:"fixed",right:"3vw",top:"7vh",maxHeight:"86vh",width:"min(800px,94vw)",overflowY:"auto",zIndex:"2147483647",background:"#fff",color:"#111827",border:"3px solid #b45309",borderRadius:"14px",padding:"16px",boxSizing:"border-box",boxShadow:"0 12px 45px #0006",font:"14px/1.5 system-ui,sans-serif"});
     const title=document.createElement("h2");title.textContent=`Review ${contacts.length} clean LinkedIn contact(s)`;title.style.margin="0 0 8px";
-    const info=document.createElement("p");info.textContent=`Business domain: ${transaction.emailDomain}. Each selected server receives its own copy. Contacts remain unverified; this does not link an application, create a draft, or send email.`;
+    const info=document.createElement("p");info.textContent=`Business domain: ${transaction.emailDomain}${lastDomainSource?" ("+lastDomainSource+")":""}. Each selected server receives its own copy. Contacts remain unverified; this does not link an application, create a draft, or send email.`;
     const source=document.createElement("p");source.textContent="Source: "+transaction.sourceUrl;source.style.overflowWrap="anywhere";
     const details=document.createElement("details"),summary=document.createElement("summary"),list=document.createElement("pre");summary.textContent="Review extracted names and roles";
     list.textContent=contacts.map(contact=>`${contact.fullName} — ${contact.role}\n${contact.linkedinUrl}`).join("\n\n");Object.assign(list.style,{whiteSpace:"pre-wrap",maxHeight:"25vh",overflowY:"auto",overflowWrap:"anywhere"});details.append(summary,list);
@@ -177,7 +198,7 @@
     for(const [value,label] of [["both","Both — Production 3100 + Development 3000"],["production","Production only — 3100"],["development","Development only — 3000"]]){
       const option=document.createElement("option");option.value=value;option.textContent=label;destination.appendChild(option);
     }
-    destination.value="both";toolbar.appendChild(destination);
+    const savedDestination=GM_getValue("destination","both");destination.value=["both","production","development"].includes(savedDestination)?savedDestination:"both";destination.addEventListener("change",()=>GM_setValue("destination",destination.value));toolbar.appendChild(destination);
     const status=document.createElement("pre");status.setAttribute("role","status");status.setAttribute("aria-live","polite");Object.assign(status.style,{whiteSpace:"pre-wrap",overflowWrap:"anywhere",background:"#fffbeb",padding:"10px",font:"13px/1.5 system-ui,sans-serif"});
     const buttons=[];
     function action(label,handler){const b=document.createElement("button");b.type="button";b.textContent=label;Object.assign(b.style,{padding:"8px 12px",border:"1px solid #b45309",borderRadius:"8px",background:"#fff7d6",color:"#111827",cursor:"pointer"});b.addEventListener("click",handler);toolbar.appendChild(b);buttons.push(b);return b;}
@@ -209,15 +230,15 @@
         if(main){main.disabled=false;main.textContent="Import clean LinkedIn contacts";}render();
       }
     });
-    action("New extraction / domain",beginImport);action("Close",()=>panel.remove());
+    action("New extraction / domain",()=>beginImport(true));action("Close",()=>panel.remove());
     panel.append(title,info,source,details,toolbar,status);document.body.appendChild(panel);render();
   }
-  function beginImport(){
+  function beginImport(askDomain=false){
     if(importing)return;
     const main=document.getElementById(BUTTON_ID);if(main)main.disabled=true;
     try{
       if(!pageIsSupported())throw new Error("Open a LinkedIn company People page or people search results.");
-      const emailDomain=requestImportDomain();if(emailDomain===null)return;
+      const emailDomain=requestImportDomain(askDomain===true);if(emailDomain===null)return;
       const contacts=extractProfiles(emailDomain);validateContacts(contacts);
       showReview(createTransaction(contacts,emailDomain,location.href),contacts);
     }catch(error){window.alert(error.message);}
@@ -227,7 +248,7 @@
     if(!document.body || document.getElementById(BUTTON_ID))return;
     const button=document.createElement("button");button.id=BUTTON_ID;button.type="button";button.textContent="Import clean LinkedIn contacts";
     Object.assign(button.style,{position:"fixed",left:"0",top:"50%",transform:"translateY(-50%)",zIndex:"2147483646",padding:"14px 18px",border:"2px solid #b45309",borderRadius:"0 8px 8px 0",background:"#ffd400",color:"#111827",font:"700 14px sans-serif",cursor:"pointer",boxShadow:"0 4px 12px rgba(0,0,0,0.25)"});
-    button.disabled=importing;button.addEventListener("click",beginImport);document.body.appendChild(button);
+    button.disabled=importing;button.addEventListener("click",()=>beginImport(false));document.body.appendChild(button);
   }
   function installWhenSupported(){
     if(pageIsSupported())addButton();

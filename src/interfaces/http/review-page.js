@@ -519,6 +519,7 @@ function attachEditableEmailDomainListener() {
 
       input.value = data.emailDomain;
       input.dataset.manual = "true";
+      publishEmailDomain(data.emailDomain);
 
       try {
         await refreshImportedContacts(button.dataset.reviewId);
@@ -670,3 +671,32 @@ if (typeof document !== 'undefined') {
 }
 
 
+
+// Shared with the Tampermonkey contact bridge (it runs on this origin and copies the value to its own storage).
+export const EMAIL_DOMAIN_STORAGE_KEY = 'nmp.lastSavedEmailDomain';
+export function publishEmailDomain(domain, storage = globalThis.localStorage, doc = globalThis.document) {
+  const value = String(domain || '').trim().toLowerCase();
+  if (!value || !storage) return;
+  const organisation = doc?.querySelector?.('[name="organisationName"]')?.value || '';
+  try { storage.setItem(EMAIL_DOMAIN_STORAGE_KEY, JSON.stringify({ domain: value, organisation, savedAt: new Date().toISOString() })); } catch { return; }
+  try { doc?.dispatchEvent?.(new CustomEvent('nmp-email-domain-saved')); } catch {}
+}
+function attachSearchTabButtons() {
+  for (const button of document.querySelectorAll('[data-open-search-tabs]')) {
+    if (button.dataset.tabsAttached) continue; button.dataset.tabsAttached = 'true';
+    button.addEventListener('click', () => {
+      let urls = []; try { urls = JSON.parse(button.dataset.openSearchTabs || '[]'); } catch {}
+      let opened = 0; for (const url of urls) { const tab = window.open(url, '_blank'); if (tab) { try { tab.opener = null; } catch {} opened++; } }
+      const status = button.closest('nav')?.querySelector('[data-open-search-tabs-status]');
+      if (status) status.textContent = opened < urls.length ? `Opened ${opened} of ${urls.length} tabs. Allow pop-ups for this site, or use the individual links.` : `Opened ${urls.length} tabs.`;
+    });
+  }
+}
+function publishSavedDomainOnLoad() {
+  const input = document.getElementById('email-domain-input');
+  if (input && input.dataset.manual === 'true' && input.value.trim()) publishEmailDomain(input.value);
+}
+if (typeof document !== 'undefined') {
+  const start = () => { attachSearchTabButtons(); publishSavedDomainOnLoad(); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();
+}
