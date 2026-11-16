@@ -200,3 +200,22 @@ the reviewed letter as TXT/HTML, optionally with the selected existing CV, using
 filenames. No CV rewriting, paid request or Gmail action is part of that export.
 Interview/follow-up tracking is optional enhancement, not a new mandatory migration
 prerequisite. Do not reopen broad cleanup or speculative refactoring to block usage.
+
+
+## Current reconciliation — 16 November 2026
+
+Evidence boundary: Git history on master up to `fcadb54` and the Patch A branch. Production states below are as reported by the owner after `ship.cmd`.
+
+### Released and user-verified in production
+- Evidence and scenario quality: PRs #13–#17 (tone/ROI bullets, evidence selection checks, ordering, tuning, respecting selected scenarios).
+- Contacts and search: PR #18 (company People search links), PR #20 (search tabs open all).
+- Review workspace (Slice 2 scope largely delivered): PR #19 (UI quality pack), PR #22 (vacancy details and polishing layout).
+- Area 27 export completed: PR #23 (career-portal cover letter from the private Word template, letter PDF, production template in `<state>/cover-letter-export`), PR #24 (setup command fix), list spacing (`145e730`), PR #25 (current CV library lookup, PDF/DOCX/both CV choice, upload-friendly file names, pack summary). See [docs/cover-letter-template.md](docs/cover-letter-template.md).
+
+### In progress
+- Patch A from [docs/next-slice-implementation-plan.md](docs/next-slice-implementation-plan.md): email background radio buttons with swatches, and opening the exact CV PDF in a new tab. Tested in isolation on branch `feat/patch-a-palette-pdf-preview`; not yet user-verified or released.
+
+### Next candidates, in recommended order
+1. Gmail readiness display: distinguish "turned off in configuration" from missing credentials or sign-in failure. Needs the owner's drafts-only versus drafts-and-sending decision first; production configuration is changed by the owner.
+2. Patch B, evidence-library quality: audit one assignment and fill scenario gaps (multiple scenario selection already delivered in PRs #10 and #17).
+3. Larger, each needing its own design: application follow-up/interview tracking, CV indexing cache (area 11), CV rebuilding (area 12).
