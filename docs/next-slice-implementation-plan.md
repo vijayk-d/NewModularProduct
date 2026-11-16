@@ -26,3 +26,6 @@ Permit multiple approved scenario selections rather than an arbitrary two-scenar
 
 ## Status discipline
 Record planned, in progress, tested in isolation, user-verified and released separately, with commit references and test evidence. No fresh test execution or implementation is claimed by this documentation commit. Research-derived email colours remain deferred. Prefer the smallest useful change; do not add infrastructure as a prerequisite.
+
+## Patch A status (16 November 2026)
+In progress: implemented and tested in isolation on branch `feat/patch-a-palette-pdf-preview` (radio buttons with swatches; `/api/cv-preview` inline PDF with hash, review and same-origin checks; download unchanged). User verification and release pending. Patch B not started.
