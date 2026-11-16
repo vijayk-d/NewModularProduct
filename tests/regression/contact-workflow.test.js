@@ -486,10 +486,10 @@ test("saved domain replaces generated linked emails and leaves unlinked contacts
     reviewId: f.reviewId
   });
   assert.equal(reloaded.status, 200);
-  assert.match(
-    reloaded.html,
-    /value="second-company\.test"/
-  );
+  // Research found a new domain, so it replaces the saved one and regenerates linked emails.
+  assert.match(reloaded.html, /value="twinstream\.com"/);
+  const relinked = (await f.store.listAll()).find((c) => c.id === "linked");
+  assert.equal(relinked.selectedEmail, "test.linked@twinstream.com");
 });
 
 test("saved domain preserves supplied and verified selected emails", async (t) => {
@@ -538,7 +538,8 @@ test("invalid saved domain changes neither contacts nor the saved review domain"
     reviewId: f.reviewId
   });
   assert.equal(review.status, 200);
-  assert.match(review.html, /value="valid-company\.test"/);
+  // Invalid entries never replaced it; the domain newly found by research does.
+  assert.match(review.html, /value="twinstream\.com"/);
 });
 
 test("permanent deletion removes old-linked contacts but preserves ordinary protection", async (t) => {

@@ -9,7 +9,8 @@ import {createOrganisationResearchService} from '../../../src/application/organi
 async function app(t) {
   const reviews = createDurableReviewStore(createMemoryReviewRepository());
   const calls = [];
-  const research = async request => { calls.push(request.companyName); return {status: 'found', provider: 'Perplexity', researchedAt: '2026-11-16T10:00:00.000Z', summary: 'Synthetic organisation summary', companyValues: ['Integrity'], sources: []}; };
+  const domains = {'Example Ltd': 'example-ltd.co.uk', 'Other Org': 'other-org.com'};
+  const research = async request => { calls.push(request.companyName); return {status: 'found', provider: 'Perplexity', researchedAt: '2026-11-16T10:00:00.000Z', summary: 'Synthetic organisation summary', companyValues: ['Integrity'], sources: [], emailDomainResearch: {emailDomain: domains[request.companyName] || 'fresh-find.com', confidence: 'high'}}; };
   const service = createOrganisationResearchService({store: createWorkflowAutomationStore({filePath: ':memory:'}), research});
   const cv = {role_code: 'PM', role_name: 'Project Manager', local_path: 'PM/fixture.pdf'};
   const prepared = {jobDescription: {role: 'Delivery Manager'}, coverLetter: {subject: 'S', plainText: 'Dear Hiring Manager,\n\nI led delivery.\n\nKind regards,\nTest'}, recommendation: {bestCv: cv, alternativeCv: null, ats: {score: 70}}, rankedCvs: [{cv, ats: {score: 70, matchedKeywords: [], missingKeywords: []}}]};
@@ -41,4 +42,23 @@ test('creating the first application researches the organisation once; the next 
   const reload = await fetch(a.url + '/applications/' + first.id);
   assert.match(await reload.text(), /Synthetic organisation summary/);
   assert.deepEqual(a.calls, ['Example Ltd'], 'reloading makes no paid call');
+});
+
+test('a domain found by research replaces the old one and is saved on the application', async t => {
+  const a = await app(t);
+  const first = await a.create('Example Ltd');
+  assert.equal(a.reviews.get(first.id).formData.emailDomain, 'example-ltd.co.uk');
+  assert.match(first.html, /id="email-domain-input"[^>]*value="example-ltd\.co\.uk"/s);
+  assert.match(first.html, /data-manual="true"/);
+
+  const other = await a.create('Other Org');
+  assert.equal(a.reviews.get(other.id).formData.emailDomain, 'other-org.com', 'a new organisation does not keep the old domain');
+
+  const review = a.reviews.get(first.id);
+  a.reviews.set(first.id, {...review, formData: {...review.formData, organisationName: 'Renamed Org', emailDomain: 'stale-old.com'}});
+  const manual = await fetch(a.url + '/organisation-research', {method: 'POST', body: new URLSearchParams({reviewId: first.id})});
+  const html = await manual.text();
+  assert.equal(manual.status, 200);
+  assert.equal(a.reviews.get(first.id).formData.emailDomain, 'fresh-find.com', 'manual research replaces the stale domain');
+  assert.match(html, /value="fresh-find\.com"/);
 });
