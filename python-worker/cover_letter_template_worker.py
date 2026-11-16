@@ -139,6 +139,8 @@ def render(template,html,digest):
    if n.t in {'ul','ol'}:
     if depth>=9:fail('LETTER_LIST_TOO_DEEP')
     if ctx and not ctx['used']:paragraph(s,ctx)
+    top=ctx is None
+    if top and paragraphs and not blank(paragraphs[-1]):paragraph({})
     num=numbering(n.t)
     for li in n.children:
      if isinstance(li,str):
@@ -146,13 +148,20 @@ def render(template,html,digest):
       continue
      if li.t!='li':fail('LETTER_LIST_INVALID')
      flow(li.children,style(li,t),{'num':num,'depth':depth,'used':False},depth+1,True)
+    if top:spacers_after.append(paragraph({}))
     p=None;continue
    if n.t=='li':fail('LETTER_LIST_INVALID')
    p=p if p is not None else paragraph(t,ctx)
    if n.t=='br':add(add(p,'r'),'br')
    else:inline(n.children,t,p)
   if force and p is None and (not nodes or (ctx and not ctx['used'])):paragraph(s,ctx)
+ # A top-level list gets one empty line before and after it, unless the letter already has one there.
+ def blank(p):return p.find('.//{'+W+'}numPr') is None and not ''.join(x.text or '' for x in p.iter('{'+W+'}t')).strip()
+ spacers_after=[]
  paragraph({});flow(parser.root.children,{'pre':True})
+ for spacer in spacers_after:
+  i=next(k for k,x in enumerate(paragraphs) if x is spacer)
+  if i==len(paragraphs)-1 or blank(paragraphs[i+1]):paragraphs.pop(i)
  def visible(nodes):return ''.join(n if isinstance(n,str) else ' ' if n.t=='br' else (' '+visible(n.children)+' ' if n.t in {'p','div','ul','ol','li'} else visible(n.children)) for n in nodes)
  expected=' '.join(visible(parser.root.children).split());actual=' '.join(' '.join(''.join((x.text or '') if x.tag=='{'+W+'}t' else ' ' if x.tag in {'{'+W+'}br','{'+W+'}tab'} else '' for x in p.iter()) for p in paragraphs).split())
  if expected!=actual:fail('LETTER_CONTENT_CHANGED')

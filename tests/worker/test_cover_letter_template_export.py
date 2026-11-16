@@ -35,4 +35,20 @@ class TemplateTests(unittest.TestCase):
  def test_unsafe_or_unsupported_input_blocked(self):
   for html in ['<script>x</script>','<a href="javascript:alert(1)">Bad</a>','<p onclick="x">Body</p>','<p style="margin-left:20px">Body</p>','<p>Unclosed','<p>\x00</p>']:
    with self.subTest(html=html),self.assertRaises(ValueError):self.render(html)
+ def body(self,html):
+  with ZipFile(io.BytesIO(self.render(html))) as z:x=E.fromstring(z.read('word/document.xml'))
+  # Skip the two template header paragraphs and the leading empty paragraph the worker always adds.
+  ps=x.findall('.//w:body/w:p',ns)[3:]
+  return ['•' if p.find('.//w:numPr',ns) is not None else ''.join(t.text or '' for t in p.iter('{'+w.W+'}t')) for p in ps]
+ def test_top_level_list_has_one_empty_line_before_and_after(self):
+  self.assertEqual(self.body('<p>Intro</p><ul><li>One</li><li>Two</li></ul><p>After</p>'),['Intro','','•','•','','After'])
+ def test_existing_empty_lines_around_list_are_not_doubled(self):
+  self.assertEqual(self.body('<p>Intro</p><p><br></p><ul><li>One</li></ul><p><br></p><p>After</p>'),['Intro','','•','','After'])
+ def test_nested_and_consecutive_lists_add_no_extra_lines(self):
+  self.assertEqual(self.body('<p>Intro</p><ul><li>One<ul><li>Inner</li></ul></li></ul><ol><li>Two</li></ol>'),['Intro','','•','•','','•'])
+ def test_list_spacing_reaches_pdf_layout(self):
+  spec=importlib.util.spec_from_file_location('layout',root/'python-worker/cover_letter_pdf_layout.py');m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+  out=m.convert(self.render('<p>Intro</p><ul><li>One</li></ul><p>After</p>'))['html']
+  self.assertRegex(out,r'Intro</span></p><p [^>]*><br></p><ul role="list">')
+  self.assertRegex(out,r'</ul><p [^>]*><br></p><p [^>]*><span[^>]*>After')
 if __name__=='__main__':unittest.main()
