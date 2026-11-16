@@ -86,3 +86,15 @@ test('setup tool keeps the existing template when the new one fails the check', 
   assert.deepEqual(await readdir(path.join(state, 'cover-letter-export')), []);
   await assert.rejects(() => setCoverLetterTemplate({source: path.join(state, 'x.pdf'), stateDirectory: state}), /\.docx/);
 });
+
+test('setup command reads the template path with or without --state', async () => {
+  const {parseArguments} = await import('../../tools/maintenance/set-cover-letter-template.mjs');
+  const file = 'D:\CV\Cover Letter_template Ver-1.docx';
+  assert.deepEqual(parseArguments([file], {NMP_STATE_DIRECTORY: 'S'}), {source: file, stateDirectory: 'S'});
+  assert.equal(parseArguments([file], {}).stateDirectory, path.resolve('output'));
+  assert.deepEqual(parseArguments([file, '--state', 'P'], {}), {source: file, stateDirectory: 'P'});
+  assert.deepEqual(parseArguments(['--state', 'P', file], {}), {source: file, stateDirectory: 'P'});
+  assert.throws(() => parseArguments([], {}), /exactly one/);
+  assert.throws(() => parseArguments(['D:\CV\Cover', 'Letter.docx'], {}), /quotes/);
+  assert.throws(() => parseArguments([file, '--state'], {}), /after --state/);
+});

@@ -34,10 +34,15 @@ export async function setCoverLetterTemplate({source,stateDirectory,worker=templ
  return {folder,templateSha256:digest};
 }
 
+export function parseArguments(args,env=process.env){
+ const i=args.indexOf('--state');
+ if(i>=0&&!args[i+1])throw Error('Give a folder after --state.');
+ const rest=i>=0?args.filter((a,n)=>n!==i&&n!==i+1):[...args];
+ if(rest.length!==1)throw Error('Give exactly one .docx template path (put it in quotes if it has spaces).');
+ return {source:rest[0],stateDirectory:i>=0?args[i+1]:(env.NMP_STATE_DIRECTORY||path.resolve('output'))};
+}
+
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
- const args=process.argv.slice(2),i=args.indexOf('--state');
- const stateDirectory=i>=0?args[i+1]:(process.env.NMP_STATE_DIRECTORY||path.resolve('output'));
- const source=args.find((a,n)=>n!==i&&n!==i+1);
- try{const r=await setCoverLetterTemplate({source,stateDirectory});console.log('TEMPLATE SET: '+r.folder);console.log('SHA-256: '+r.templateSha256);console.log('Export pack will now use this template. Re-run this command after editing the template.');}
+ try{const {source,stateDirectory}=parseArguments(process.argv.slice(2));const r=await setCoverLetterTemplate({source,stateDirectory});console.log('TEMPLATE SET: '+r.folder);console.log('SHA-256: '+r.templateSha256);console.log('Export pack will now use this template. Re-run this command after editing the template.');}
  catch(e){console.error('TEMPLATE NOT SET: '+e.message);process.exitCode=1;}
 }
