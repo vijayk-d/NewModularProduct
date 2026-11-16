@@ -55,7 +55,7 @@ test('export pack sends the portal letter to the template and records it in appl
   assert.ok(seen.html.startsWith(`<p>${PORTAL_GREETING}</p><ul><li><mark`));
   assert.ok(!seen.html.includes('I appreciate the convenience'));
   assert.ok(!files['cover-letter.txt'].includes('I appreciate the convenience'));
-  assert.match(files['application.txt'], /Letter: Word template with header, plus PDF\nGreeting: Dear Hiring Manager\/Talent Recruiter,\nATS closing paragraph: removed/);
+  assert.match(files['application.txt'], /Letter: Word template, plus PDF\nGreeting: Dear Hiring Manager\/Talent Recruiter,\nATS closing paragraph: removed/);
   assert.equal(JSON.stringify(f.store.get('r')), before, 'saved letter is unchanged');
 });
 
@@ -69,8 +69,9 @@ test('plain Word fallback is labelled so a missing template is visible', async (
 test('setup tool installs a checked template and its hash into the state folder', async t => {
   const state = await tempDir(t, 'portal-setup-'), src = path.join(state, 'source.docx'), bytes = Buffer.from('PKtemplate-fixture');
   await writeFile(src, bytes);
-  let checked;
-  const r = await setCoverLetterTemplate({source: src, stateDirectory: state, worker: async v => { checked = v; return Buffer.from('PK'); }});
+  let checked, laidOut;
+  const r = await setCoverLetterTemplate({source: src, stateDirectory: state, worker: async v => { checked = v; return Buffer.from('PKsample'); }, layout: async b => { laidOut = b.toString(); return {html: ''}; }});
+  assert.equal(laidOut, 'PKsample', 'the sample letter is checked by the PDF layout step');
   const digest = createHash('sha256').update(bytes).digest('hex');
   assert.equal(r.templateSha256, digest);
   assert.equal(checked.templateSha256, digest);
@@ -85,6 +86,8 @@ test('setup tool keeps the existing template when the new one fails the check', 
   await assert.rejects(() => setCoverLetterTemplate({source: src, stateDirectory: state, worker: async () => { throw Object.assign(Error('x'), {code: 'LETTER_TEMPLATE_NOT_EMPTY'}); }}), /Only the first two body paragraphs.*Existing template unchanged/);
   assert.deepEqual(await readdir(path.join(state, 'cover-letter-export')), []);
   await assert.rejects(() => setCoverLetterTemplate({source: path.join(state, 'x.pdf'), stateDirectory: state}), /\.docx/);
+  await assert.rejects(() => setCoverLetterTemplate({source: src, stateDirectory: state, worker: async () => Buffer.from('PK'), layout: async () => { throw Object.assign(Error('x'), {code: 'PDF_DOCX_UNSUPPORTED'}); }}), /page header or footer.*Existing template unchanged/);
+  assert.deepEqual(await readdir(path.join(state, 'cover-letter-export')), []);
 });
 
 test('setup command reads the template path with or without --state', async () => {

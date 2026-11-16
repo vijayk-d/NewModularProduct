@@ -1,5 +1,7 @@
 # Template export v1 — development only
 
+> **Superseded.** This describes the first, development-only increment and is kept for history. The letter PDF is now included in the ZIP, the template works in production, and setup uses `tools/maintenance/set-cover-letter-template.mjs`. See [cover-letter-template.md](cover-letter-template.md) for current behaviour.
+
 Scope: actual application-pack DOCX integration and rich-editor list indentation. This is an incremental delivery, NOT a completed one-click PDF export.
 
 - On port 3000 with the private template configured, Export pack builds cover-letter.docx from the saved sanitised HTML and supplied Word template.
