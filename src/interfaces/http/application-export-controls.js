@@ -17,7 +17,10 @@ export function attachApplicationExportControls({doc,bar,save,getVersions,isDirt
  const button=doc.createElement('button');button.type='button';button.textContent='Export pack';button.title='Save current edits and download the career-portal letter and chosen CV; no paid or Gmail action.';
  const label=doc.createElement('label'),select=doc.createElement('select');select.setAttribute('aria-label','CV to include in export');select.dataset.exportCvChoice='';
  for(const [value,text] of CV_CHOICES){const o=doc.createElement('option');o.value=value;o.textContent=text;select.append(o);}
- select.value='none';label.append(select);
+ // Remembered per browser only; private windows or blocked storage simply start at No CV.
+ const KEY='jobapp.exportCvChoice';let remembered=null;try{remembered=doc.defaultView?.localStorage?.getItem(KEY);}catch{}
+ select.value=CV_CHOICES.some(([v])=>v===remembered)?remembered:'none';label.append(select);
+ select.addEventListener('change',()=>{try{doc.defaultView?.localStorage?.setItem(KEY,select.value);}catch{}});
  const summary=doc.createElement('span');summary.dataset.exportSummary='';
  const message=doc.createElement('span');message.setAttribute('role','status');message.setAttribute('aria-live','polite');const group=doc.createElement('div');group.className='save-bar-group save-bar-group-export';group.setAttribute('role','group');group.setAttribute('aria-label','Export pack');summary.className='save-bar-note';message.className='save-bar-status';group.append(button,label,summary,message);bar.append(group);
  const cvCode=()=>doc.querySelector('input[name="selectedCvRoleCode"]:checked')?.value||'';

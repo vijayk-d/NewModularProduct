@@ -6,7 +6,9 @@ const labels={new:'New',in_progress:'In progress',complete:'Complete — email s
 const colours={new:'blue',in_progress:'amber',complete:'green',needs_attention:'red'};
 function confirmed(r){return r.status==='sent'&&typeof r.messageId==='string'&&r.messageId.trim()&&!/^local-/i.test(r.messageId)&&typeof r.sendingAccount==='string'&&r.sendingAccount.trim();}
 function sourceId(form){return vacancyIdentity(form||{}).sourceId.replace(/^linkedin:/,'');}
-export function deriveAdvertStatus({jobId,reviews=[],queue=[],sent=[],sendAttempts=[],draftOperations=[],historyAvailable=true,coverageComplete=true}={}){
+export const IDLE_DAYS=14;
+const when=v=>{if(typeof v==='number'&&Number.isFinite(v))return v;const n=Date.parse(v);return Number.isFinite(n)?n:0;};
+export function deriveAdvertStatus({jobId,reviews=[],queue=[],sent=[],sendAttempts=[],draftOperations=[],exports=[],historyAvailable=true,coverageComplete=true,now=Date.now()}={}){
  if(typeof jobId!=='string'||!/^\d{1,20}$/.test(jobId))throw Error('Exact LinkedIn job ID required.');
  const byReview=new Map(reviews.map(r=>[r.id,r.value])),byQueue=new Map(queue.map(r=>[r.id,r]));
  const formFor=r=>{const forms=[r.application,r.formData,r.snapshot?.application,byQueue.get(r.queueId)?.application,byReview.get(r.reviewId)?.formData];return forms.find(f=>typeof f?.jobAdvertLink==='string'&&f.jobAdvertLink.trim())||forms.find(Boolean)||{};};
@@ -20,26 +22,32 @@ export function deriveAdvertStatus({jobId,reviews=[],queue=[],sent=[],sendAttemp
  const orphanSent=q.some(r=>r.status==='sent')&&!hasApplied;
  const needsAttention=!historyAvailable||uncertain||malformedReceipt||orphanSent||(!coverageComplete&&!hasApplied);
  const progressed=prepared.length>0||q.length>0||attempts.length>0||drafts.length>0;
- const status=needsAttention?'needs_attention':hasApplied?'complete':progressed?'in_progress':'new';
+ // Housekeeping: a portal pack export counts as applied through a portal; work idle for IDLE_DAYS needs attention.
+ const exported=!hasApplied&&exports.length>0;
+ const latest=Math.max(0,...prepared.map(r=>when(r.updatedAt||r.value.updatedAt||r.value.createdAt)),...[...q,...attempts,...drafts].map(r=>when(r.updatedAt||r.createdAt)),...exports.map(r=>when(r.exportedAt)));
+ const idle=!needsAttention&&!hasApplied&&!exported&&progressed&&latest>0&&now-latest>=IDLE_DAYS*864e5;
+ const status=needsAttention||idle?'needs_attention':hasApplied||exported?'complete':progressed?'in_progress':'new';
  const dates=sends.map(r=>r.sentAt||r.updatedAt).filter(v=>v&&Number.isFinite(Date.parse(v))).sort((a,b)=>Date.parse(b)-Date.parse(a));
  const addresses=new Set(sends.map(r=>String(r.email||r.recipientKey||r.snapshot?.email||'').toLowerCase()).filter(Boolean));
  const pendingRecipientCount=new Set(q.filter(r=>r.status!=='sent'&&!addresses.has(String(r.email||'').toLowerCase())).map(r=>String(r.email||r.id).toLowerCase())).size;
- return {status,label:labels[status],colour:colours[status],hasApplied,confirmedSendCount:sends.length,pendingRecipientCount,lastSentAt:dates[0]||null,needsAttention,historyAvailable,coverageComplete,
-  reason:!historyAvailable?'History unavailable; status cannot be verified.':uncertain?'A related operation has an uncertain outcome.':malformedReceipt||orphanSent?'A sent marker lacks a valid confirmed send receipt.':hasApplied?'Confirmed email send for this exact LinkedIn job ID.':!coverageComplete?'Historical coverage incomplete; no-send status cannot be established.':progressed?'Saved application work exists; no confirmed email send.':'No prior work or confirmed send found in checked local records.'};
+ return {status,label:exported?'Complete — portal pack exported':idle?'Needs attention — no activity for '+IDLE_DAYS+' days':labels[status],colour:colours[status],hasApplied,exported,idle,confirmedSendCount:sends.length,pendingRecipientCount,lastSentAt:dates[0]||null,needsAttention,historyAvailable,coverageComplete,
+  reason:idle?'Saved work has had no activity for '+IDLE_DAYS+' days. Continue it or remove the advert.':exported?'Portal application pack exported; no confirmed email send.':!historyAvailable?'History unavailable; status cannot be verified.':uncertain?'A related operation has an uncertain outcome.':malformedReceipt||orphanSent?'A sent marker lacks a valid confirmed send receipt.':hasApplied?'Confirmed email send for this exact LinkedIn job ID.':!coverageComplete?'Historical coverage incomplete; no-send status cannot be established.':progressed?'Saved application work exists; no confirmed email send.':'No prior work or confirmed send found in checked local records.'};
 }
 function reviewRows(store){
  if(!store)throw Error('Review history unavailable.');
- if(typeof store.summaries==='function'){const rows=[];for(let page=1;page<=100;page++){const data=store.summaries({page,size:100});if(!Array.isArray(data.items)||!Number.isInteger(data.pages))throw Error('Invalid review history.');if(data.pages>100)throw Error('Review history exceeds bounded coverage.');for(const summary of data.items){const value=store.get(summary.id);if(value)rows.push({id:summary.id,value});}if(page>=data.pages)return rows;}throw Error('Review history exceeds bounded coverage.');}
+ if(typeof store.summaries==='function'){const rows=[];for(let page=1;page<=100;page++){const data=store.summaries({page,size:100});if(!Array.isArray(data.items)||!Number.isInteger(data.pages))throw Error('Invalid review history.');if(data.pages>100)throw Error('Review history exceeds bounded coverage.');for(const summary of data.items){const value=store.get(summary.id);if(value)rows.push({id:summary.id,value,updatedAt:summary.updatedAt});}if(page>=data.pages)return rows;}throw Error('Review history exceeds bounded coverage.');}
  if(typeof store[Symbol.iterator]!=='function')throw Error('Review history unavailable.');
  const values=[...store];if(values.length>10000)throw Error('Review history exceeds bounded coverage.');return values.map(([id,value])=>({id,value}));
 }
-function readSnapshot(reviews,outreach){
- let rows=[],queue=[],sent=[],sendAttempts=[],draftOperations=[],historyAvailable=true;
+function readSnapshot(reviews,outreach,exportsSource=null){
+ let rows=[],queue=[],sent=[],sendAttempts=[],draftOperations=[],exports=[],historyAvailable=true;
+ try{const value=typeof exportsSource==='function'?exportsSource():[];if(Array.isArray(value))exports=value;}catch{}
  try{rows=reviewRows(reviews);if(!outreach)throw Error('Outreach history unavailable.');for(const [key,set]of [['list',v=>queue=v],['listSentEmails',v=>sent=v],['listSendAttempts',v=>sendAttempts=v],['listDraftOperations',v=>draftOperations=v]]){if(typeof outreach[key]!=='function')throw Error('Outreach history unavailable.');const value=outreach[key]();if(!Array.isArray(value)||value.length>100000)throw Error('Outreach history coverage unavailable.');set(value);}}catch{historyAvailable=false;}
- return {reviews:rows,queue,sent,sendAttempts,draftOperations,historyAvailable};
+ return {reviews:rows,queue,sent,sendAttempts,draftOperations,exports,historyAvailable};
 }
 export function advertStatusIndex(jobIds,snapshot){
- const grouped=new Map(jobIds.map(id=>[id,{reviews:[],queue:[],sent:[],sendAttempts:[],draftOperations:[],historyAvailable:snapshot.historyAvailable,coverageComplete:true}]));
+ const grouped=new Map(jobIds.map(id=>[id,{reviews:[],queue:[],sent:[],sendAttempts:[],draftOperations:[],exports:[],historyAvailable:snapshot.historyAvailable,coverageComplete:true}]));
+ for(const e of snapshot.exports||[]){const id=sourceId({jobAdvertLink:e.jobAdvertLink});grouped.get(id)?.exports.push(e);}
  const reviewMap=new Map(snapshot.reviews.map(r=>[r.id,r.value])),queueMap=new Map(snapshot.queue.map(r=>[r.id,r])),legacy=new Map();let unidentified=0;
  const remember=(key,id)=>{if(!key||!id)return;const old=legacy.get(key);legacy.set(key,old&&old!==id?'ambiguous':id);};
  for(const id of jobIds)for(const url of ['https://www.linkedin.com/jobs/view/'+id+'/','https://www.linkedin.com/jobs/view/'+id])remember(createHash('sha256').update(url).digest('hex'),id);
@@ -55,11 +63,11 @@ export function advertStatusIndex(jobIds,snapshot){
  const statuses=new Map();for(const [id,group]of grouped){group.coverageComplete=unidentified===0;statuses.set(id,deriveAdvertStatus({jobId:id,...group}));}
  return {statuses,coverage:{historyAvailable:snapshot.historyAvailable,unidentifiedHistoricalRecords:unidentified,scope:'Local saved reviews and recorded mail operations only; no full Gmail or portal audit.'}};
 }
-export function listAdvertsWithStatus({service,reviews,outreach,page=1,pageSize=50,status='all'}){
+export function listAdvertsWithStatus({service,reviews,outreach,exports=null,page=1,pageSize=50,status='all'}){
  const opts=jobImportListOptions({page,pageSize});if(status!=='all'&&status!=='removed'&&!ADVERT_STATUSES.includes(status))throw jobError('Choose a valid advert status.');
  const all=[];for(let p=1;p<=100;p++){const data=service.list({page:p,pageSize:100});if(!Array.isArray(data.items)||!Number.isInteger(data.pages)||data.pages>100)throw jobError('Advert status listing exceeds bounded coverage.',503);all.push(...data.items);if(p>=data.pages)break;}
  const hiddenIds=typeof service.hiddenIds==='function'?service.hiddenIds():new Set(),removed=all.filter(r=>hiddenIds.has(r.jobId)),visible=all.filter(r=>!hiddenIds.has(r.jobId));
- const snapshot=readSnapshot(reviews,outreach),index=advertStatusIndex(all.map(r=>r.jobId),snapshot),counts=Object.fromEntries(ADVERT_STATUSES.map(s=>[s,0]));
+ const snapshot=readSnapshot(reviews,outreach,exports),index=advertStatusIndex(all.map(r=>r.jobId),snapshot),counts=Object.fromEntries(ADVERT_STATUSES.map(s=>[s,0]));
  const items=all.map(r=>{const workflow=index.statuses.get(r.jobId),isRemoved=hiddenIds.has(r.jobId);if(!isRemoved)counts[workflow.status]++;return {...r,workflow,removed:isRemoved};}).filter(r=>status==='removed'?r.removed:!r.removed&&(status==='all'||r.workflow.status===status));
  const total=items.length,pages=Math.max(1,Math.ceil(total/opts.pageSize)),p=Math.min(opts.page,pages);
  return {items:items.slice((p-1)*opts.pageSize,p*opts.pageSize),page:p,pageSize:opts.pageSize,pages,total,unfilteredTotal:visible.length,removedCount:removed.length,statusCounts:counts,statusFilter:status,coverage:index.coverage};

@@ -1,25 +1,26 @@
-# Workflow automation opportunities
+# Workflow automation
 
-Status: PROPOSED (16 November 2026). Nothing here is implemented. Each item needs the owner's go-ahead.
+Status: IMPLEMENTED on branch `feat/workflow-automation` (16 November 2026). Not yet released.
 
-Rules these proposals keep: no paid call on page load, checkbox or selection changes; no automatic retries of external operations; no automatic Gmail drafts or sending; saved letters, queue copies and history are never rewritten.
+These rules still hold: no paid call on page load, checkbox or selection changes; no automatic retries of external operations; no automatic Gmail drafts or sending; saved letters, queue copies and history are never rewritten.
 
-## Free (no paid calls)
+## What is automated
 
-1. **Prepare on import.** When a LinkedIn advert is imported, run the existing local preparation straight away: CV ranking, best CV selection and the default letter from the template. The review is then ready when it is opened. No provider call.
-2. **Remember export choices.** Remember the last CV format (PDF, DOCX or both) in the browser, instead of starting at "No CV" every time.
-3. **Suggest newly imported contacts.** When a review opens, highlight contacts imported for the same organisation since the review was created (the freshness rule already exists). Suggestion only: no automatic linking, queueing or sending.
-4. **Advert status housekeeping.** Move adverts to "Complete" when an application is sent or exported for a portal, and to "Needs attention" when a review has had no activity for a set number of days.
-5. **Follow-up reminders.** Show applications sent more than N days ago with no recorded reply on the dashboard. Reminder only; no email is created.
+1. **One-step advert load.** Choosing a stored LinkedIn advert loads it and fills the form straight away (it used to take three steps: choose, Load, Use). If the form already holds another advert's details, the existing confirmation still appears. Preferred CVs and achievement selection stay your explicit choice, and **Generate application** is still a click. Creating applications automatically on import was not built: it would skip those choices.
+2. **Export choice remembered.** The Export pack CV choice is remembered in this browser.
+3. **Same-organisation contacts.** Newly imported contacts whose email domain matches the application's domain get a "Same organisation" badge and are listed first. Nothing is linked, queued or sent automatically.
+4. **Advert status housekeeping.**
+   - An advert counts as Complete when a portal pack has been exported ("Complete — portal pack exported").
+   - Saved work with no activity for 14 days shows as Needs attention.
+   - Status is still worked out from local records each time; the stored status is never changed.
+5. **Follow-ups due.** The dashboard lists applications with a confirmed email and no later recorded activity for 7–60 days. Reminder only: no email is created.
+6. **Organisation research once per organisation.**
+   - When you create an application, the organisation is researched automatically (one paid call) unless it was researched in the last 30 days. Later applications to the same organisation, and page reloads, reuse the result with no new call.
+   - The research button always researches again and refreshes the shared copy.
+   - A failed call is shown and not retried.
+   - At most 10 automatic calls a day (`AUTO_RESEARCH_DAILY_CAP`). Set `ENABLE_AUTO_RESEARCH=false` to turn it off. It also needs `ENABLE_PERPLEXITY_RESEARCH=true`, like the button.
+   - The review page says when research ran automatically or was reused.
 
-## Paid (needs an explicit opt-in and a cap)
+## Storage
 
-6. **Research once per organisation, reused.** Instead of researching on every page load, research automatically once when a new application is created for an organisation that has no research less than 30 days old. Reuse it for later applications to the same organisation, and keep the manual "Refresh research" button.
-   - Cost: at most one Perplexity call per new organisation, and fewer calls than today when you apply to the same organisation more than once.
-   - Controls: off by default (`ENABLE_AUTO_RESEARCH`), a daily call cap, the provider error shown if a call fails, and no automatic retry.
-   - Needs: a decision to relax the "no paid call without a click" rule for this one event. Research results go in a new local table, not an existing schema.
-
-## Not recommended
-
-- Automatic polishing or Gmail drafting or sending: these are paid or outward-facing, and must stay explicit.
-- Research on every page load: repeats paid calls for the same organisation and slows the page.
+All new data is in a new file, `<state folder>/workflow-automation-v1.db`: research cache, daily automatic-call count and portal export records. No existing database or schema is changed. If the file cannot be opened, automation is turned off and the app keeps working.
