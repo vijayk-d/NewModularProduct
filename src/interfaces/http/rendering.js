@@ -1,6 +1,6 @@
 import {inspectApplicationRole} from '../../application/application-role-review.js';
 import {roleConsistencyWarnings} from '../../application/contextual-highlights.js';
-import {assessLetterQuality,lengthPolicy} from '../../domain/cover-letter/letter-quality-policy.js';
+import {assessLetterQuality,lengthPolicy,CUSTOM_WORDS,customLengthMode} from '../../domain/cover-letter/letter-quality-policy.js';
 import {renderAchievementPreparation,renderAchievementSummary} from './achievement-preparation-view.js';
 import {usesCandidateValues,contextMode} from '../../domain/cover-letter/advertiser-context.js';
 import {sanitizeSnapshotHtml} from '../../application/outreach-message-snapshot.js';
@@ -712,7 +712,7 @@ function renderPolishingAttempt(attempt) {
 
 function qualityMarkup(text,editor,{mode='standard',maxWords=500,advertUrl=''}={}){
  const q=assessLetterQuality(text,{mode,maxWords,advertUrl});
- return `<p data-letter-quality-for="${escapeHtml(editor)}" data-quality-mode="${escapeHtml(q.mode)}" data-quality-cap="${escapeHtml(String(maxWords))}" data-advert-url="${escapeHtml(advertUrl)}" role="status" aria-live="polite">${q.wordCount} words · ${q.mode} target ${q.targetMinimum}–${q.maximumWords} · ${q.narrativeParagraphs} narrative paragraphs. ${escapeHtml(q.warnings.join(' '))} Page fit not checked. Subject and Gmail signature excluded.</p>`;
+ return `<p data-letter-quality-for="${escapeHtml(editor)}" data-quality-mode="${escapeHtml(q.mode)}" data-quality-cap="${escapeHtml(String(maxWords))}" data-advert-url="${escapeHtml(advertUrl)}" role="status" aria-live="polite">${q.wordCount} words · ${q.label} target ${q.targetMinimum}–${q.maximumWords} · ${q.narrativeParagraphs} narrative paragraphs. ${escapeHtml(q.warnings.join(' '))} Page fit not checked. Subject and Gmail signature excluded.</p>`;
 }
 
 export function renderRefinementPanel({
@@ -766,7 +766,8 @@ export function renderRefinementPanel({
         }
         <fieldset class="workspace-choice-cards" data-choice-kind="length"><legend>Letter length for the next polish</legend><div class="workspace-choice-options">
         ${['standard','extended'].map(mode=>{const p=lengthPolicy(mode,qualityMaximumWords);return `<label class="workspace-choice-card"><input type="radio" name="letterLengthMode" value="${mode}"${mode===letterLengthMode?' checked':''}><span><strong>${mode==='standard'?'Standard senior':'Extended strategic'}</strong><small>${p.targetMinimum}–${p.maximumWords} complete-letter words</small></span></label>`;}).join('')}
-        </div></fieldset><p class="rich-editor-notice">Extended is an explicit choice. No padding, truncation or automatic paid retry. Existing .env caps are respected. Page fit requires a separate rendered check.</p>
+        ${(()=>{const customMax=Math.max(CUSTOM_WORDS.minimum,Math.min(CUSTOM_WORDS.maximum,Math.floor(Number(qualityMaximumWords)/CUSTOM_WORDS.step)*CUSTOM_WORDS.step||500)),current=/^custom-\d{3}$/.test(letterLengthMode)?lengthPolicy(letterLengthMode,qualityMaximumWords).maximumWords:Math.min(350,customMax),p=lengthPolicy(customLengthMode(current),qualityMaximumWords);return `<label class="workspace-choice-card workspace-choice-card-custom"><input type="radio" name="letterLengthMode" value="${customLengthMode(current)}" data-custom-length${/^custom-/.test(letterLengthMode)?' checked':''}><span><strong>Custom</strong><small><input type="number" inputmode="numeric" min="${CUSTOM_WORDS.minimum}" max="${customMax}" step="${CUSTOM_WORDS.step}" value="${current}" aria-label="Custom letter length in words" data-custom-length-words> words maximum · target <span data-custom-length-range>${p.targetMinimum}–${p.maximumWords}</span></small></span></label>`;})()}
+        </div></fieldset><p class="rich-editor-notice">Extended and Custom are explicit choices. No padding, truncation or automatic paid retry. Existing .env caps are respected (custom maximum ${escapeHtml(String(qualityMaximumWords))} words). Page fit requires a separate rendered check.</p>
         <label for="polishing-model">Polishing model</label>
         <input type="hidden" name="polishingCostGuard" value="required">
         <select id="polishing-model" name="polishingModel" data-selection-explicit="${polishingModelExplicit ? 'true' : 'false'}">

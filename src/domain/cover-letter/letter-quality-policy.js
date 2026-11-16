@@ -1,12 +1,18 @@
 // Shared pure policy; the browser serves this same module, not a duplicated copy.
 export const QUALITY_VERSION='senior-cover-letter-quality-v1';
+// A custom length travels as one mode string, e.g. "custom-450", so cost proof, confirmation and checks treat it like any mode.
+export const CUSTOM_WORDS={minimum:150,maximum:700,step:25};
+export const customLengthMode=words=>'custom-'+words;
+function customWords(mode){const m=/^custom-(\d{3})$/.exec(mode);const n=m?Number(m[1]):NaN;return Number.isInteger(n)&&n>=CUSTOM_WORDS.minimum&&n<=CUSTOM_WORDS.maximum&&n%CUSTOM_WORDS.step===0?n:null;}
 export function normalizeLengthMode(value='standard'){
  const mode=String(value||'standard').trim();
- if(!['standard','extended'].includes(mode)){const e=new Error('Choose Standard or Extended letter length.');e.code='REFINEMENT_LENGTH_INVALID';e.statusCode=400;throw e;}return mode;
+ if(!['standard','extended'].includes(mode)&&customWords(mode)===null){const e=new Error(`Choose Standard, Extended or a custom length of ${CUSTOM_WORDS.minimum}–${CUSTOM_WORDS.maximum} words in steps of ${CUSTOM_WORDS.step}.`);e.code='REFINEMENT_LENGTH_INVALID';e.statusCode=400;throw e;}return mode;
 }
 export function lengthPolicy(mode='standard',cap=500){
- mode=normalizeLengthMode(mode);const n=Number(cap),maximumWords=Math.min(mode==='extended'?500:400,Number.isInteger(n)?Math.max(120,n):500);
- return {version:QUALITY_VERSION,mode,maximumWords,targetMinimum:Math.min(mode==='extended'?450:300,maximumWords)};
+ mode=normalizeLengthMode(mode);const n=Number(cap),limit=Number.isInteger(n)?Math.max(120,n):500,custom=customWords(mode);
+ if(custom!==null){const maximumWords=Math.min(custom,limit);return {version:QUALITY_VERSION,mode,label:`Custom ${maximumWords} words`,maximumWords,targetMinimum:Math.max(100,Math.round(maximumWords*0.85/5)*5)};}
+ const maximumWords=Math.min(mode==='extended'?500:400,limit);
+ return {version:QUALITY_VERSION,mode,label:mode==='extended'?'Extended strategic':'Standard senior',maximumWords,targetMinimum:Math.min(mode==='extended'?450:300,maximumWords)};
 }
 export function visibleLetterText(text='',{advertUrl=''}={}){
  let value=String(text||'').replace(/\r\n?/g,'\n'),url;
