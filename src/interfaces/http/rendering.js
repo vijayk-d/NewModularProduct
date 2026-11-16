@@ -648,6 +648,7 @@ export function renderOrganisationResearch(research, organisationUrl = '') {
         <p><strong>Provider:</strong> ${escapeHtml(provider)}</p>
         <p><strong>Status:</strong> ${escapeHtml(status)}</p>
         <p><strong>Research time:</strong> ${escapeHtml(researchedAt)}</p>
+        ${research.reusedFromCache?`<p class="research-origin">Reused from an earlier application to this organisation (researched ${escapeHtml(String(research.cachedAt||researchedAt))}). No new paid call was made. Use the research button to refresh it.</p>`:research.automatic?'<p class="research-origin">Researched automatically when this application was created (one paid call). It is reused for later applications to this organisation for 30 days.</p>':''}
 
         <h3>Summary</h3>
         <pre class="research-summary">${escapeHtml(summary)}</pre>
@@ -898,7 +899,7 @@ export function renderContactLinking(contactLinking = null) {
             value="${escapeHtml(contact.id)}"
             aria-label="${linked ? "Select linked contact" : "Select available contact"} ${escapeHtml(contact.fullName)}" />
         </td>
-        <td>${escapeHtml(contact.fullName)}</td>
+        <td>${escapeHtml(contact.fullName)}${!linked&&contact.sameOrganisation?' <span class="contact-same-organisation" title="Email domain matches this application">Same organisation</span>':''}</td>
         <td class="contact-role-cell"
             style="max-width:28rem;white-space:normal;overflow-wrap:anywhere;">
           ${escapeHtml(contact.role || "")}

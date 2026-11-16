@@ -4,6 +4,8 @@ import {createAssignmentEvidenceStore} from '../../infrastructure/applications/s
 import {createApplicationIntelligenceStore} from '../../infrastructure/applications/sqlite-application-intelligence.js';
 import {createApplicationIntelligence} from '../../application/application-intelligence.js';
 import {createApplicationPackExporter} from '../../infrastructure/applications/application-pack-exporter.js';
+import {createWorkflowAutomationStore} from '../../infrastructure/applications/sqlite-workflow-automation-store.js';
+import {createOrganisationResearchService} from '../../application/organisation-research-cache.js';
 import {createTemplateCoverLetterDocuments} from '../../infrastructure/documents/template-cover-letter.js';
 import {createSqliteJobImportStore} from '../../infrastructure/applications/sqlite-job-import-store.js';
 import { gmailLoadedEnvironment } from '../../application/gmail-runtime-diagnostics.js';
@@ -119,6 +121,10 @@ if(deployment.mode==='development'){
  catch{applicationIntelligenceStore?.close();applicationIntelligenceStore=null;console.warn('[APPLICATION_INTELLIGENCE] LOCAL_STORE_UNAVAILABLE');}
 }
 
+// Workflow automation keeps its own new database; if it cannot open, automation is simply off.
+let workflowAutomationStore=null;
+try{workflowAutomationStore=createWorkflowAutomationStore({filePath:path.join(deployment.state,'workflow-automation-v1.db')});}catch{console.warn('[WORKFLOW_AUTOMATION] LOCAL_STORE_UNAVAILABLE');}
+
 let assignmentEvidenceStore=null;
 try{
  const filePath=resolveEvidenceLibraryPath({env:process.env,mode:deployment.mode,state:deployment.state});
@@ -131,7 +137,10 @@ const server = createLocalServer({
   coverLetterRefinementMaxWords:config.application.coverLetterRefinementMaxWords,
   jobImportService,
   applicationReviewStore,
-  applicationPackExporter:createApplicationPackExporter({cvFolder:config.storage.cvFolder,documents:createTemplateCoverLetterDocuments({stateDirectory:deployment.state}),cvInventory:cvInventoryRepository,candidateName:process.env.CANDIDATE_DISPLAY_NAME||'Vijay DAFAL'}),
+  applicationPackExporter:createApplicationPackExporter({cvFolder:config.storage.cvFolder,documents:createTemplateCoverLetterDocuments({stateDirectory:deployment.state}),cvInventory:cvInventoryRepository,candidateName:process.env.CANDIDATE_DISPLAY_NAME||'Vijay DAFAL',recordExport:workflowAutomationStore?(id,link)=>workflowAutomationStore.recordPortalExport(id,link):null}),
+  portalExports:workflowAutomationStore?()=>workflowAutomationStore.portalExports():null,
+  // Automatic research is on when organisation research is enabled; ENABLE_AUTO_RESEARCH=false turns it off.
+  organisationResearchService:workflowAutomationStore?createOrganisationResearchService({store:workflowAutomationStore,research:companyResearchPort?request=>researchOrganization(request,{companyResearchPort}):null,enabled:String(process.env.ENABLE_AUTO_RESEARCH||'true').toLowerCase()!=='false',dailyCap:Math.max(0,Number.parseInt(process.env.AUTO_RESEARCH_DAILY_CAP||'10',10)||0)}):null,
   cvEvidenceLoader,
   cvDocumentAdapter:createCvDocumentAdapter({cvFolder:config.storage.cvFolder}),
   cvInventoryRepository,

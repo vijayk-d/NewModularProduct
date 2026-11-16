@@ -160,6 +160,13 @@ function readJsonBody(request) {
   });
 }
 
+export function markSameOrganisation(contacts,organisationId){
+  const domain=String(organisationId||'').startsWith('domain:')?String(organisationId).slice(7):'';
+  const same=c=>Boolean(organisationId)&&(c.organisationId===organisationId||(domain&&String(c.emailDomain||'').trim().toLowerCase()===domain));
+  const marked=contacts.map(c=>({...c,sameOrganisation:same(c)}));
+  return [...marked.filter(c=>c.sameOrganisation),...marked.filter(c=>!c.sameOrganisation)];
+}
+
 function deriveReviewOrganisationId(formData) {
   const savedDomain = String(formData.emailDomain || "")
     .trim()
@@ -202,6 +209,8 @@ export function createLocalServer({
   jobImportService = null,
   applicationPackExporter = null,
   researchOrganization = null,
+  organisationResearchService = null,
+  portalExports = null,
   coverLetterRefinementPort = null,
   cvEvidenceLoader = null,
   applicationIntelligence = null,
@@ -270,10 +279,11 @@ export function createLocalServer({
 
     return {
       reviewId,
-      unlinked: contacts.filter((contact) =>
+      // Newly imported contacts from the application's own organisation are marked and listed first; nothing is linked automatically.
+      unlinked: markSameOrganisation(contacts.filter((contact) =>
         (!Array.isArray(contact.linkedApplicationReviewIds) ||
         !contact.linkedApplicationReviewIds.includes(reviewId))&&newlyImportedForReview(contact,reviewStore.get(reviewId))
-      ),
+      ),deriveReviewOrganisationId(reviewStore.get(reviewId)?.formData||{})),
       linked: contacts.filter((contact) =>
         Array.isArray(contact.linkedApplicationReviewIds) &&
         contact.linkedApplicationReviewIds.includes(reviewId)
@@ -392,7 +402,7 @@ export function createLocalServer({
   }
 
   const handleAchievementPreparation=createAchievementPreparationHandler({service:achievementEvidenceService,sendJson,sendText});
-  const handleJobs=createJobImportHandler({service:jobImportService,getReview:id=>reviewStore.get(id),contactStore:recruiterContactStore,sendJson,sendText,reviews:reviewStore,outreach:outreachRepository});
+  const handleJobs=createJobImportHandler({service:jobImportService,getReview:id=>reviewStore.get(id),contactStore:recruiterContactStore,sendJson,sendText,reviews:reviewStore,outreach:outreachRepository,portalExports});
   const handleSavedDelete=createSavedApplicationDeleteHandler({store:reviewStore,contactStore:recruiterContactStore,outreachRepository,sendJson,sendText});
   const handleOrganisationContacts=createOrganisationContactHandler({contactStore:recruiterContactStore,outreachRepository,getReview:id=>reviewStore.get(id),sendJson});
   const letterUpdates=outreachRepository?createUnsentLetterUpdateService({getReview:id=>reviewStore.get(id),repository:outreachRepository,draftUpdates:gmailDraftUpdatePort||createGmailDraftUpdatePort()}):null;
@@ -560,6 +570,8 @@ export function createLocalServer({
         createdAt: Date.now()
       });
       if(applicationIntelligence){try{await applicationIntelligence.capture(reviewId);}catch{console.warn('[APPLICATION_INTELLIGENCE] ASSESSMENT_NOT_RECORDED');}}
+      // Research the organisation once for its first application, or reuse a recent copy. Never retried automatically.
+      if(organisationResearchService){try{const auto=await organisationResearchService.forNewApplication({organisationName:formData.organisationName,organisationUrl:formData.organisationUrl,jobTitle:formData.jobTitle});writeDiagnostic('organisation_research_automatic',{requestId,reviewId,source:auto.source,status:auto.research?.status||'none'});if(auto.research){const current=reviewStore.get(reviewId);reviewStore.set(reviewId,{...current,research:auto.research,researchedAt:Date.now()});}}catch(error){if(isContactStoreLoadError(error))throw error;console.warn('[ORGANISATION_RESEARCH] AUTOMATIC_RESEARCH_NOT_RECORDED');}}
       if(importedJob&&formData.importJobPosters){try{await importJobPosters({record:importedJob,contactStore:recruiterContactStore,reviewId});}catch{const r=reviewStore.get(reviewId);reviewStore.set(reviewId,{...r,jobPosterImportError:'Application saved, but optional poster import was not fully completed. Review/retry explicitly; no email was inferred or sent.'});}}
 
         sendHtml(
@@ -569,6 +581,7 @@ export function createLocalServer({
             formData,
             prepared,
             reviewId,
+            research: reviewStore.get(reviewId)?.research || null,
             contacts: await loadReviewContacts(reviewId),
             contactLinking: await loadContactLinking(reviewId),
             scriptNonce
@@ -1008,6 +1021,7 @@ export function createLocalServer({
         research,
         researchedAt: Date.now()
       });
+      try{organisationResearchService?.recordManual(companyName,research);}catch{console.warn('[ORGANISATION_RESEARCH] SHARED_COPY_NOT_UPDATED');}
 
       sendHtml(
         response,
