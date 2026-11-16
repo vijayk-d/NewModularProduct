@@ -6,15 +6,17 @@ import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {templateWordWorker,TEMPLATE_FOLDER} from '../../src/infrastructure/documents/template-cover-letter.js';
+import {docxPrintLayout} from '../../src/infrastructure/documents/cover-letter-pdf.js';
 
 const HELP={
- LETTER_TEMPLATE_STRUCTURE:'The template body needs at least three paragraphs and its page settings. The first two body paragraphs are kept (for example a date or reference line); everything after them must be empty. Put the letterhead in the Word header. Remove any numbered or bulleted list from the template.',
+ LETTER_TEMPLATE_STRUCTURE:'The template body needs at least three paragraphs and its page settings. The first two body paragraphs are kept and hold the letterhead (for example your name and contact line); everything after them must be empty. Remove any numbered or bulleted list from the template.',
+ PDF_DOCX_UNSUPPORTED:'The PDF cannot be made from this template. Move any Word page header or footer text into the first two body paragraphs, and remove fields, text boxes and pictures.',
  LETTER_TEMPLATE_NOT_EMPTY:'Only the first two body paragraphs may contain text. Delete any sample letter text below them and keep the rest as empty paragraphs.',
  LETTER_TEMPLATE_TOO_LARGE:'The template is too large. Keep it under 5 MiB.',
  LETTER_TEMPLATE_CHANGED:'The template changed while it was being checked. Close it in Word and run this again.'
 };
 
-export async function setCoverLetterTemplate({source,stateDirectory,worker=templateWordWorker}){
+export async function setCoverLetterTemplate({source,stateDirectory,worker=templateWordWorker,layout=docxPrintLayout}){
  if(!source||path.extname(source).toLowerCase()!=='.docx')throw Error('Give the path to a .docx template.');
  const bytes=await readFile(source);
  if(bytes.length>5*1024*1024||!bytes.subarray(0,2).equals(Buffer.from('PK')))throw Error('The file is not a Word .docx document under 5 MiB.');
@@ -24,7 +26,8 @@ export async function setCoverLetterTemplate({source,stateDirectory,worker=templ
  const digest=createHash('sha256').update(bytes).digest('hex'),candidate=path.join(folder,'template.candidate.docx');
  await writeFile(candidate,bytes);
  try{
-  await worker({template:candidate,templateSha256:digest,html:'<p>Template check</p><ul><li>Bullet <mark>highlight</mark></li></ul><p>Kind regards</p>'});
+  const sample=await worker({template:candidate,templateSha256:digest,html:'<p>Template check</p><ul><li>Bullet <mark>highlight</mark></li></ul><p>Kind regards</p>'});
+  await layout(sample); // the same check the PDF step makes during export
  }catch(e){
   await rm(candidate,{force:true});
   throw Error((HELP[e.code]||'The template could not be used ('+(e.code||'unknown')+').')+' Existing template unchanged.');
