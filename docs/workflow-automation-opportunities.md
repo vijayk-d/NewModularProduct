@@ -20,6 +20,7 @@ These rules still hold: no paid call on page load, checkbox or selection changes
    - A failed call is shown and not retried.
    - At most 10 automatic calls a day (`AUTO_RESEARCH_DAILY_CAP`). Set `ENABLE_AUTO_RESEARCH=false` to turn it off. It also needs `ENABLE_PERPLEXITY_RESEARCH=true`, like the button.
    - The review page says when research ran automatically or was reused.
+7. **Email domain follows the latest finding.** A domain found by organisation research (automatic or the button) or by **Find email domain** replaces the old one. It is saved on the application, linked contacts' suggested emails are refreshed, and the browser copy used by the LinkedIn contact bridge (`nmp.lastSavedEmailDomain`) is updated. Invalid or personal-mail domains (gmail.com, linkedin.com and similar) are ignored.
 
 ## Storage
 

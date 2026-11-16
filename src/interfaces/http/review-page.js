@@ -55,21 +55,26 @@ function attachEmailDomainListener() {
         var job = jobData.job;
 
         if (job.status === "completed") {
-          var domainInput = document.getElementById("email-domain-input");
-          if (domainInput && domainInput.dataset.manual !== "true") {
-            domainInput.value = job.result.emailDomain || "";
+          var found = String(job.result.emailDomain || "").trim();
+          result.textContent = found ? "Resolved domain: " + found : "No domain was found.";
+          if (!found) {
+            status.textContent = "No email domain was found. Enter one manually.";
+            button.disabled = false;
+            return;
           }
-          status.textContent =
-            "Email domain resolved: " +
-            job.result.emailDomain +
-            " — " +
-            job.result.confidence +
-            " confidence.";
-
-          result.textContent =
-            "Resolved domain: " +
-            job.result.emailDomain;
-
+          // The newly found domain replaces the old one, is saved for this review and copied to the browser.
+          try {
+            var saved = await saveEmailDomain(reviewId, found);
+            status.textContent =
+              "Email domain resolved and saved: " + saved.emailDomain +
+              " — " + (job.result.confidence || "low") + " confidence." +
+              (saved.contactsRefreshed ? "" : " Contacts could not refresh. Click Refresh contacts.");
+          } catch (saveError) {
+            var domainInput = document.getElementById("email-domain-input");
+            if (domainInput) { domainInput.value = found; domainInput.dataset.manual = "true"; }
+            status.textContent = "Email domain resolved: " + found + ", but it was not saved: " +
+              (saveError.message || "unknown error") + " Check it, then click Save domain.";
+          }
           button.disabled = false;
           return;
         }
@@ -502,40 +507,33 @@ function attachEditableEmailDomainListener() {
     button.disabled = true;
 
     try {
-      const response = await fetch("/api/reviews/email-domain/save", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          reviewId: button.dataset.reviewId,
-          emailDomain: input.value
-        })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || !data.ok) {
-        throw new Error(data.error || "Unable to save domain.");
-      }
-
-      input.value = data.emailDomain;
-      input.dataset.manual = "true";
-      publishEmailDomain(data.emailDomain);
-
-      try {
-        await refreshImportedContacts(button.dataset.reviewId);
-      } catch {
-        status.textContent =
-          "Domain saved, but contacts could not refresh. Click Refresh contacts.";
-        return;
-      }
-
-      status.textContent = "Domain saved for this active review.";
+      const saved = await saveEmailDomain(button.dataset.reviewId, input.value);
+      status.textContent = saved.contactsRefreshed
+        ? "Domain saved for this active review."
+        : "Domain saved, but contacts could not refresh. Click Refresh contacts.";
     } catch (error) {
       status.textContent = error.message || "Unable to save domain.";
     } finally {
       button.disabled = false;
     }
   });
+}
+
+// Saves the domain for the review, shows it in the field, copies it to the browser and refreshes contacts.
+async function saveEmailDomain(reviewId, value) {
+  const input = document.getElementById("email-domain-input");
+  const response = await fetch("/api/reviews/email-domain/save", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ reviewId, emailDomain: value })
+  });
+  const data = await response.json();
+  if (!response.ok || !data.ok) throw new Error(data.error || "Unable to save domain.");
+  if (input) { input.value = data.emailDomain; input.dataset.manual = "true"; }
+  publishEmailDomain(data.emailDomain);
+  let contactsRefreshed = true;
+  try { await refreshImportedContacts(reviewId); } catch { contactsRefreshed = false; }
+  return { emailDomain: data.emailDomain, contactsRefreshed };
 }
 
 if (typeof document !== "undefined") {

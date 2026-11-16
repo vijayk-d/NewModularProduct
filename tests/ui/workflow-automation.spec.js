@@ -16,8 +16,8 @@ const test = base.extend({app: async ({}, use) => {
   imports.receive(advert('4242'));
   const reviews = createDurableReviewStore(createMemoryReviewRepository());
   const cv = {role_code: 'PM', role_name: 'Project Manager', local_path: 'PM/fixture.pdf'}, body = 'Dear Hiring Manager,\n\nI led delivery.\n\nWarm regards,\nTest Candidate';
-  reviews.set('saved', {formData: {jobTitle: 'Delivery Manager', organisationName: 'Example', jobDescriptionText: 'Lead delivery.', jobAdvertLink: 'https://business.test/job', advertiserRelationship: 'unknown'}, prepared: {jobDescription: {role: 'Delivery Manager'}, coverLetter: {subject: 'S', plainText: body}, recommendation: {bestCv: cv, alternativeCv: null, ats: {score: 70}}, rankedCvs: [{cv, ats: {score: 70, matchedKeywords: [], missingKeywords: []}}]}, currentDraftPlainText: body, currentDraftSubject: 'S', selectedCvRoleCode: 'PM', createdAt: Date.now()});
-  const server = createLocalServer({applicationReviewStore: reviews, jobImportService: imports, recruiterContactStore: {async listAll() { return []; }, async listByReview() { return []; }}, outreachRepository: {list: () => [], listDraftOperations: () => [], listSendAttempts: () => [], listSentEmails: () => []}});
+  reviews.set('saved', {formData: {jobTitle: 'Delivery Manager', organisationName: 'Example', jobDescriptionText: 'Lead delivery.', jobAdvertLink: 'https://business.test/job', advertiserRelationship: 'unknown', emailDomain: 'old-domain.co.uk'}, prepared: {jobDescription: {role: 'Delivery Manager'}, coverLetter: {subject: 'S', plainText: body}, recommendation: {bestCv: cv, alternativeCv: null, ats: {score: 70}}, rankedCvs: [{cv, ats: {score: 70, matchedKeywords: [], missingKeywords: []}}]}, currentDraftPlainText: body, currentDraftSubject: 'S', selectedCvRoleCode: 'PM', createdAt: Date.now()});
+  const server = createLocalServer({applicationReviewStore: reviews, jobImportService: imports, recruiterContactStore: {async listAll() { return []; }, async listByReview() { return []; }, async updateLinkedEmailCandidates() { return []; }}, outreachRepository: {list: () => [], listDraftOperations: () => [], listSendAttempts: () => [], listSentEmails: () => []}});
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   try { await use({url: 'http://127.0.0.1:' + server.address().port}); }
   finally { server.closeAllConnections(); await new Promise(r => server.close(r)); imports.close?.(); rmSync(dir, {recursive: true, force: true}); }
@@ -44,4 +44,19 @@ test('the export CV choice is remembered after a reload', async ({page, app}) =>
   await page.reload();
   await expect(page.getByRole('combobox', {name: 'CV to include in export'})).toHaveValue('both');
   await expect(page.locator('[data-export-summary]')).toContainText('CV PM as PDF and DOCX');
+});
+
+test('a newly found email domain replaces the old one on the page, the application and the browser copy', async ({page, app}) => {
+  await page.route('**/resolve-email-domain', route => route.fulfill({status: 202, contentType: 'application/json', body: JSON.stringify({ok: true, job: {jobId: 'job-1', status: 'queued'}})}));
+  await page.route('**/api/email-domain-jobs/job-1', route => route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify({ok: true, job: {jobId: 'job-1', status: 'completed', result: {emailDomain: 'new-domain.com', confidence: 'high'}}})}));
+  await page.goto(app.url + '/applications/saved');
+  const input = page.locator('#email-domain-input');
+  await expect(input).toHaveValue('old-domain.co.uk');
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('nmp.lastSavedEmailDomain') || '{}').domain)).toBe('old-domain.co.uk');
+  await page.getByRole('button', {name: 'Find email domain'}).click();
+  await expect(page.locator('#email-domain-status')).toContainText('resolved and saved: new-domain.com');
+  await expect(input).toHaveValue('new-domain.com');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('nmp.lastSavedEmailDomain')).domain)).toBe('new-domain.com');
+  await page.reload();
+  await expect(page.locator('#email-domain-input')).toHaveValue('new-domain.com');
 });

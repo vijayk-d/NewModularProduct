@@ -45,6 +45,7 @@ import { createOutreachHttpHandler } from './outreach-queue-http.js';
 import { currentReviewSubject, normalizeSubject, reviewWithSavedSubject } from '../../application/review-subject.js';
 import { createPerplexityClient } from "../../infrastructure/perplexity-client.js";
 import { createEmailDomainResolutionService } from "../../application/email-domain-resolution-service.js";
+import { normaliseBusinessDomain, adoptResearchedDomain } from "../../application/email-domain-policy.js";
 import { renderApplicationReview, renderRefinementPanel, renderOrganisationResearch, renderField, renderAdvertLink, getSelectableCompanyValues, renderResearchSource, renderOptionalDetail , renderApplicationForm, escapeHtml} from './rendering.js';
 import { readFormBody } from './form-body.js';
 import { sendText, sendHtml, sendJson } from './responses.js';
@@ -265,6 +266,17 @@ export function createLocalServer({
     perplexityClient,
     recruiterContactStore
   });
+  // A domain newly found by research replaces the saved one, so the page and the browser copy show the new domain.
+  async function adoptFoundEmailDomain(reviewId) {
+    const review = reviewStore.get(reviewId);
+    if (!review) return;
+    const adopted = adoptResearchedDomain(review.formData, review.research);
+    if (!adopted.changed) return;
+    reviewStore.set(reviewId, {...review, formData: adopted.formData});
+    try { await recruiterContactStore?.updateLinkedEmailCandidates?.({reviewId, emailDomain: adopted.emailDomain}); }
+    catch (error) { if (isContactStoreLoadError(error)) throw error; console.warn('[EMAIL_DOMAIN] CONTACT_CANDIDATES_NOT_UPDATED'); }
+  }
+
 
   async function loadContactLinking(reviewId) {
     if (!recruiterContactStore) {
@@ -571,14 +583,14 @@ export function createLocalServer({
       });
       if(applicationIntelligence){try{await applicationIntelligence.capture(reviewId);}catch{console.warn('[APPLICATION_INTELLIGENCE] ASSESSMENT_NOT_RECORDED');}}
       // Research the organisation once for its first application, or reuse a recent copy. Never retried automatically.
-      if(organisationResearchService){try{const auto=await organisationResearchService.forNewApplication({organisationName:formData.organisationName,organisationUrl:formData.organisationUrl,jobTitle:formData.jobTitle});writeDiagnostic('organisation_research_automatic',{requestId,reviewId,source:auto.source,status:auto.research?.status||'none'});if(auto.research){const current=reviewStore.get(reviewId);reviewStore.set(reviewId,{...current,research:auto.research,researchedAt:Date.now()});}}catch(error){if(isContactStoreLoadError(error))throw error;console.warn('[ORGANISATION_RESEARCH] AUTOMATIC_RESEARCH_NOT_RECORDED');}}
+      if(organisationResearchService){try{const auto=await organisationResearchService.forNewApplication({organisationName:formData.organisationName,organisationUrl:formData.organisationUrl,jobTitle:formData.jobTitle});writeDiagnostic('organisation_research_automatic',{requestId,reviewId,source:auto.source,status:auto.research?.status||'none'});if(auto.research){const current=reviewStore.get(reviewId);reviewStore.set(reviewId,{...current,research:auto.research,researchedAt:Date.now()});await adoptFoundEmailDomain(reviewId);}}catch(error){if(isContactStoreLoadError(error))throw error;console.warn('[ORGANISATION_RESEARCH] AUTOMATIC_RESEARCH_NOT_RECORDED');}}
       if(importedJob&&formData.importJobPosters){try{await importJobPosters({record:importedJob,contactStore:recruiterContactStore,reviewId});}catch{const r=reviewStore.get(reviewId);reviewStore.set(reviewId,{...r,jobPosterImportError:'Application saved, but optional poster import was not fully completed. Review/retry explicitly; no email was inferred or sent.'});}}
 
         sendHtml(
           response,
           200,
           await renderCompleteReview({
-            formData,
+            formData: reviewStore.get(reviewId)?.formData || formData,
             prepared,
             reviewId,
             research: reviewStore.get(reviewId)?.research || null,
@@ -733,29 +745,8 @@ export function createLocalServer({
           return;
         }
 
-        const emailDomain = String(body.emailDomain || "")
-          .trim()
-          .toLowerCase();
-
-        const labels = emailDomain.split(".");
-        const blocked = [
-          "linkedin.com", "gmail.com", "googlemail.com",
-          "outlook.com", "hotmail.com", "yahoo.com", "icloud.com",
-          "example.com", "example.org", "example.net"
-        ];
-
-        const valid =
-          emailDomain.length <= 253 &&
-          labels.length >= 2 &&
-          labels.every((label) =>
-            label.length <= 63 &&
-            /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label)
-          ) &&
-          /^[a-z]{2,63}$/.test(labels[labels.length - 1]) &&
-          !blocked.some((domain) =>
-            emailDomain === domain ||
-            emailDomain.endsWith(`.${domain}`)
-          );
+        const emailDomain = normaliseBusinessDomain(body.emailDomain);
+        const valid = Boolean(emailDomain);
 
         if (!valid) {
           sendJson(response, 400, {
@@ -1022,12 +1013,13 @@ export function createLocalServer({
         researchedAt: Date.now()
       });
       try{organisationResearchService?.recordManual(companyName,research);}catch{console.warn('[ORGANISATION_RESEARCH] SHARED_COPY_NOT_UPDATED');}
+      await adoptFoundEmailDomain(reviewId);
 
       sendHtml(
         response,
         200,
         await renderCompleteReview({
-          formData: review.formData,
+          formData: reviewStore.get(reviewId)?.formData || review.formData,
           prepared: review.prepared,
           reviewId,
           research,
