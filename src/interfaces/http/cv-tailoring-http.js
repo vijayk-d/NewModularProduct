@@ -70,8 +70,12 @@ export function createCvTailoringHandler({service, getReview, sendJson, sendText
         const file = service.file(save[1], Number(save[2]));
         if (!file) { sendJson(res, 404, {ok: false, error: 'Tailored CV version not found.'}); return true; }
         const form = getReview?.(save[1])?.formData || {};
-        const name = uploadFileName(candidateName, form.jobTitle || file.roleCode, 'CV', '.docx');
-        sendJson(res, 200, {ok: true, ...(await outputFolder.save(safeExportStem([form.organisationName, form.jobTitle].filter(Boolean).join('-')), [{name, bytes: file.bytes}]))});
+        // The built version is part of the name (…_CV_v7.docx) so the folder matches the version list; its PDF goes alongside.
+        const version = Number(save[2]), role = form.jobTitle || file.roleCode;
+        const files = [{name: uploadFileName(candidateName, role, `CV_v${version}`, '.docx'), bytes: file.bytes}];
+        const pdf = typeof service.pdfBytes === 'function' ? await service.pdfBytes(save[1], version) : null;
+        if (pdf) files.push({name: uploadFileName(candidateName, role, `CV_v${version}`, '.pdf'), bytes: pdf});
+        sendJson(res, 200, {ok: true, ...(await outputFolder.save(safeExportStem([form.organisationName, form.jobTitle].filter(Boolean).join('-')), files))});
       } catch (error) {
         sendJson(res, error.statusCode || 503, {ok: false, code: error.code || 'CV_TAILORING_FAILED', error: error.statusCode ? error.message : 'The tailored CV could not be saved. Nothing was changed.'});
       }

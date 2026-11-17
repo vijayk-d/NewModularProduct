@@ -1,6 +1,6 @@
 // Writes generated application files to an explicit local folder (APPLICATION_OUTPUT_FOLDER).
 // The Node process writes them, so Windows adds no Mark of the Web and Word opens them without Unblock.
-import {mkdir, open, realpath, stat} from 'node:fs/promises';
+import {mkdir, open, readFile, realpath, stat} from 'node:fs/promises';
 import path from 'node:path';
 
 const SETUP_HINT = 'Set APPLICATION_OUTPUT_FOLDER in .env to an absolute folder outside the app (for example D:\\JobApplications), create the folder, then restart the app.';
@@ -32,23 +32,29 @@ export async function checkOutputFolder(value, {forbidden = []} = {}) {
   return folder;
 }
 
-// "Vijay_DAFAL_PM_CV.docx" -> "Vijay_DAFAL_PM_CV_v2.docx"
-export function versionedName(name, version) {
-  if (version < 2) return name;
+
+// "Vijay_DAFAL_PM_CV_v7.docx" -> "Vijay_DAFAL_PM_CV_v7_copy2.docx". "_copy" never looks like a tailored CV version.
+export function copyName(name, copy) {
+  if (copy < 2) return name;
   const ext = path.extname(name);
-  return `${name.slice(0, name.length - ext.length)}_v${version}${ext}`;
+  return `${name.slice(0, name.length - ext.length)}_copy${copy}${ext}`;
 }
 
+// Same name and same bytes: already saved, nothing written. Different bytes: a numbered copy, never an overwrite.
 async function writeNew(directory, name, bytes) {
-  for (let version = 1; version <= MAX_VERSIONS; version++) {
-    const candidate = versionedName(name, version);
+  for (let copy = 1; copy <= MAX_VERSIONS; copy++) {
+    const candidate = copyName(name, copy), file = path.join(directory, candidate);
     let handle;
-    try { handle = await open(path.join(directory, candidate), 'wx'); }
-    catch (error) { if (error.code === 'EEXIST') continue; throw error; }
+    try { handle = await open(file, 'wx'); }
+    catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      if (Buffer.from(await readFile(file)).equals(bytes)) return {name: candidate, unchanged: true};
+      continue;
+    }
     try { await handle.writeFile(bytes); } finally { await handle.close(); }
-    return candidate;
+    return {name: candidate, unchanged: false};
   }
-  throw blocked(`"${name}" already has ${MAX_VERSIONS} versions in this folder. Tidy the folder, then try again.`, 'OUTPUT_FOLDER_FULL');
+  throw blocked(`"${name}" already has ${MAX_VERSIONS} copies in this folder. Tidy the folder, then try again.`, 'OUTPUT_FOLDER_FULL');
 }
 
 export function createApplicationOutputFolder({folder, forbidden = []} = {}) {
@@ -63,9 +69,9 @@ export function createApplicationOutputFolder({folder, forbidden = []} = {}) {
         await mkdir(directory, {recursive: true});
         const resolved = await realpath(directory);
         if (!inside(caseless(root), caseless(resolved)) || caseless(resolved) === caseless(root)) throw blocked('The application folder resolves outside the output folder.', 'OUTPUT_FOLDER_UNSAFE_NAME', 400);
-        const written = [];
-        for (const file of files) written.push(await writeNew(resolved, file.name, file.bytes));
-        return {folder: resolved, files: written};
+        const results = [];
+        for (const file of files) results.push(await writeNew(resolved, file.name, file.bytes));
+        return {folder: resolved, files: results.map(r => r.name), unchanged: results.filter(r => r.unchanged).map(r => r.name)};
       } catch (error) {
         if (error.code?.startsWith?.('OUTPUT_FOLDER_')) throw error;
         throw blocked('Files could not be written to the output folder. Check it exists and is not read-only.', 'OUTPUT_FOLDER_WRITE_FAILED', 503);

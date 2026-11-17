@@ -37,12 +37,13 @@ test('Save to folder writes the tailored CV and Save pack to folder writes the p
   const section = await buildTailoredCv(page, app);
   await expect(section.locator('[data-tailored-download]')).toBeVisible();
   await section.getByRole('button', {name: 'Save to folder'}).click();
-  await expect(section.locator('[data-tailored-save-status]')).toContainText('Saved Test_Candidate_Delivery_Manager_CV.docx in');
+  await expect(section.locator('[data-tailored-save-status]')).toContainText('Saved Test_Candidate_Delivery_Manager_CV_v1.docx (in');
   const where = path.join(app.dir, 'Example-Delivery-Manager');
-  expect(await readdir(where)).toEqual(['Test_Candidate_Delivery_Manager_CV.docx']);
+  expect(await readdir(where)).toEqual(['Test_Candidate_Delivery_Manager_CV_v1.docx']);
 
   await section.getByRole('button', {name: 'Save to folder'}).click();
-  await expect(section.locator('[data-tailored-save-status]')).toContainText('Test_Candidate_Delivery_Manager_CV_v2.docx');
+  await expect(section.locator('[data-tailored-save-status]')).toContainText('Already saved: Test_Candidate_Delivery_Manager_CV_v1.docx');
+  expect(await readdir(where)).toEqual(['Test_Candidate_Delivery_Manager_CV_v1.docx']);
 
   const pack = page.getByRole('group', {name: 'Export pack'});
   await pack.getByRole('button', {name: 'Save pack to folder'}).click();

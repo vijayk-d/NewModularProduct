@@ -68,7 +68,7 @@ Browsers mark every download, even from this app, as "from the internet". Word t
 - **Save to folder**, next to **Download tailored CV**, writes the tailored DOCX.
 - **Save pack to folder**, in the Export pack group, writes the pack's individual files (not a ZIP). It runs the same checks as **Export pack** and uses the same CV choice.
 
-Both write into `<output folder>\<Organisation>-<Job title>\` with the same upload-friendly names as the downloads (for example `Vijay_DAFAL_Delivery_Manager_CV.docx`). An existing file is never overwritten: a repeat save adds `_v2`, `_v3` and so on.
+Both write into `<output folder>\<Organisation>-<Job title>\` with upload-friendly names. **Save to folder** puts the built version number in the name, so the folder matches the version list: version 7 is saved as `Vijay_DAFAL_Delivery_Manager_CV_v7.docx`, with `…_CV_v7.pdf` next to it when that version has a PDF. Saving the same file again writes nothing and the page says "Already saved". An existing file is never overwritten: if a different file already has the name, the new one is saved as `…_copy2`, `…_copy3` and so on. A copy number is never a CV version. Emails and the Export pack keep the plain name without a version (for example `Vijay_DAFAL_Delivery_Manager_CV.pdf`).
 
 **Setting the folder.** There is no default. Add one line to `.env` (development) or the production settings file, then restart the app:
 

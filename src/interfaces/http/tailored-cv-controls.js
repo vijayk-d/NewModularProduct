@@ -135,7 +135,8 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
         const response = await fetchImpl(api + '/' + item.version + '/save-to-folder', {method: 'POST', headers: {'content-type': 'application/json'}, body: '{}'});
         const data = await response.json();
         if (!response.ok || !data.ok) throw new Error(data.error || 'Save to folder failed. Nothing was written.');
-        saveStatus.textContent = ` Saved ${data.files.join(', ')} in ${data.folder}.`;
+        const fresh = data.files.filter(n => !data.unchanged?.includes(n));
+        saveStatus.textContent = ' ' + [fresh.length ? `Saved ${fresh.join(', ')}` : '', data.unchanged?.length ? `Already saved: ${data.unchanged.join(', ')}` : ''].filter(Boolean).join('. ') + ` (in ${data.folder}).`;
       } catch (error) { saveStatus.textContent = ' ' + error.message; }
       finally { saveButton.disabled = false; }
     });
