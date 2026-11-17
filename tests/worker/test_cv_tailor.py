@@ -85,6 +85,28 @@ class TailorTests(unittest.TestCase):
         out = t.tailor(docx(TABLE), ['Tailored table profile.'], ['Tailored one.', 'Tailored two.'])
         self.assertIn('Tailored two.', d.extract(out))
 
+    def test_owner_chosen_headings_and_detected_heading_list(self):
+        custom = (para('Vijay Example', bold=True) + para('About My Work', bold=True) + para('Custom profile text.') +
+                  para('Impact Delivered:', bold=True) + para('Custom bullet.', bullet=True) + para('Experience', style='Heading1'))
+        s = t.describe(docx(custom))
+        self.assertIsNone(s['profile'])
+        self.assertEqual(s['headings'], ['Vijay Example', 'About My Work', 'Impact Delivered:', 'Experience'])
+        chosen = t.describe(docx(custom), 'About My Work', 'impact delivered')
+        self.assertEqual(chosen['profile']['paragraphs'], ['Custom profile text.'])
+        self.assertEqual(chosen['achievements']['paragraphs'], ['Custom bullet.'])
+        out = t.tailor(docx(custom), ['New profile.'], ['New bullet.'], 'About My Work', 'Impact Delivered')
+        self.assertIn('New bullet.', d.extract(out))
+        with self.assertRaises(d.DocumentError):
+            t.describe(docx(custom), 'Same', 'same')
+
+    def test_ampersand_and_single_column_table_rows(self):
+        rows = ('<w:tbl><w:tr><w:tc>' + para('PROFESSIONAL PROFILE') + '</w:tc></w:tr><w:tr><w:tc>' + para('Row profile.') +
+                '</w:tc></w:tr><w:tr><w:tc>' + para('Key Achievements &amp; Impact') + '</w:tc></w:tr><w:tr><w:tc>' +
+                para('Row bullet.', bullet=True) + '</w:tc></w:tr></w:tbl>')
+        s = t.describe(docx(rows))
+        self.assertEqual(s['profile']['paragraphs'], ['Row profile.'])
+        self.assertEqual(s['achievements']['paragraphs'], ['Row bullet.'])
+
     def test_missing_section_is_reported_and_refused(self):
         src = docx(para('Profile', style='Heading1') + para('Only a profile.'))
         self.assertIsNone(t.describe(src)['achievements'])

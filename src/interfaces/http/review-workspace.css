@@ -193,3 +193,4 @@ html.review-workspace #polishing-model[data-workspace-choice-carrier],html.revie
 .tailored-cv ul[data-tailored-suggestions]{padding-left:0;list-style:none}
 .tailored-cv ul[data-tailored-suggestions] li{margin:.35rem 0}
 .tailored-cv ul[data-tailored-suggestions] button{margin-right:.4rem}
+.tailored-cv [data-tailored-headings] select{display:block;min-width:16rem;max-width:100%;margin:.3rem 0 .5rem;padding:.4rem;font:inherit}

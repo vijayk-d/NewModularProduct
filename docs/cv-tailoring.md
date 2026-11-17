@@ -31,7 +31,8 @@ Each build is saved as a new version. You can download it as a DOCX, or include 
 - **Headings.** A Profile heading and a Key achievements heading. Recognised names include:
   - **Profile:** Profile, Professional Profile, Personal Profile, Profile Summary, Summary, Professional Summary, Executive Summary, Personal Statement, About me.
   - **Key achievements:** Key Achievements, Achievements, Selected Achievements, Career Highlights, Key Accomplishments, Highlights.
-- **Layout.** The section text must follow its heading, either in the same column or in the next table cell (a two-column CV table). If the layout isn't supported, the page says so and nothing is built.
+- **Layout.** The section text must follow its heading, in the same column, in the next table cell (two-column CV table) or in the next table row (single-column table). If the layout isn't supported, the page says so and nothing is built.
+- **Your own heading names.** If a heading isn't recognised, the page lists the heading-like lines it found in your Word CV (bold, styled, capitals or ending with a colon). Choose which is Profile and which is Key achievements, then **Draft again with these headings**. The choice is remembered per CV in this browser.
 
 ## Manual check before release
 

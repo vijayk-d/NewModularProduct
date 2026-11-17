@@ -23,11 +23,34 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
   const status = el(doc, 'p', {role: 'status', 'aria-live': 'polite', 'data-tailored-status': ''});
   const latest = el(doc, 'p', {'data-tailored-latest': ''});
   const editor = el(doc, 'div', {'data-tailored-editor': '', hidden: ''});
-  section.append(el(doc, 'h2', {id: 'tailored-cv-title', text: 'Tailored CV'}), intro, el(doc, 'div', {class: 'actions'}, [draftButton]), status, latest, editor);
+  const chooser = el(doc, 'div', {'data-tailored-headings': '', hidden: ''});
+  section.append(el(doc, 'h2', {id: 'tailored-cv-title', text: 'Tailored CV'}), intro, el(doc, 'div', {class: 'actions'}, [draftButton]), status, chooser, latest, editor);
   const anchor = doc.querySelector('.panel--decision') || doc.getElementById('email-domain-resolution');
   if (anchor?.parentNode) anchor.after(section); else (doc.querySelector('main') || doc.body).append(section);
 
   let draft = null;
+  // Remembered per CV in this browser, so each CV's heading names are chosen once.
+  const KEY = code => 'jobapp.cvHeadings.' + code;
+  const remembered = code => { try { return JSON.parse(doc.defaultView?.localStorage?.getItem(KEY(code)) || '{}') || {}; } catch { return {}; } };
+  const remember = (code, value) => { try { doc.defaultView?.localStorage?.setItem(KEY(code), JSON.stringify(value)); } catch {} };
+  const cvCode = () => doc.querySelector('input[name="selectedCvRoleCode"]:checked')?.value || draft?.roleCode || '';
+
+  function showChooser(data) {
+    chooser.textContent = '';
+    const make = (id, text, current) => {
+      const select = el(doc, 'select', {id});
+      select.append(el(doc, 'option', {value: '', text: 'Recognise automatically'}));
+      for (const h of data.headings) { const o = el(doc, 'option', {value: h, text: h}); if (h === current) o.selected = true; select.append(o); }
+      return [el(doc, 'label', {for: id, text}), select];
+    };
+    const [pl, ps] = make('tailored-profile-heading', 'Which heading is your Profile?', data.chosen?.profileHeading);
+    const [al, as] = make('tailored-achievements-heading', 'Which heading is your Key achievements?', data.chosen?.achievementsHeading);
+    const retry = el(doc, 'button', {type: 'button', text: 'Draft again with these headings'});
+    retry.addEventListener('click', () => { remember(data.roleCode, {profileHeading: ps.value, achievementsHeading: as.value}); runDraft({profileHeading: ps.value, achievementsHeading: as.value}); });
+    chooser.append(el(doc, 'p', {class: 'tailored-cv-note', text: data.headings.length ? 'Headings found in your Word CV:' : 'No heading-like lines were found in your Word CV.'}), pl, ps, al, as, el(doc, 'div', {class: 'actions'}, [retry]));
+    chooser.hidden = !data.headings.length;
+  }
+
   const showLatest = item => {
     latest.textContent = '';
     if (!item) return;
@@ -55,7 +78,7 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
     build.addEventListener('click', async () => {
       build.disabled = true; message.textContent = 'Checking wording and building the Word file…';
       try {
-        const response = await fetchImpl(api, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({profile: parseProfile(profile.value), achievements: parseBullets(bullets.value), expectedSha256: data.baseSha256, expectedRoleCode: data.roleCode})});
+        const response = await fetchImpl(api, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({profile: parseProfile(profile.value), achievements: parseBullets(bullets.value), expectedSha256: data.baseSha256, expectedRoleCode: data.roleCode, ...(data.chosen || {})})});
         const result = await response.json();
         if (!response.ok || !result.ok) throw new Error(result.error || 'Tailored CV was not built.');
         message.textContent = `Tailored CV version ${result.tailored.version} built.`;
@@ -73,22 +96,25 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
     editor.hidden = false;
   }
 
-  draftButton.addEventListener('click', async () => {
+  async function runDraft(headings) {
     draftButton.disabled = true; status.textContent = 'Reading the Word version of your CV…';
     try {
-      const response = await fetchImpl(api, {cache: 'no-store'});
+      const query = new URLSearchParams(Object.entries(headings || {}).filter(([, v]) => v)).toString();
+      const response = await fetchImpl(api + (query ? '?' + query : ''), {cache: 'no-store'});
       const data = await response.json();
       if (!response.ok || !data.ok) throw new Error(data.error || 'Could not draft a tailored CV.');
       draft = data; showLatest(data.latest);
-      if (!data.ready) { editor.hidden = true; status.textContent = data.message; return; }
+      if (!data.ready) { editor.hidden = true; status.textContent = data.message; showChooser(data); return; }
+      chooser.hidden = true;
       status.textContent = `Drafted from ${data.baseName} (CV ${data.roleCode}). Found "${data.sections.profile.heading}" and "${data.sections.achievements.heading}". Check the wording, then build.`;
       render(data);
     } catch (error) { status.textContent = error.message; } finally { draftButton.disabled = false; }
-  });
+  }
+  draftButton.addEventListener('click', () => runDraft(remembered(cvCode())));
 
   doc.addEventListener('change', event => {
     if (event.target?.name === 'selectedCvRoleCode' && draft && event.target.value !== draft.roleCode) {
-      editor.hidden = true; draft = null; status.textContent = 'The CV selection changed. Apply it, then draft again.';
+      editor.hidden = true; chooser.hidden = true; draft = null; status.textContent = 'The CV selection changed. Apply it, then draft again.';
     }
   });
   return section;

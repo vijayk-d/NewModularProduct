@@ -34,7 +34,7 @@ export function createCvTailoringHandler({service, getReview, sendJson, sendText
         res.end(file.bytes);
         return true;
       }
-      sendJson(res, 200, {ok: true, ...(await service.draft(reviewId))});
+      sendJson(res, 200, {ok: true, ...(await service.draft(reviewId, {profileHeading: url.searchParams.get('profileHeading') || '', achievementsHeading: url.searchParams.get('achievementsHeading') || ''}))});
       return true;
     } catch (error) {
       sendJson(res, error.statusCode || 503, {ok: false, code: error.code || 'CV_TAILORING_FAILED', error: error.statusCode ? error.message : 'Tailored CV is unavailable. Nothing was changed.'});

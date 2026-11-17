@@ -4,9 +4,12 @@ import io, re, copy, zipfile, xml.etree.ElementTree as ET
 from cv_docx import package, xml, need, W
 
 PROFILE = {'profile', 'professional profile', 'personal profile', 'career profile', 'profile summary', 'summary',
-           'professional summary', 'career summary', 'executive summary', 'personal statement', 'about me'}
+           'professional summary', 'career summary', 'executive summary', 'personal statement', 'about me',
+           'executive profile', 'personal summary', 'professional overview', 'career overview', 'overview'}
 ACHIEVEMENTS = {'key achievements', 'achievements', 'selected achievements', 'career highlights', 'key accomplishments',
-                'accomplishments', 'notable achievements', 'career achievements', 'key highlights', 'highlights'}
+                'accomplishments', 'notable achievements', 'career achievements', 'key highlights', 'highlights',
+                'selected accomplishments', 'major achievements', 'key successes', 'key results', 'achievements and impact',
+                'key achievements and impact', 'notable accomplishments'}
 OTHER = {'experience', 'professional experience', 'work experience', 'relevant experience', 'employment', 'employment history',
          'career history', 'work history', 'skills', 'key skills', 'core skills', 'core competencies', 'competencies',
          'technical skills', 'education', 'qualifications', 'education and qualifications', 'certifications', 'certificates',
@@ -19,7 +22,22 @@ MAX_LINES, MAX_LINE = 12, 600
 
 def q(tag): return '{' + W + '}' + tag
 def text(p): return ''.join(t.text or '' for t in p.iter(q('t')))
-def label(s): return re.sub(r'\s+', ' ', s.strip().rstrip(':').strip()).lower()
+def label(s):
+    s = re.sub(r'\s+', ' ', str(s).replace('&', ' and ')).strip().lower()
+    return re.sub(r'^[^a-z0-9]+|[^a-z0-9]+$', '', s)
+
+
+# Owner-chosen headings for this CV, set per request: {'profile': label, 'achievements': label}.
+CHOSEN = {}
+
+
+def set_chosen(profile_heading='', achievements_heading=''):
+    CHOSEN.clear()
+    for kind, value in (('profile', profile_heading), ('achievements', achievements_heading)):
+        need(isinstance(value, str) and len(value) <= 80, 'CV_HEADING_INVALID')
+        if label(value):
+            CHOSEN[kind] = label(value)
+    need(len(set(CHOSEN.values())) == len(CHOSEN), 'CV_HEADING_INVALID')
 
 
 def style(p):
@@ -37,6 +55,8 @@ def heading_kind(p):
     s = label(raw)
     if not s or len(s) > 45:
         return None
+    for kind, chosen in CHOSEN.items():
+        if s == chosen: return kind
     if s in PROFILE: return 'profile'
     if s in ACHIEVEMENTS: return 'achievements'
     if s in OTHER: return 'other'
@@ -76,15 +96,48 @@ def locate(root):
             nxt = cells[cells.index(container) + 1] if cells.index(container) + 1 < len(cells) else None
             if nxt is not None and not any(heading_kind(x) for x in nxt.iter(q('p'))):
                 container, body = nxt, body_after(nxt, None)
+            elif nxt is None and row is not None:
+                # Single-column table: the heading row is followed by a row holding the text.
+                table = up.get(row)
+                rows = [r for r in table if r.tag == q('tr')] if table is not None else []
+                after = rows[rows.index(row) + 1] if row in rows and rows.index(row) + 1 < len(rows) else None
+                cell = next((c for c in after if c.tag == q('tc')), None) if after is not None else None
+                if cell is not None and not any(heading_kind(x) for x in cell.iter(q('p'))):
+                    container, body = cell, body_after(cell, None)
         found[kind] = (container, p, body)
     return found
 
 
-def describe(data):
+def bold(p):
+    runs = [r for r in p.iter(q('r')) if text(r).strip()]
+
+    def on(r):
+        b = r.find(q('rPr') + '/' + q('b'))
+        return b is not None and b.get(q('val'), 'true').lower() not in ('0', 'false', 'off')
+    return bool(runs) and all(on(r) for r in runs)
+
+
+def candidates(root):
+    """Short heading-like lines, so the owner can say which ones are Profile and Key achievements."""
+    out = []
+    for p in root.iter(q('p')):
+        raw = re.sub(r'\s+', ' ', text(p)).strip()
+        if not (2 <= len(raw) <= 45) or is_bullet(p) or raw in out:
+            continue
+        st = style(p).lower()
+        if heading_kind(p) or bold(p) or raw.endswith(':') or st.startswith('heading') or st == 'title':
+            out.append(raw)
+        if len(out) >= 40:
+            break
+    return out
+
+
+def describe(data, profile_heading='', achievements_heading=''):
+    set_chosen(profile_heading, achievements_heading)
     z, root = package(data)
     z.close()
     found = locate(root)
-    result = {}
+    result = {'headings': candidates(root)}
     for kind in KINDS:
         if kind not in found:
             result[kind] = None
@@ -163,7 +216,8 @@ def serialise(root, raw):
     return out[:end] + extra + out[end:]
 
 
-def tailor(data, profile, achievements):
+def tailor(data, profile, achievements, profile_heading='', achievements_heading=''):
+    set_chosen(profile_heading, achievements_heading)
     profile = clean_lines(profile, 'CV_PROFILE_INVALID')
     achievements = clean_lines(achievements, 'CV_ACHIEVEMENTS_INVALID')
     z, _ = package(data)
@@ -183,7 +237,7 @@ def tailor(data, profile, achievements):
     result = buffer.getvalue()
     z2, root2 = package(result)
     z2.close()
-    check = describe(result)
+    check = describe(result, profile_heading, achievements_heading)
     need(check['profile'] and check['achievements'] and check['profile']['paragraphs'] == profile
          and check['achievements']['paragraphs'] == achievements, 'CV_TAILOR_VERIFY_FAILED')
     return result
