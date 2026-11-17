@@ -249,8 +249,13 @@ export function createCvTailoringService({reviews, cvLibrary, worker, cvFolder, 
       const built = await call({action: 'tailor', relativePath: found.relativePath, expectedHash: found.sha256, profile: check.profile,
         ...(check.achievements ? {achievements: check.achievements} : {}), ...(check.roles ? {roles: check.roles} : {}), ...found.chosen});
       const bytes = Buffer.from(built.data, 'base64');
-      return store.save({reviewId, roleCode: found.roleCode, baseName: found.name, baseSha256: found.sha256, profile: check.profile,
+      const saved = store.save({reviewId, roleCode: found.roleCode, baseName: found.name, baseSha256: found.sha256, profile: check.profile,
         achievements: check.roles ? {achievements: check.achievements, roles: check.roles} : check.achievements, bytes, sha256: sha(bytes)});
+      // ATS match of exactly what was built (not stored; shown with the new version).
+      const original = [...use.profile.paragraphs, ...(check.achievements ? use.achievements.paragraphs : []), ...(check.roles ? roleSources.flatMap(r => r.bullets) : [])];
+      const lines = Array.isArray(found.sections?.lines) && found.sections.lines.length ? found.sections.lines : original;
+      return {...saved, ats: compareTailoredAts({keywords: jobKeywords(found.review).slice(0, 40), baseLines: lines, originalLines: original,
+        tailoredLines: [...check.profile, ...(check.achievements || []), ...(check.roles || []).flat()], evidence: selectedEvidence(found.review)})};
     },
 
     // Read-only check of every CV in the library: Word file found, and sections recognised. No CV is changed.

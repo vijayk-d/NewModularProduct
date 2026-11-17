@@ -29,16 +29,22 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
   if (!reviewId || doc.getElementById('tailored-cv')) return null;
   const api = '/api/reviews/' + encodeURIComponent(reviewId) + '/tailored-cv';
   const section = el(doc, 'section', {class: 'review-section tailored-cv', id: 'tailored-cv', 'aria-labelledby': 'tailored-cv-title'});
-  const intro = el(doc, 'p', {class: 'tailored-cv-note', text: 'A copy of the selected Word CV with only the summary and the bullets changed. Wording comes from your CV and the achievements selected for this application. Free and local: nothing is sent anywhere, and your original CV is never changed.'});
+  const intro = el(doc, 'p', {class: 'tailored-cv-note', text: 'A job-specific copy of the Word CV selected above. Only the summary and bullets change, using your CV and the achievements selected for this application. Your original CV is never changed. Everything is free and local except the optional Polish step.'});
+  // Step bar: where you are and what comes next. Steps 2 to 5 appear after drafting, step 6 after the first build.
+  const STEPS = [['1', 'Draft'], ['2', 'Edit'], ['3', 'Polish (optional)'], ['4', 'ATS match'], ['5', 'Build'], ['6', 'Use it']];
+  const stepBar = el(doc, 'ol', {class: 'tailored-steps', 'aria-label': 'Tailored CV steps'}, STEPS.map(([n, t]) => el(doc, 'li', {}, [el(doc, 'a', {href: '#tailored-step-' + n, text: `${n}. ${t}`})])));
+  const stepHeading = (n, text) => el(doc, 'h3', {id: 'tailored-step-' + n, class: 'tailored-step', text: `${n}. ${text}`});
   const draftButton = el(doc, 'button', {type: 'button', text: 'Draft tailored CV'});
   const checkButton = el(doc, 'button', {type: 'button', text: 'Check all CVs'});
   const report = el(doc, 'div', {'data-tailored-library': '', hidden: ''});
   const status = el(doc, 'p', {role: 'status', 'aria-live': 'polite', 'data-tailored-status': ''});
   const latest = el(doc, 'p', {'data-tailored-latest': ''});
+  const useBlock = el(doc, 'div', {class: 'tailored-use', hidden: ''}, [stepHeading('6', 'Use your tailored CV'), latest,
+    el(doc, 'p', {class: 'tailored-cv-note', text: 'Download it, save it to your output folder (opens in Word without Unblock), or choose "Tailored CV (DOCX)" in the Export pack for a job portal. Emails to recruiters still attach the CV selected above, not the tailored one.'})]);
   const editor = el(doc, 'div', {'data-tailored-editor': '', hidden: ''});
   const chooser = el(doc, 'div', {'data-tailored-headings': '', hidden: ''});
   const wordChooser = el(doc, 'div', {'data-tailored-word': '', hidden: ''});
-  section.append(el(doc, 'h2', {id: 'tailored-cv-title', text: 'Tailored CV'}), intro, el(doc, 'div', {class: 'actions'}, [draftButton, checkButton]), status, wordChooser, chooser, latest, editor, report);
+  section.append(el(doc, 'h2', {id: 'tailored-cv-title', text: 'Tailored CV'}), intro, stepBar, stepHeading('1', 'Draft from your CV'), el(doc, 'div', {class: 'actions'}, [draftButton, checkButton]), status, wordChooser, chooser, report, editor, useBlock);
   const anchor = doc.querySelector('.panel--decision') || doc.getElementById('email-domain-resolution');
   if (anchor?.parentNode) anchor.after(section); else (doc.querySelector('main') || doc.body).append(section);
 
@@ -74,6 +80,7 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
 
   const showLatest = item => {
     latest.textContent = '';
+    useBlock.hidden = !item;
     if (!item) return;
     const link = el(doc, 'a', {href: api + '/' + item.version + '.docx', 'data-tailored-download': '', text: `Download tailored CV (version ${item.version}, DOCX)`});
     // Save to folder: the app writes the file itself, so Word opens it without the Unblock step a browser download needs.
@@ -89,7 +96,8 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
       } catch (error) { saveStatus.textContent = ' ' + error.message; }
       finally { saveButton.disabled = false; }
     });
-    latest.append(link, doc.createTextNode(' '), saveButton, saveStatus, doc.createTextNode(` Built from ${item.baseName}. It can also go in the Export pack ("Tailored CV").`));
+    const ats = item.ats ? ` ATS match of this version: ${item.ats.after.score}% (base CV ${item.ats.before.score}%).` : '';
+    latest.append(link, doc.createTextNode(' '), saveButton, saveStatus, doc.createTextNode(` Built from ${item.baseName}.${ats}`));
   };
 
   // Optional paid Polish: estimate first (free), then one request only after the owner confirms the cost.
@@ -100,7 +108,7 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
     const check = el(doc, 'button', {type: 'button', text: 'Check ATS match (free)'});
     const status = el(doc, 'p', {role: 'status', 'aria-live': 'polite', 'data-tailored-ats-status': ''});
     const details = el(doc, 'div', {'data-tailored-ats-details': ''});
-    panel.append(el(doc, 'h3', {text: 'ATS keyword match'}),
+    panel.append(stepHeading('4', 'Check the ATS match (free)'),
       el(doc, 'p', {class: 'tailored-cv-note', text: 'How many of this job\'s keywords your whole CV contains, before tailoring and with the wording above. Free and local. Keywords with no evidence are never added for you.'}),
       el(doc, 'div', {class: 'actions'}, [check]), status, details);
     const list = (title, items, attr) => items.length ? [el(doc, 'p', {text: title}), el(doc, 'ul', {[attr]: ''}, items.map(t => el(doc, 'li', {text: t})))] : [];
@@ -137,8 +145,8 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
     // Busy look for this panel only: the boxes above stay editable.
     const busy = on => { progress.hidden = !on; status.classList.toggle('is-busy', on); panel.setAttribute('aria-busy', String(on)); };
     const result = el(doc, 'div', {'data-tailored-polish-result': '', hidden: ''});
-    panel.append(el(doc, 'h3', {text: 'Polish wording (optional, paid)'}),
-      el(doc, 'p', {class: 'tailored-cv-note', text: 'Sends the wording above, your CV lines and the selected achievements to the polishing model you choose. No web search. You see the estimated cost first; nothing is sent until you confirm, and nothing is built until you click Build.'}),
+    panel.append(stepHeading('3', 'Polish wording (optional, paid)'),
+      el(doc, 'p', {class: 'tailored-cv-note', text: 'A model rewrites the wording above for this job: it rephrases to match the job description and leads with results, using only facts from your CV and the selected achievements. No web search. You see the estimated cost first; nothing is sent until you confirm, and nothing is built until you click Build.'}),
       el(doc, 'div', {class: 'actions'}, [start]), choice, status, progress, result);
     const values = () => ({profile: profile.value, bullets: bullets ? bullets.value : null, roles: roleBoxes.map(b => b.value)});
     const restore = v => { profile.value = v.profile; if (bullets) bullets.value = v.bullets; roleBoxes.forEach((b, i) => { b.value = v.roles[i]; }); };
@@ -174,23 +182,35 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
       const boxes = [{box: profile, old: before.profile, parse: parseProfile, join: '\n\n'}, ...(bullets ? [{box: bullets, old: before.bullets, parse: parseBullets, join: '\n'}] : []),
         ...roleBoxes.map((box, i) => ({box, old: before.roles[i], parse: parseBullets, join: '\n'}))];
       const wrap = el(doc, 'div', {class: 'tailored-polish-compare', 'data-tailored-polish-compare': ''});
-      wrap.append(el(doc, 'h4', {text: 'Before and after'}), el(doc, 'p', {class: 'tailored-cv-note', text: 'Each section shows your wording before the polish next to the polished wording. Choose which to keep for each section, or edit the boxes above. Build uses whatever is in the boxes.'}));
+      wrap.append(el(doc, 'h4', {text: 'Before and after'}), el(doc, 'p', {class: 'tailored-cv-note', text: 'Each section shows your wording before the polish next to the polished wording. Edit any polished line here (it updates the box above), or choose which version to keep for each section. Build uses whatever is in the boxes.'}));
       for (const {box, old, parse, join} of boxes) {
         const polished = box.value, rows = compareLines(parse(old), parse(polished));
         const name = (doc.querySelector(`label[for="${box.id}"]`)?.textContent || 'Section').replace(/\s*\([^)]*\)\s*$/, '');
         const changed = rows.filter(r => r.status !== 'unchanged').length;
-        const part = el(doc, 'section', {'data-compare-section': name});
+        const tone = [...box.classList].find(c => /^tone-\d$/.test(c)) || 'tone-0';
+        const part = el(doc, 'section', {class: 'tailored-compare-section ' + tone, 'data-compare-section': name});
         const table = el(doc, 'table', {class: 'tailored-compare-table'});
         const head = el(doc, 'tr');
-        for (const h of ['Before', 'Polished', 'Change']) head.append(el(doc, 'th', {scope: 'col', text: h}));
-        const tbody = el(doc, 'tbody');
-        for (const r of rows) tbody.append(el(doc, 'tr', {'data-change': r.status}, [el(doc, 'td', {text: r.before}), el(doc, 'td', {text: r.after}), el(doc, 'td', {text: CHANGE_LABELS[r.status]})]));
+        for (const h of ['Before', 'Polished (you can edit)', 'Change']) head.append(el(doc, 'th', {scope: 'col', text: h}));
+        const tbody = el(doc, 'tbody'), edits = [];
+        // Editing a polished line updates the box above straight away; empty a line to leave it out.
+        const sync = () => { box.value = edits.map(e => e.value.replace(/\s+/g, ' ').trim()).filter(Boolean).join(join); };
+        for (const r of rows) {
+          const edit = el(doc, 'textarea', {rows: '2', 'data-compare-edit': '', 'aria-label': `Polished line ${edits.length + 1}, ${name}`});
+          edit.value = r.after;
+          const changeCell = el(doc, 'td', {text: CHANGE_LABELS[r.status]}), tr = el(doc, 'tr', {'data-change': r.status}, [el(doc, 'td', {text: r.before}), el(doc, 'td', {}, [edit]), changeCell]);
+          edit.addEventListener('input', () => {
+            const now = edit.value.replace(/\s+/g, ' ').trim(), state = now === r.before ? 'unchanged' : !now ? 'removed' : !r.before ? 'added' : 'changed';
+            tr.dataset.change = state; changeCell.textContent = CHANGE_LABELS[state]; sync(); using.textContent = 'Using the polished wording with your edits.';
+          });
+          edits.push(edit); tbody.append(tr);
+        }
         table.append(el(doc, 'thead', {}, [head]), tbody);
         const using = el(doc, 'span', {role: 'status', 'aria-live': 'polite', 'data-compare-using': '', text: 'Using the polished wording.'});
         const usePrevious = el(doc, 'button', {type: 'button', text: 'Use previous wording'});
         const usePolished = el(doc, 'button', {type: 'button', text: 'Use polished wording'});
         usePrevious.addEventListener('click', () => { box.value = old; using.textContent = 'Using your previous wording.'; });
-        usePolished.addEventListener('click', () => { box.value = polished; using.textContent = 'Using the polished wording.'; });
+        usePolished.addEventListener('click', () => { sync(); using.textContent = 'Using the polished wording.'; });
         part.append(el(doc, 'h5', {text: `${name}: ${changed ? `${changed} of ${rows.length} lines changed` : 'no change'}`}), table, el(doc, 'div', {class: 'actions'}, [usePrevious, usePolished, using]));
         wrap.append(part);
       }
@@ -222,10 +242,10 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
 
   function render(data) {
     editor.textContent = '';
-    const parts = [];
-    const profile = el(doc, 'textarea', {id: 'tailored-profile', rows: '7', 'aria-describedby': 'tailored-profile-help'});
+    const parts = [stepHeading('2', 'Edit the wording'), el(doc, 'p', {class: 'tailored-cv-note', text: 'Each section has its own colour, here and in the before-and-after view.'})];
+    const profile = el(doc, 'textarea', {id: 'tailored-profile', class: 'tone-box tone-0', rows: '7', 'aria-describedby': 'tailored-profile-help'});
     profile.value = data.profile.join('\n\n');
-    parts.push(el(doc, 'label', {for: 'tailored-profile', text: `${data.sections.profile.heading} (blank line between paragraphs)`}), profile,
+    parts.push(el(doc, 'label', {for: 'tailored-profile', class: 'tone-label tone-0', text: `${data.sections.profile.heading} (blank line between paragraphs)`}), profile,
       el(doc, 'p', {id: 'tailored-profile-help', class: 'tailored-cv-note', text: 'Starts as your current wording. Edit freely; figures must already be in your CV or selected evidence.'}));
     if (data.keywordsToWorkIn.length) parts.push(el(doc, 'p', {'data-tailored-hints': '', text: 'In your evidence but not yet in the draft: ' + data.keywordsToWorkIn.join(', ') + '.'}));
     if (data.keywordGaps.length) parts.push(el(doc, 'p', {class: 'tailored-cv-note', text: 'Job keywords with no evidence in your CV (not added): ' + data.keywordGaps.join(', ') + '.'}));
@@ -236,7 +256,7 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
     }
     let bullets = null;
     if (data.achievements) {
-      bullets = el(doc, 'textarea', {id: 'tailored-achievements', rows: '9', 'aria-describedby': 'tailored-achievements-help'});
+      bullets = el(doc, 'textarea', {id: 'tailored-achievements', class: 'tone-box tone-1', rows: '9', 'aria-describedby': 'tailored-achievements-help'});
       bullets.value = data.achievements.map(x => x.text).join('\n');
       const list = el(doc, 'ul', {'data-tailored-suggestions': ''});
       for (const item of data.suggestions) {
@@ -244,19 +264,19 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
         add.addEventListener('click', () => { bullets.value = (bullets.value.trim() ? bullets.value.trim() + '\n' : '') + item.text; add.disabled = true; });
         list.append(el(doc, 'li', {}, [add, doc.createTextNode(' ' + item.text + ' '), el(doc, 'small', {text: '(' + (SOURCE[item.source] || item.source) + ')'})]));
       }
-      parts.push(el(doc, 'label', {for: 'tailored-achievements', text: `${data.sections.achievements.heading} (one bullet per line)`}), bullets,
+      parts.push(el(doc, 'label', {for: 'tailored-achievements', class: 'tone-label tone-1', text: `${data.sections.achievements.heading} (one bullet per line)`}), bullets,
         el(doc, 'p', {id: 'tailored-achievements-help', class: 'tailored-cv-note', text: 'Ordered by relevance to this job. Bullet style and fonts are copied from your CV.'}),
         ...(data.suggestions.length ? [el(doc, 'p', {text: 'More evidence you can add:'}), list] : []));
     }
     if (data.roles.length) parts.push(el(doc, 'h3', {text: `${data.sections.experience.heading}: bullets for each employer`}),
       el(doc, 'p', {class: 'tailored-cv-note', text: 'Most relevant first. One bullet per line; delete a line to leave it out. Employers, titles and dates stay as in your CV, and a bullet cannot move to another employer. Unchanged bullets keep their exact formatting.'}));
     const roleBoxes = data.roles.map((role, i) => {
-      const box = el(doc, 'textarea', {id: 'tailored-role-' + i, rows: String(Math.min(8, Math.max(3, role.bullets.length + 1))), 'data-tailored-role': String(i)});
+      const box = el(doc, 'textarea', {id: 'tailored-role-' + i, class: 'tone-box tone-' + ((i + 2) % 8), rows: String(Math.min(8, Math.max(3, role.bullets.length + 1))), 'data-tailored-role': String(i)});
       box.value = role.bullets.map(x => x.text).join('\n');
       const original = el(doc, 'button', {type: 'button', text: 'Back to CV order'});
       const cvOrder = data.roleOrder?.[i];
       if (cvOrder) original.addEventListener('click', () => { box.value = cvOrder.join('\n'); }); else original.hidden = true;
-      parts.push(el(doc, 'label', {for: box.id, text: role.title}), box, el(doc, 'div', {class: 'tailored-role-actions'}, [original]));
+      parts.push(el(doc, 'label', {for: box.id, class: 'tone-label tone-' + ((i + 2) % 8), text: role.title}), box, el(doc, 'div', {class: 'tailored-role-actions'}, [original]));
       return box;
     });
     const currentBody = () => {
@@ -280,7 +300,7 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
         showLatest(result.tailored);
       } catch (error) { message.textContent = error.message; } finally { build.disabled = false; }
     });
-    editor.append(...parts, ats.panel, polish, el(doc, 'div', {class: 'actions'}, [build]), message);
+    editor.append(...parts, polish, ats.panel, stepHeading('5', 'Build the Word file'), el(doc, 'p', {class: 'tailored-cv-note', text: 'Builds a new version from the wording in the boxes. The figures check runs first.'}), el(doc, 'div', {class: 'actions'}, [build]), message);
     editor.hidden = false;
     ats.run();
   }

@@ -56,14 +56,19 @@ test('estimate, choose a model, confirm, review, undo, polish again and build', 
   const row = summary.locator('tbody tr').first();
   await expect(row).toHaveAttribute('data-change', 'changed');
   await expect(row.locator('td').nth(0)).toHaveText('Delivery leader across programmes.');
-  await expect(row.locator('td').nth(1)).toHaveText('Polished delivery leader for Agile programmes.');
+  await expect(row.locator('textarea')).toHaveValue('Polished delivery leader for Agile programmes.');
+  // The polished column is editable and updates the box above.
+  await row.locator('textarea').fill('Polished delivery leader for Agile programmes, edited.');
+  await expect(profile).toHaveValue('Polished delivery leader for Agile programmes, edited.');
+  await expect(summary.locator('[data-compare-using]')).toHaveText('Using the polished wording with your edits.');
+  await expect(summary).toHaveClass(/tone-0/);
   await expect(row.locator('td').nth(2)).toHaveText('Reworded');
   await expect(compare.locator('[data-compare-section="Key Achievements"] tbody tr')).not.toHaveCount(0);
   await summary.getByRole('button', {name: 'Use previous wording'}).click();
   await expect(profile).toHaveValue('Delivery leader across programmes.');
   await expect(summary.locator('[data-compare-using]')).toHaveText('Using your previous wording.');
   await summary.getByRole('button', {name: 'Use polished wording'}).click();
-  await expect(profile).toHaveValue('Polished delivery leader for Agile programmes.');
+  await expect(profile).toHaveValue('Polished delivery leader for Agile programmes, edited.');
 
   await section.getByRole('button', {name: 'Undo polish'}).click();
   await expect(profile).toHaveValue('Delivery leader across programmes.');
