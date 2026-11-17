@@ -6,6 +6,7 @@ import {createCvTailoringStore} from '../../src/infrastructure/applications/sqli
 import {createCvTailoringHandler} from '../../src/interfaces/http/cv-tailoring-http.js';
 import {createLocalServer} from '../../src/interfaces/http/create-local-server.js';
 import {fakeWorker, reviewFixture, SHA} from '../fixtures/cv-tailoring-fixtures.js';
+import {createWordCvLocator} from '../../src/infrastructure/documents/word-cv-locator.js';
 
 const library = async () => [{role_code: 'PM', local_path: 'PM/PM_CV.pdf'}];
 
@@ -92,12 +93,46 @@ test('a CV with Summary and Experience: bullets ranked within each employer, fig
   assert.deepEqual(service.latest('r1').achievements.roles, request.roles);
 });
 
-test('a missing Word file is named, with the folder it was expected in', async () => {
-  const worker = async () => { throw Object.assign(new Error('x'), {code: 'CV_FILE_NOT_FOUND'}); };
-  const service = createCvTailoringService({reviews: reviewFixture(), store: createCvTailoringStore({filePath: ':memory:'}), worker, cvFolder: 'C:/cv',
-    cvLibrary: async () => [{role_code: 'PM', local_path: 'Enterprise_Lead-Public Sector/Example CV (Public Sector) .pdf'}]});
-  await assert.rejects(service.draft('r1'), e => e.statusCode === 409 && e.code === 'CV_FILE_NOT_FOUND'
-    && e.message.includes('No Word file named "Example CV (Public Sector) .docx" was found in "Enterprise_Lead-Public Sector"'));
+test('the Word file is found by same name, as the only Word file, or by the owner choosing one', async () => {
+  const folders = {
+    'Public Sector': ['Example Delivery Lead (Public) .pdf', 'Example Transformation (Public) .docx', '~$ample Transformation (Public) .docx'],
+    GCC: ['VIJAY_EXAMPLE_GCC.pdf', 'VIJAY_EXAMPLE_GCC.docx', 'Other.docx'],
+    Many: ['Lead.pdf', 'A.docx', 'B.docx'],
+    Empty: ['Only.pdf']
+  };
+  const catalogue = [{role_code: 'PS', local_path: 'Public Sector/Example Delivery Lead (Public) .pdf'}, {role_code: 'GCC', local_path: 'GCC/Vijay_Example_GCC.pdf'},
+    {role_code: 'PM', local_path: 'Many/Lead.pdf'}, {role_code: 'EMPTY', local_path: 'Empty/Only.pdf'}];
+  const calls = [], store = createCvTailoringStore({filePath: ':memory:'});
+  const service = createCvTailoringService({reviews: reviewFixture(), store, worker: fakeWorker(calls), cvFolder: 'C:/cv', cvLibrary: async () => catalogue,
+    locateWord: createWordCvLocator({cvFolder: 'C:/cv', list: async folder => folders[folder] || []})});
+
+  const first = await service.draft('r1');
+  assert.equal(first.ready, false);
+  assert.equal(first.needsWordFile, true);
+  assert.deepEqual(first.word.candidates, ['A.docx', 'B.docx']);
+  assert.match(first.message, /several Word files/);
+  const chosen = await service.draft('r1', {wordFile: 'B.docx'});
+  assert.equal(chosen.ready, true);
+  assert.equal(chosen.word.match, 'chosen');
+  assert.equal(calls.at(-1).relativePath, 'Many/B.docx');
+  assert.equal((await service.draft('r1')).word.name, 'B.docx', 'the choice is remembered on the server');
+  assert.equal(await service.wordPathForExport('PM', 'Many/Lead.pdf'), 'Many/B.docx');
+
+  const report = await service.checkLibrary();
+  const row = code => report.rows.find(r => r.roleCode === code);
+  assert.equal(report.checked, 4);
+  assert.deepEqual([row('PS').word, row('PS').match], ['Example Transformation (Public) .docx', 'only-word-file']);
+  assert.deepEqual([row('GCC').word, row('GCC').match], ['VIJAY_EXAMPLE_GCC.docx', 'same-name']);
+  assert.deepEqual([row('PM').word, row('PM').match], ['B.docx', 'chosen']);
+  assert.match(row('EMPTY').problem, /No Word file in "Empty"/);
+  assert.equal(report.ready, 3);
+});
+
+test('a chosen Word file must be one of the files in that CV folder', async () => {
+  const locate = createWordCvLocator({cvFolder: 'C:/cv', list: async () => ['Lead.pdf', 'A.docx', 'B.docx']});
+  assert.equal((await locate('Many/Lead.pdf', '../../other.docx')).relativePath, '');
+  assert.equal((await locate('Many/Lead.pdf', 'A.docx')).relativePath, 'Many/A.docx');
+  await assert.rejects(locate('../outside/Lead.pdf'), /relative to CV_FOLDER/);
 });
 
 test('the store refuses an unrecognised database', () => {

@@ -31,10 +31,10 @@ export function zipStored(files){
  }
  const directory=Buffer.concat(central),end=Buffer.alloc(22);end.writeUInt32LE(0x06054b50);end.writeUInt16LE(files.length,8);end.writeUInt16LE(files.length,10);end.writeUInt32LE(directory.length,12);end.writeUInt32LE(offset,16);return Buffer.concat([...local,directory,end]);
 }
-export function createApplicationPackExporter({cvFolder,documents=null,cvInventory=null,candidateName='Candidate',recordExport=null,tailoredCv=null}={}){
+export function createApplicationPackExporter({cvFolder,documents=null,cvInventory=null,candidateName='Candidate',recordExport=null,tailoredCv=null,wordPathFor=null}={}){
  const readCv=createExportCvReader(cvFolder);let busy=false;
  const cvLibrary=cvInventory?async()=>{const data=await cvInventory.load();return data?.cv_inventory?.cvs||data?.cvs||[];}:null;
- return async({store,request})=>{if(busy)throw Object.assign(new Error('Another pack is exporting. Wait, then retry.'),{statusCode:409,code:'APPLICATION_EXPORT_BUSY'});busy=true;try{const result=await exportApplicationPack({store,request,readCv,pack:zipStored,documents,cvLibrary,candidateName,tailoredCv,word:text=>createCvDocumentAdapter({cvFolder}).word(text)});
+ return async({store,request})=>{if(busy)throw Object.assign(new Error('Another pack is exporting. Wait, then retry.'),{statusCode:409,code:'APPLICATION_EXPORT_BUSY'});busy=true;try{const result=await exportApplicationPack({store,request,readCv,pack:zipStored,documents,cvLibrary,candidateName,tailoredCv,wordPathFor,word:text=>createCvDocumentAdapter({cvFolder}).word(text)});
   // Recorded only after a complete pack, for advert status. A recording failure never blocks the download.
   if(typeof recordExport==='function'){try{recordExport(request.reviewId,store.get(request.reviewId)?.formData?.jobAdvertLink||'');}catch{console.warn('[EXPORT] PORTAL_EXPORT_NOT_RECORDED');}}
   return result;}finally{busy=false;}};

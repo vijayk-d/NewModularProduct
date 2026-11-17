@@ -109,7 +109,35 @@ def locate(root):
                 if cell is not None and not any(heading_kind(x) for x in cell.iter(q('p'))):
                     container, body = cell, body_after(cell, None)
         found[kind] = (container, p, body)
+    if 'profile' not in found and 'profile' not in CHOSEN:
+        opening = untitled_profile(root, up)
+        if opening:
+            found['profile'] = opening
     return found
+
+
+
+def untitled_profile(root, up):
+    """A profile with no heading: the first sentence-style paragraphs before the first known section heading,
+    skipping the name, contact and headline lines (Title or Heading styles, or short lines)."""
+    known = PROFILE | ACHIEVEMENTS | OTHER | EXPERIENCE
+    for p in root.iter(q('p')):
+        s = label(text(p))
+        if s in known or s in CHOSEN.values():
+            return None
+        st = style(p).lower()
+        raw = norm(p)
+        if not raw or is_bullet(p) or st.startswith('heading') or st == 'title' or len(raw) < 60 or '.' not in raw:
+            continue
+        container = up[p]
+        kids = list(container)
+        body = [p]
+        for el in kids[kids.index(p) + 1:]:
+            if el.tag != q('p') or heading_kind(el) or is_bullet(el) or style(el).lower().startswith('heading'):
+                break
+            body.append(el)
+        return container, None, body
+    return None
 
 
 def bold(p):
@@ -199,7 +227,7 @@ def describe(data, profile_heading='', achievements_heading=''):
             continue
         _, heading, body = found[kind]
         lines = [norm(x) for x in body if norm(x)]
-        result[kind] = {'heading': text(heading).strip()[:60], 'paragraphs': lines[:40],
+        result[kind] = {'heading': text(heading).strip()[:60] if heading is not None else 'Opening profile (no heading)', 'paragraphs': lines[:40],
                         'bullets': sum(1 for x in body if text(x).strip() and is_bullet(x)),
                         'supported': 0 < len(lines) <= 40}
     place, roles = experience_roles(root)
@@ -253,9 +281,12 @@ def replace(container, body, lines, bullets):
         originals.setdefault(re.sub(r'\s+', ' ', text(x)).strip(), x)
     for x in span:
         container.remove(x)
+    inserted = []
     for i, line in enumerate(lines):
         kept = originals.pop(line, None)
-        container.insert(first + i, kept if kept is not None else new_paragraph(template, line))
+        inserted.append(kept if kept is not None else new_paragraph(template, line))
+        container.insert(first + i, inserted[-1])
+    return inserted
 
 
 def namespaces(raw):
@@ -302,9 +333,12 @@ def tailor(data, profile, achievements=None, profile_heading='', achievements_he
             need(place is not None and len(existing) == len(roles), 'CV_ROLES_CHANGED')
             for role, lines in zip(existing, roles):
                 replace(place[0], role['bullets'], lines, True)
-        replace(found['profile'][0], found['profile'][2], profile, False)
+        new_profile = replace(found['profile'][0], found['profile'][2], profile, False)
         if achievements is not None:
             replace(found['achievements'][0], found['achievements'][2], achievements, True)
+        # An untitled profile is re-checked by position, because a short new profile may not look like one.
+        untitled = found['profile'][1] is None
+        profile_at = list(root.iter(q('p'))).index(new_profile[0])
         document = serialise(root, raw)
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as out:
@@ -315,7 +349,10 @@ def tailor(data, profile, achievements=None, profile_heading='', achievements_he
     z2, root2 = package(result)
     z2.close()
     check = describe(result, profile_heading, achievements_heading)
-    need(check['profile'] and check['profile']['paragraphs'] == profile, 'CV_TAILOR_VERIFY_FAILED')
+    if untitled:
+        need([norm(x) for x in list(root2.iter(q('p')))[profile_at:profile_at + len(profile)]] == profile, 'CV_TAILOR_VERIFY_FAILED')
+    else:
+        need(check['profile'] and check['profile']['paragraphs'] == profile, 'CV_TAILOR_VERIFY_FAILED')
     need(achievements is None or (check['achievements'] and check['achievements']['paragraphs'] == achievements), 'CV_TAILOR_VERIFY_FAILED')
     need(roles is None or (check['experience'] and [r['bullets'] for r in check['experience']['roles']] == roles), 'CV_TAILOR_VERIFY_FAILED')
     return result

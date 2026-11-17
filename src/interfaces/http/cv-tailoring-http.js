@@ -18,6 +18,14 @@ export function createCvTailoringHandler({service, getReview, sendJson, sendText
       sendText(res, 200, await readFile(new URL('./tailored-cv-controls.js', import.meta.url), 'utf8'), {'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store'});
       return true;
     }
+    if (method === 'GET' && route === '/api/tailored-cv/library-check') {
+      const origin = req.headers.origin;
+      if ((origin && origin !== `http://${req.headers.host}` && origin !== `https://${req.headers.host}`) || req.headers['sec-fetch-site'] === 'cross-site') { sendJson(res, 403, {ok: false, error: 'Cross-origin access is not allowed.'}); return true; }
+      if (!service) { sendJson(res, 503, {ok: false, code: 'CV_TAILORING_DISABLED', error: 'Tailored CVs are unavailable in this server configuration.'}); return true; }
+      try { sendJson(res, 200, {ok: true, ...(await service.checkLibrary())}); }
+      catch (error) { sendJson(res, error.statusCode || 503, {ok: false, error: error.statusCode ? error.message : 'The CV check could not run.'}); }
+      return true;
+    }
     const match = ROUTE.exec(route);
     if (!match || !['GET', 'POST'].includes(method) || (method === 'POST' && match[2])) return false;
     try {
@@ -34,7 +42,7 @@ export function createCvTailoringHandler({service, getReview, sendJson, sendText
         res.end(file.bytes);
         return true;
       }
-      sendJson(res, 200, {ok: true, ...(await service.draft(reviewId, {profileHeading: url.searchParams.get('profileHeading') || '', achievementsHeading: url.searchParams.get('achievementsHeading') || ''}))});
+      sendJson(res, 200, {ok: true, ...(await service.draft(reviewId, {wordFile: url.searchParams.get('wordFile') || '', profileHeading: url.searchParams.get('profileHeading') || '', achievementsHeading: url.searchParams.get('achievementsHeading') || ''}))});
       return true;
     } catch (error) {
       sendJson(res, error.statusCode || 503, {ok: false, code: error.code || 'CV_TAILORING_FAILED', error: error.statusCode ? error.message : 'Tailored CV is unavailable. Nothing was changed.'});
