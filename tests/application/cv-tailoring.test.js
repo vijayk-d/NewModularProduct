@@ -92,6 +92,14 @@ test('a CV with Summary and Experience: bullets ranked within each employer, fig
   assert.deepEqual(service.latest('r1').achievements.roles, request.roles);
 });
 
+test('a missing Word file is named, with the folder it was expected in', async () => {
+  const worker = async () => { throw Object.assign(new Error('x'), {code: 'CV_FILE_NOT_FOUND'}); };
+  const service = createCvTailoringService({reviews: reviewFixture(), store: createCvTailoringStore({filePath: ':memory:'}), worker, cvFolder: 'C:/cv',
+    cvLibrary: async () => [{role_code: 'PM', local_path: 'Enterprise_Lead-Public Sector/Example CV (Public Sector) .pdf'}]});
+  await assert.rejects(service.draft('r1'), e => e.statusCode === 409 && e.code === 'CV_FILE_NOT_FOUND'
+    && e.message.includes('No Word file named "Example CV (Public Sector) .docx" was found in "Enterprise_Lead-Public Sector"'));
+});
+
 test('the store refuses an unrecognised database', () => {
   assert.throws(() => createCvTailoringStore({}), /path required/);
 });

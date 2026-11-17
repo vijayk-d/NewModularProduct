@@ -61,7 +61,11 @@ export function createCvTailoringService({reviews, cvLibrary, worker, cvFolder, 
   async function call(payload) {
     if (typeof cvFolder !== 'string' || !cvFolder.trim()) fail('CV_FOLDER is not configured.', 409);
     try { return await worker({root: cvFolder, ...payload}); }
-    catch (error) { fail(MESSAGES[error.code] || (error.code === 'CV_DOCX_REQUIRED' ? 'A Word (.docx) version of this CV is needed.' : `The Word version of this CV could not be read (${error.code || 'DOCUMENT_UNAVAILABLE'}). Save it as a .docx next to the PDF with the same name.`), 409, error.code || 'CV_TAILORING_DOCUMENT'); }
+    catch (error) {
+      const file = String(payload.relativePath || '').split(/[\\/]/), name = file.pop(), folder = file.join('/') || 'the CV folder';
+      if (error.code === 'CV_FILE_NOT_FOUND') fail(`No Word file named "${name}" was found in "${folder}". Save the Word version of this CV there with exactly the same name as its PDF (only the extension differs), or choose another CV.`, 409, error.code);
+      fail(MESSAGES[error.code] || (error.code === 'CV_DOCX_REQUIRED' ? 'A Word (.docx) version of this CV is needed.' : `The Word file "${name}" could not be read (${error.code || 'DOCUMENT_UNAVAILABLE'}). If it is open in Word, close it and try again.`), 409, error.code || 'CV_TAILORING_DOCUMENT');
+    }
   }
 
   async function resolve(reviewId) {
