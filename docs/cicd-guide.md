@@ -76,6 +76,8 @@ tools\deploy\ship.cmd
 
 Same pipeline, just a small change. Don't skip tests; if `ship` fails, production is untouched.
 
+If a delivery fails before promotion (for example a flaky Playwright release test), just run `ship` again. The leftover `releases\<commit>` folder is renamed to `failed-releases\<commit12>-<timestamp>` for diagnosis, never deleted, and only when it is provably unpromoted: `candidate.json` present, no `release.json`, and not the active commit. Any other existing release folder still stops delivery.
+
 ## Rollback
 
 Choose the lightest option that solves the problem:
