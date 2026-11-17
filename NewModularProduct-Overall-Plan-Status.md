@@ -254,3 +254,36 @@ Merged on 16–17 November (`a68435d`, `8b67a66`, `1c94a02`). Ship with `tools\d
 3. Patch B, evidence-library quality: audit one assignment and fill scenario gaps; strengthen evidence lines that have no measurable outcome without inventing figures.
 4. Deployment robustness: done (failed release folders are moved aside automatically).
 5. Larger, each needing its own design: interview tracking (follow-ups are now listed), CV indexing cache (area 11), CV rebuilding (area 12).
+
+
+## Current reconciliation — 17 November 2026 (tailored CV)
+
+This section supersedes the earlier 17 November "Next candidates" list. Evidence boundary: Git history on master up to `da2a891`. Area 12 (CV rebuilding) is now delivered; see [docs/cv-tailoring.md](docs/cv-tailoring.md).
+
+### Merged to master, release and production check pending
+- **Tailored CV, part 1** (`0cba91d`, `ef6e9bb`, `25b40a9`, `c5fddd0`): a tailored DOCX built from a copy of the Word CV (Summary and employer bullets only), robust Word file lookup and a library check.
+- **Save to folder** (`89c5229`): tailored CV and Export pack written by the app to `APPLICATION_OUTPUT_FOLDER`, so Word opens them without Unblock. Never overwrites: identical files are reported as already saved, changed files get `_copy2`. Owner verified in development and production.
+- **Polish wording, part 2** (`2146ac1`, `2399a0b`): optional paid Perplexity rewrite of Summary and bullets, estimate first, no web search, no retries; before/after comparison with an editable polished column.
+- **Busy indicators** (`9ac49c0`): Polish panel and email send/draft; other sections stay usable.
+- **ATS keyword match** (`01427ad`): free, local before/after match against the advert, with gained, lost and "no evidence" keywords; rechecked after every build.
+- **Clearer steps and emailing the tailored CV** (`063d439`): six numbered steps, section colours, navigation entry; a "Tailored CV (PDF)" email choice with a version drop-down; the PDF is made by Word and stored in `<state>/tailored-cv-pdfs`.
+- **Saved names match the built version** (`848425d`): `…_CV_v7.docx` and `.pdf` match "Version 7 built".
+- **Reship after a failed delivery** (`da2a891`): an unpromoted failed release folder is moved aside automatically.
+- **Storage:** new tables in `cv-tailoring-v1.db` and new files under `<state>/tailored-cv-pdfs` only; no existing production schema changed.
+
+### Release status
+- Shipping `848425d` and `da2a891` failed on Playwright crashes and Node out-of-memory during verification. Cause: Windows commit charge exhausted (about 0.3 GB free). Production stays on the previous release.
+- Owner action: restart Windows, run `tools\deploy\ship.cmd` with only PowerShell open, then delete the old `failed-848425dd70f8-…` folders.
+
+### Known issues
+- Local failures, unchanged and not release blockers (CI is the gate): Node `default template generates linked rich opening and valid plain fallback`; 4 `application-preparation` UI specs that need a dev server on port 3000.
+- Release verification is memory-hungry; a low-memory machine fails the ship rather than producing a bad release.
+
+### Next candidates, in recommended order
+1. Ship after a restart and verify in production: Save to folder, Polish, ATS recheck, and a Gmail **draft** with the tailored PDF attached (owner check; no sending).
+2. Ship robustness: run release Playwright with fewer workers and check free memory before verification, so a busy machine gives a clear message instead of a crash.
+3. Application questions helper: answer portal questions (for example "250 words" or "250 characters") from CV and scenario evidence, with an exact limit counter; evidence-led, no invented claims.
+4. Gmail readiness display: needs the owner's drafts-only versus drafts-and-sending decision first.
+5. Patch B, evidence-library quality: audit one assignment and fill scenario gaps without inventing figures.
+6. Investigate the two known local test failures in their own small slice.
+7. Larger, each needing its own design: interview tracking, CV indexing cache (area 11).
