@@ -77,5 +77,5 @@ export async function exportApplicationPack({store,request,readCv,pack,word=null
  }
  const current=store.get(reviewId);if(!current||fingerprint(current)!==before)fail('Application or CV selection changed during export. Nothing downloaded; retry after review.',409);
  files.push({name:'application.txt',bytes:Buffer.from(`Subject: ${subject}\nEmployer: ${review.formData?.organisationName||''}\nRole: ${review.formData?.jobTitle||''}\nAdvert: ${advert}\nLetter: ${letterNote}\nCV: ${cvNote}\n\nPrepared application files only; not proof of ATS submission.\nNo research/polishing/Gmail operation was triggered by export.\n`,'utf8')});
- return {filename:stem+'-application.zip',bytes:await pack(files)};
+ return {filename:stem+'-application.zip',stem,bytes:await pack(files)};
 }

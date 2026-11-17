@@ -15,7 +15,26 @@ On the application review page, **Tailored CV** makes a copy of the selected Wor
 
 Unchanged lines keep their original paragraph, so bold lead-ins and highlights survive a reorder. Edited lines take the style of that section's first bullet. Everything else stays as in your CV: name, contact details, Skills, Education, Certifications, References, fonts and layout.
 
-Each build is saved as a new version. You can download it as a DOCX, or include it in the Export pack by choosing **Tailored CV (DOCX)**.
+Each build is saved as a new version. You can download it as a DOCX, save it to your output folder, or include it in the Export pack by choosing **Tailored CV (DOCX)**.
+
+## Save to folder (opens in Word without Unblock)
+
+Browsers mark every download, even from this app, as "from the internet". Word then opens it in Protected View or refuses it until you click **Unblock** in the file's Properties. Files extracted from a downloaded ZIP carry the same mark. The app cannot remove the mark from a browser download, so it can write the files itself instead:
+
+- **Save to folder**, next to **Download tailored CV**, writes the tailored DOCX.
+- **Save pack to folder**, in the Export pack group, writes the pack's individual files (not a ZIP). It runs the same checks as **Export pack** and uses the same CV choice.
+
+Both write into `<output folder>\<Organisation>-<Job title>\` with the same upload-friendly names as the downloads (for example `Vijay_DAFAL_Delivery_Manager_CV.docx`). An existing file is never overwritten: a repeat save adds `_v2`, `_v3` and so on.
+
+**Setting the folder.** There is no default. Add one line to `.env` (development) or the production settings file, then restart the app:
+
+```
+APPLICATION_OUTPUT_FOLDER=D:\JobApplications
+```
+
+The folder must be an absolute path that already exists, and it must not be inside (or contain) the app folder, its data folder, `CV_FOLDER` or `D:\NewModularProduct-Production`. If it is not set or not valid, the button says why and nothing is written. The folder is checked on every save.
+
+Saving to a folder is allowed only from this app's own page on this computer (same origin, local address). It makes no paid or Gmail call.
 
 ## Rules
 
@@ -53,3 +72,4 @@ Nothing in the code lists CVs. Everything follows the live CV library, so after 
 1. On development, draft and build a tailored CV for one real application.
 2. Open the downloaded DOCX in Word. Check that it opens without a repair prompt and that the bullets and fonts match your CV.
 3. Export a pack with **Tailored CV (DOCX)**.
+4. With `APPLICATION_OUTPUT_FOLDER` set, click **Save to folder** and **Save pack to folder**, then open the saved DOCX straight from the folder: it should open in Word without Protected View or Unblock.

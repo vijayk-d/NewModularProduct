@@ -8,6 +8,15 @@ export async function exportFromEditor({save,getVersions,isDirty,getCvRoleCode,i
  const name=/filename="([-A-Za-z0-9_]+-application\.zip)"/.exec(response.headers.get('content-disposition')||'')?.[1];
  if(!name)throw new Error('Invalid download receipt. Nothing downloaded.');await download(blob,name);
 }
+// Save pack to folder: the same checks as Export pack, but the server writes the files into the output folder.
+export async function saveToFolderFromEditor({save,getVersions,isDirty,getCvRoleCode,includeCv,cvFormat='saved',reviewId,fetchImpl}){
+ await save();if(isDirty())throw new Error('Edits are still pending. Save the current letter before saving to a folder.');
+ const v={...getVersions()},code=getCvRoleCode();
+ const response=await fetchImpl('/api/application-reviews/export-to-folder',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({reviewId,expectedBodyVersion:v.bodyVersion,expectedSubjectVersion:v.subjectVersion,expectedRevision:v.revision,expectedCvRoleCode:code,includeCv,cvFormat})});
+ const data=await response.json().catch(()=>({}));
+ if(!response.ok||!data.ok)throw new Error(data.error||'Save to folder failed. Nothing was written.');
+ return data;
+}
 export const CV_CHOICES=[['none','No CV'],['saved','CV as saved'],['pdf','CV as PDF'],['docx','CV as DOCX'],['both','CV as PDF and DOCX'],['tailored','Tailored CV (DOCX)']];
 export function packSummary(choice,cvCode){
  const cv=choice==='none'?'no CV':!cvCode?'no CV selected yet':`CV ${cvCode} ${{saved:'in its saved format',pdf:'as PDF',docx:'as DOCX',both:'as PDF and DOCX',tailored:'tailored for this job (DOCX)'}[choice]}`;
@@ -22,10 +31,18 @@ export function attachApplicationExportControls({doc,bar,save,getVersions,isDirt
  select.value=CV_CHOICES.some(([v])=>v===remembered)?remembered:'none';label.append(select);
  select.addEventListener('change',()=>{try{doc.defaultView?.localStorage?.setItem(KEY,select.value);}catch{}});
  const summary=doc.createElement('span');summary.dataset.exportSummary='';
- const message=doc.createElement('span');message.setAttribute('role','status');message.setAttribute('aria-live','polite');const group=doc.createElement('div');group.className='save-bar-group save-bar-group-export';group.setAttribute('role','group');group.setAttribute('aria-label','Export pack');summary.className='save-bar-note';message.className='save-bar-status';group.append(button,label,summary,message);bar.append(group);
+ const message=doc.createElement('span');message.setAttribute('role','status');message.setAttribute('aria-live','polite');const group=doc.createElement('div');group.className='save-bar-group save-bar-group-export';group.setAttribute('role','group');group.setAttribute('aria-label','Export pack');summary.className='save-bar-note';message.className='save-bar-status';const folderButton=doc.createElement('button');folderButton.type='button';folderButton.textContent='Save pack to folder';folderButton.dataset.exportSaveFolder='';folderButton.title='Save current edits and write the pack files (not a ZIP) into your application output folder (APPLICATION_OUTPUT_FOLDER). Word opens them without Unblock.';
+ group.append(button,folderButton,label,summary,message);bar.append(group);
  const cvCode=()=>doc.querySelector('input[name="selectedCvRoleCode"]:checked')?.value||'';
  const refresh=()=>{summary.textContent=' '+packSummary(select.value,cvCode());};
  select.addEventListener('change',refresh);doc.addEventListener('change',e=>{if(e.target?.name==='selectedCvRoleCode')refresh();});refresh();
+ folderButton.addEventListener('click',async()=>{
+  if(folderButton.disabled)return;folderButton.disabled=true;button.disabled=true;select.disabled=true;message.textContent='Saving and writing files to the output folder…';
+  const includeCv=select.value!=='none';
+  try{const r=await saveToFolderFromEditor({save,getVersions,isDirty,reviewId,fetchImpl,includeCv,cvFormat:includeCv?select.value:'saved',getCvRoleCode:cvCode});message.textContent=`Saved ${r.files.length} file(s) in ${r.folder}. Not an ATS submission.`;}
+  catch(e){message.textContent=e.message+' Queue/Gmail unchanged.';}
+  finally{folderButton.disabled=false;button.disabled=false;select.disabled=false;}
+ });
  button.addEventListener('click',async()=>{
   if(button.disabled)return;button.disabled=true;select.disabled=true;message.textContent='Saving and preparing local download…';
   const includeCv=select.value!=='none';
