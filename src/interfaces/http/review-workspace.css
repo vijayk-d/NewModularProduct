@@ -185,3 +185,11 @@ html.review-workspace #polishing-model[data-workspace-choice-carrier],html.revie
 .workspace-choice-card-custom input[type=number]{width:5.5rem;min-height:28px;padding:.15rem .35rem;margin-right:.25rem}
 @media(max-width:700px){.application-save-bar .save-bar-group::before{flex-basis:100%}.application-save-bar .save-bar-status,.application-save-bar .email-palette-controls p{padding-left:0}.application-save-bar .email-palette-controls{padding-left:0}.application-save-bar .email-palette-controls legend{position:static;width:auto}}
 .contact-same-organisation{display:inline-block;margin-left:.4rem;padding:0 .4rem;border-radius:999px;background:#e6f4ea;color:#1e6b35;font-size:.75rem;font-weight:600;vertical-align:middle}
+
+/* Tailored CV */
+.tailored-cv textarea{display:block;width:100%;box-sizing:border-box;margin:.35rem 0 .25rem;padding:.6rem;font:inherit;line-height:1.45;border:1px solid #94a3b8;border-radius:.4rem}
+.tailored-cv label{display:block;margin-top:.9rem;font-weight:600}
+.tailored-cv .tailored-cv-note{color:#475569;font-size:.92em;margin:.25rem 0}
+.tailored-cv ul[data-tailored-suggestions]{padding-left:0;list-style:none}
+.tailored-cv ul[data-tailored-suggestions] li{margin:.35rem 0}
+.tailored-cv ul[data-tailored-suggestions] button{margin-right:.4rem}

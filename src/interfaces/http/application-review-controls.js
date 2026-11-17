@@ -1,6 +1,7 @@
 import {attachPalettePreview} from './palette-preview.js';
 import {attachUnsentLetterUpdateControls} from './unsent-letter-update-controls.js';
 import {attachApplicationExportControls} from './application-export-controls.js';
+import './tailored-cv-controls.js';
 export function attachApplicationSaveControls(doc=document,fetchImpl=fetch){
  const editor=doc.getElementById('cover-letter-draft'),subject=doc.getElementById('current-cover-letter-subject'),id=doc.querySelector('input[name="reviewId"]')?.value;
  if(!editor||!subject||!id||editor.dataset.applicationSaveAttached)return;editor.dataset.applicationSaveAttached='true';

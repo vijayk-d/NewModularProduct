@@ -10,11 +10,11 @@ const fail=(message,statusCode=400)=>{throw Object.assign(new Error(message),{co
 export function safeExportStem(value){let s=String(value||'application').normalize('NFKD').replace(/[^a-zA-Z0-9_-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,100);if(!s||/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(s))s='application';return s;}
 function selected(review){const code=String(review.selectedCvRoleCode||review.prepared?.recommendation?.bestCv?.role_code||'');const cv=(review.prepared?.rankedCvs||[]).map(v=>v.cv).find(v=>v?.role_code===code)||(review.prepared?.recommendation?.bestCv?.role_code===code?review.prepared.recommendation.bestCv:null);return {code,path:cv?.local_path||''};}
 function fingerprint(r){return hash(JSON.stringify([reviewEditorState(r),selected(r),r.formData?.jobTitle||'',r.formData?.organisationName||'',r.formData?.jobAdvertLink||'']));}
-export const CV_FORMATS=['saved','pdf','docx','both'];
+export const CV_FORMATS=['saved','pdf','docx','both','tailored'];
 // Upload-friendly names, ASCII only so every portal and ZIP tool accepts them: Vijay_DAFAL_Delivery_Manager_CV.pdf
 export function uploadFileName(candidate,role,kind,ext){const part=(v,f)=>String(v||'').normalize('NFKD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9 _-]/g,' ').trim().replace(/[\s_-]+/g,'_').slice(0,60).replace(/_+$/,'')||f;return `${part(candidate,'Candidate')}_${part(role,'Application')}_${kind}${ext}`;}
 const otherFormat=path=>path.replace(/\.(pdf|docx)$/i,m=>m.toLowerCase()==='.pdf'?'.docx':'.pdf');
-export async function exportApplicationPack({store,request,readCv,pack,word=null,documents=null,cvLibrary=null,candidateName='Candidate'}){
+export async function exportApplicationPack({store,request,readCv,pack,word=null,documents=null,cvLibrary=null,candidateName='Candidate',tailoredCv=null}){
  if(!request||typeof request!=='object'||Array.isArray(request))fail('An explicit export request is required.');
  const {reviewId,expectedBodyVersion,expectedSubjectVersion,expectedRevision,includeCv,expectedCvRoleCode,cvFormat='saved'}=request;
  if(!/^[A-Za-z0-9_-]{1,100}$/.test(String(reviewId||''))||typeof includeCv!=='boolean')fail('Choose an application and explicit CV inclusion.');
@@ -55,7 +55,14 @@ export async function exportApplicationPack({store,request,readCv,pack,word=null
  }else if(word)files.push({name:letterName('.docx'),bytes:await word(portal.plain)});
  const letterNote=`${documentsResult?'Word template, plus PDF':word?'Plain Word (no letter template configured; bullets, highlights and letterhead not included)':'Text and HTML only'}\nGreeting: ${portal.greetingReplaced?PORTAL_GREETING:'unchanged (no greeting line found)'}\nATS closing paragraph: ${portal.closingRemoved?'removed':'not present'}`;
  let cvNote='Not included (explicit user choice).';
- if(includeCv){
+ if(includeCv&&cvFormat==='tailored'){
+  // The latest tailored CV built for this application, only when it was built from the CV selected now.
+  const t=typeof tailoredCv==='function'?await tailoredCv(reviewId):null;
+  if(!t||!Buffer.isBuffer(t.bytes))fail('No tailored CV has been built for this application yet. Use Tailored CV on this page, or choose another CV option.',409);
+  if(t.roleCode!==cv.code)fail(`The tailored CV was built from CV ${t.roleCode}, but CV ${cv.code} is selected now. Build it again or choose another CV option.`,409);
+  const name=uploadFileName(candidateName,role,'CV','.docx');files.push({name,bytes:t.bytes});
+  cvNote=`${name} (SHA-256 ${hash(t.bytes)})\nCV code: ${cv.code}\nCV source: tailored CV version ${t.version}, built from ${t.baseName}`;
+ }else if(includeCv){
   if(!cvPath||typeof readCv!=='function')fail('Selected CV metadata/reader is unavailable.');
   const savedExt=extname(cvPath).toLowerCase();if(!['.pdf','.docx'].includes(savedExt))fail('Unsupported CV format.');
   const wanted=cvFormat==='saved'?[savedExt]:cvFormat==='both'?['.pdf','.docx']:['.'+cvFormat];

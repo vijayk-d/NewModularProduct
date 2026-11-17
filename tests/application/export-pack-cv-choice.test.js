@@ -77,6 +77,17 @@ test('export panel summary describes the chosen pack', () => {
   assert.match(packSummary('pdf', ''), /no CV selected yet/);
 });
 
+test('tailored choice includes the latest tailored CV built from the selected CV', async () => {
+  const tailored = {roleCode: 'DM', version: 2, baseName: 'Vijay_CV.docx', bytes: Buffer.from('PKtailored')};
+  const r = await run(fixture({cvFormat: 'tailored'}), {tailoredCv: async id => id === 'r' ? tailored : null});
+  assert.deepEqual(file(r, 'Vijay_DAFAL_Senior_Delivery_Manager_CV.docx').bytes, tailored.bytes);
+  assert.ok(!names(r).includes('Vijay_DAFAL_Senior_Delivery_Manager_CV.pdf'));
+  assert.match(file(r, 'application.txt').bytes.toString(), /CV source: tailored CV version 2, built from Vijay_CV\.docx/);
+  await assert.rejects(run(fixture({cvFormat: 'tailored'}), {tailoredCv: async () => null}), /No tailored CV has been built/);
+  await assert.rejects(run(fixture({cvFormat: 'tailored'}), {tailoredCv: async () => ({...tailored, roleCode: 'PM'})}), /built from CV PM, but CV DM is selected/);
+  assert.match(packSummary('tailored', 'DM'), /CV DM tailored for this job \(DOCX\)/);
+});
+
 test('client sends the chosen CV format', async () => {
   let body;
   await exportFromEditor({save: async () => {}, getVersions: () => ({bodyVersion: 'b', subjectVersion: 's', revision: 1}), isDirty: () => false, getCvRoleCode: () => 'DM', includeCv: true, cvFormat: 'both', reviewId: 'r', fetchImpl: async (u, o) => { body = JSON.parse(o.body); return {ok: true, blob: async () => 'blob', headers: {get: () => 'attachment; filename="Example-application.zip"'}}; }, download: async () => {}});
