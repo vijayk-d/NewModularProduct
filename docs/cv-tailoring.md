@@ -4,6 +4,9 @@ Status: part 1 (tailoring, Word-file lookup, **Check all CVs**, Save to folder) 
 
 ## What it does
 
+The **Tailored CV** section runs in six numbered steps, with a step bar at the top and a **Tailored CV** link in the floating section menu on the left: **1. Draft**, **2. Edit** (each section has its own colour), **3. Polish** (optional, paid), **4. ATS match** (free), **5. Build** and **6. Use it** (download, save to folder or Export pack).
+
+
 On the application review page, **Tailored CV** makes a copy of the selected Word CV and changes only:
 
 - **Summary or Profile.** It starts as your current wording; you edit it.
@@ -15,11 +18,21 @@ On the application review page, **Tailored CV** makes a copy of the selected Wor
 
 Unchanged lines keep their original paragraph, so bold lead-ins and highlights survive a reorder. Edited lines take the style of that section's first bullet. Everything else stays as in your CV: name, contact details, Skills, Education, Certifications, References, fonts and layout.
 
-Each build is saved as a new version. You can download it as a DOCX, save it to your output folder, or include it in the Export pack by choosing **Tailored CV (DOCX)**.
+Each build is saved as a new version. You can download it as a DOCX, save it to your output folder, or include it in the Export pack by choosing **Tailored CV (DOCX)**. The latest built version is the one used.
+
+## Emailing the tailored CV (PDF)
+
+- **PDF made by Word.** Each **Build** asks Microsoft Word on this PC to save a PDF copy, exactly as Word would print it. Word runs hidden and closes again, which takes a few seconds. If Word is not installed or cannot start, the build still succeeds and step 6 says why, with a **Make PDF** button that tries once more when you click it. The app never retries on its own. PDFs are written once to `<state folder>/tailored-cv-pdfs/<application>/v<version>.pdf` and never overwritten.
+- **Choosing what recruiters get.** Under **CV selection**, the small section **CV attached to recruiter emails** offers:
+  - **Selected CV (as in the CV library)**, the default;
+  - **Tailored CV (PDF)**, with a list of built versions. Versions without a PDF are greyed out.
+- **The queue.** The choice applies to emails added to the queue from then on, under the upload-friendly name (for example `Vijay_DAFAL_Delivery_Manager_CV.pdf`). Emails already in the queue keep the CV they were queued with and keep sending until you pause or stop them.
+- **Checks.** Gmail drafting and sending read the tailored PDF only from that folder (`TAILORED_CV_FOLDER`, set by the app) and refuse it if its bytes changed after it was queued. Only PDFs are attached from there.
+- **Storage.** Two new tables in `cv-tailoring-v1.db` (`tailored_cv_pdfs`, `tailored_cv_email_choice`) and the new PDF folder. No existing table or schema changes.
 
 ## ATS keyword match (free)
 
-Under the boxes, **ATS keyword match** shows how many of this job's keywords your whole CV contains, before tailoring and with the wording in the boxes, for example "Base CV 50% → tailored CV 80% (8 of 10 job keywords, +30 points)". It runs after **Draft tailored CV** and after each **Polish**, and again whenever you click **Check ATS match (free)** after editing.
+Step 4, **ATS keyword match**, shows how many of this job's keywords your whole CV contains, before tailoring and with the wording in the boxes, for example "Base CV 50% → tailored CV 80% (8 of 10 job keywords, +30 points)". It runs after **Draft tailored CV** and after each **Polish**, and again whenever you click **Check ATS match (free)** after editing. Each **Build** also shows the ATS match of exactly that version next to its download link.
 
 - **Keywords** are the ones the app already extracts from the job description (up to 40). A keyword counts when it appears anywhere in the CV text, ignoring case: the same rule as the keyword part of the CV ranking score.
 - **Whole CV.** Skills, education and every other section count too. Only the tailored sections are swapped for your new wording.
@@ -36,13 +49,13 @@ After drafting, **Polish wording (paid)…** asks a model to improve the wording
 
 1. **Estimate (free).** The page shows the polishing models with an estimated cost for this request. The default is this application's polishing model (the same choice cards as letter polishing, otherwise the catalogue default). Nothing is sent yet.
 2. **Confirm.** **Send to <model> (about $…)** sends one request. While it runs, the Polish panel shows a spinner and a moving progress bar and its buttons are locked, so it cannot be sent twice; the boxes above stay editable. If you change the wording or the model after the estimate, the request is refused and you estimate again. There are no automatic retries; a failure changes nothing.
-3. **Review.** The polished wording replaces the text in the boxes only. Nothing is built. Under the boxes, **Before and after** shows one table per section (Summary, each employer, Key achievements): your wording before the polish, the polished wording and the change (Unchanged, Reworded, Added or Removed), with the number of changed lines. For each section choose **Use previous wording** or **Use polished wording**, or edit the box. **Undo polish** brings back all your previous wording.
+3. **Review.** The polished wording replaces the text in the boxes only. Nothing is built. Under the boxes, **Before and after** shows one table per section (Summary, each employer, Key achievements), in that section's colour: your wording before the polish, the polished wording and the change (Unchanged, Reworded, Added or Removed), with the number of changed lines. The polished column is editable: a change there updates the box above at once, and emptying a line leaves it out. For each section choose **Use previous wording** or **Use polished wording** (which keeps your edits). **Undo polish** brings back all your previous wording.
 4. **Build** as usual.
 
 What is sent: the wording in the boxes, the original lines of those sections from your CV, the achievements selected for this application, and the job title, organisation, keywords and the first 6,000 characters of the job description. No web search, no contact details, no other CV sections, no Gmail.
 
 Safeguards:
-- The model is told to use only facts in that text, keep every figure exactly, keep each employer's bullets under that employer and not add bullets.
+- The model is told to rewrite actively for this job (mirror the job description's language, lead with results, make scope visible, work in keywords the text supports) rather than reorder lines, and to use only facts in that text, keep every figure exactly, keep each employer's bullets under that employer and not add bullets.
 - A reply with a different number of employers, or without a summary or Key achievements, is refused and nothing changes.
 - The same figures check as **Build** runs on the reply. Any problem (an invented figure, a figure moved to another employer, extra bullets) is listed under the boxes, and **Build** refuses it until you fix it.
 

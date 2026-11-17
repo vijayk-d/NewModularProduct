@@ -13,7 +13,8 @@ export const CV_POLISH_INSTRUCTIONS = [
   'Keep every figure (percentages, money, counts, durations) exactly as written. A figure may only appear under the employer whose original bullets contain it.',
   'Return the same employers in the same order. For each employer return no more bullets than you were given, most relevant to the job first. One achievement per bullet, starting with a strong past-tense verb, no first person.',
   `Keep the summary to at most ${TAILORED_LIMITS.maxProfileChars} characters in total, in one to three paragraphs, without first person.`,
-  'No markdown, HTML, emoji or placeholders. Where wording is already strong, keep it. Put any caution for the owner in notes (one or two sentences), otherwise leave notes empty.'
+  'Rewrite actively for this job: do not just reorder lines or return them unchanged. Rephrase each summary sentence and bullet to mirror the job description\'s language and priorities, lead with the result or impact, make the scope (team size, budget, scale) visible where the text gives it, and work in job keywords that the provided text supports. Keep a line unchanged only when it already fits this job best.',
+  'No markdown, HTML, emoji or placeholders. Put any caution for the owner in notes (one or two sentences), otherwise leave notes empty.'
 ].join(' ');
 
 const strings = {type: 'array', items: {type: 'string'}};

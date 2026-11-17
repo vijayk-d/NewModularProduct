@@ -17,10 +17,10 @@ function outreachOrganisationKey(form={}) {
     return host?`domain:${host}`:'organisation:unknown';
   }catch{return 'organisation:unknown';}
 }
-export function createOutreachHttpHandler({ repository, contactStore, getReview, gmailMailboxPort = null, gmailDraftCreationPort = null, gmailSendPort = null }) {
+export function createOutreachHttpHandler({ repository, contactStore, getReview, gmailMailboxPort = null, gmailDraftCreationPort = null, gmailSendPort = null, tailoredAttachment = null }) {
   const mailboxPort = gmailMailboxPort || createGmailMailboxPort();
   const confirmedDrafts = gmailDraftCreationPort || createConfirmedGmailDraftService({repository,mailboxPort});
-  const service = repository ? createOutreachQueueService({ repository, contactStore, getReview }) : null;
+  const service = repository ? createOutreachQueueService({ repository, contactStore, getReview, tailoredAttachment }) : null;
   const sends=gmailSendPort||createGmailSendService({repository,mailboxPort});
   const handleScheduling=createSchedulingHttp({sends,repository});
   const messageEditor=repository?createQueueMessageEditor({repository}):null;

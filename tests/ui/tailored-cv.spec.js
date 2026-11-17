@@ -51,6 +51,10 @@ test('draft, edit and build a tailored CV, then download it', async ({page, app}
   await expect(section.locator('[data-tailored-build-status]')).toContainText('version 1 built');
   const link = section.locator('[data-tailored-download]');
   await expect(link).toHaveText('Download tailored CV (version 1, DOCX)');
+  await expect(section.locator('[data-tailored-latest]')).toContainText('ATS match of this version: 50% (base CV 50%)');
+  await expect(section.getByRole('heading', {name: '6. Use your tailored CV'})).toBeVisible();
+  await expect(section.getByRole('list', {name: 'Tailored CV steps'}).getByRole('link')).toHaveCount(6);
+  await expect(page.getByRole('navigation', {name: 'Application sections'}).getByRole('link', {name: 'Tailored CV'})).toHaveCount(1);
   const tailor = app.calls.find(c => c.action === 'tailor');
   expect(tailor.profile).toEqual(['Delivery leader for Agile programmes.', 'Works with senior stakeholders.']);
   expect(tailor.achievements).toEqual(['Led a 40-person Agile programme.']);

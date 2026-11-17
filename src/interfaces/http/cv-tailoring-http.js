@@ -5,6 +5,7 @@ import {isLocalSameOrigin} from './local-write-guard.js';
 const ROUTE = /^\/api\/reviews\/([A-Za-z0-9_-]{1,100})\/tailored-cv(?:\/(\d{1,6})\.docx)?$/;
 const SAVE_ROUTE = /^\/api\/reviews\/([A-Za-z0-9_-]{1,100})\/tailored-cv\/(\d{1,6})\/save-to-folder$/;
 const POLISH_ROUTE = /^\/api\/reviews\/([A-Za-z0-9_-]{1,100})\/tailored-cv\/(polish|polish\/estimate|ats)$/;
+const EMAIL_ROUTE = /^\/api\/reviews\/([A-Za-z0-9_-]{1,100})\/tailored-cv\/(versions|email-choice|(\d{1,6})\/pdf)$/;
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 async function jsonBody(req) {
@@ -41,6 +42,22 @@ export function createCvTailoringHandler({service, getReview, sendJson, sendText
         sendJson(res, 200, {ok: true, ...(await service[action](polish[1], body))});
       } catch (error) {
         sendJson(res, error.statusCode || 503, {ok: false, code: error.code || 'CV_POLISH_FAILED', error: error.statusCode ? error.message : 'CV polishing is unavailable. Nothing was changed and no retry was made.'});
+      }
+      return true;
+    }
+    // Tailored CV for recruiter emails: list versions (GET), choose one (POST email-choice), make its PDF with Word (POST n/pdf).
+    const email = EMAIL_ROUTE.exec(route);
+    if (email && ((method === 'GET' && email[2] === 'versions') || (method === 'POST' && email[2] !== 'versions'))) {
+      const origin = req.headers.origin;
+      if (method === 'GET' ? ((origin && origin !== `http://${req.headers.host}` && origin !== `https://${req.headers.host}`) || req.headers['sec-fetch-site'] === 'cross-site') : !isLocalSameOrigin(req)) { sendJson(res, 403, {ok: false, error: 'This needs this app open on this computer.'}); return true; }
+      try {
+        if (!service || typeof service.versions !== 'function') { sendJson(res, 503, {ok: false, code: 'CV_TAILORING_DISABLED', error: 'Tailored CVs are unavailable in this server configuration.'}); return true; }
+        const reviewId = email[1];
+        if (email[2] === 'versions') sendJson(res, 200, {ok: true, ...service.versions(reviewId)});
+        else if (email[2] === 'email-choice') { const body = await jsonBody(req); sendJson(res, 200, {ok: true, ...service.setEmailChoice(reviewId, {version: body?.version ?? null})}); }
+        else sendJson(res, 200, {ok: true, pdf: await service.makePdf(reviewId, Number(email[3]))});
+      } catch (error) {
+        sendJson(res, error.statusCode || 503, {ok: false, code: error.code || 'TAILORED_PDF_FAILED', error: error.statusCode ? error.message : 'The PDF could not be made. Nothing was changed.'});
       }
       return true;
     }

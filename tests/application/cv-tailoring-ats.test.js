@@ -34,3 +34,12 @@ test('the ATS route is local-only and makes no paid call', async t => {
   assert.equal(r.wholeCv, false);
   assert.equal(r.total, 2);
 });
+
+test('a build returns the ATS match of exactly what was built', async () => {
+  const service = createCvTailoringService({reviews: reviewFixture(), store: createCvTailoringStore({filePath: ':memory:'}), worker: fakeWorker([]), cvFolder: 'C:/cv', cvLibrary: async () => [{role_code: 'PM', local_path: 'PM/PM_CV.pdf'}]});
+  const built = await service.build('r1', {profile: ['Delivery leader across programmes.'], achievements: ['Introduced risk reporting for the board.', 'Led a 40-person Agile programme.'], expectedSha256: SHA, expectedRoleCode: 'PM'});
+  assert.equal(built.version, 1);
+  assert.deepEqual(built.ats.after, {score: 100, matched: 2});
+  assert.deepEqual(built.ats.before, {score: 50, matched: 1});
+});
+

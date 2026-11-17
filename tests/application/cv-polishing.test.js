@@ -48,6 +48,7 @@ test('the request sends no web search and only the CV wording, CV lines and sele
   assert.equal(user.job.description.length, 6000);
   assert.deepEqual(user.originalCv.employers, [{employer: 'ACME', bullets: ['B0']}]);
   assert.match(api.input[0].content[0].text, /British English/);
+  assert.match(api.input[0].content[0].text, /do not just reorder/);
 });
 
 test('polish needs the confirmed estimate, sends one request and only returns wording to review', async () => {

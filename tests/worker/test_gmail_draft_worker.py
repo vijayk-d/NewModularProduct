@@ -74,6 +74,24 @@ class WorkerTests(unittest.TestCase):
             item['attachment']['relativePath'] = '../outside.pdf'
             with self.assertRaises(ValueError): worker._build_message(item, 'sender@example.test')
 
+    def test_tailored_pdf_comes_only_from_the_tailored_folder(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as cvs, tempfile.TemporaryDirectory() as tailored, patch.dict(os.environ, {'CV_FOLDER': cvs, 'TAILORED_CV_FOLDER': tailored}):
+            data = b'%PDF-1.7\ntailored'
+            Path(tailored, 'r1').mkdir(); Path(tailored, 'r1', 'v2.pdf').write_bytes(data)
+            item = draft(); item['attachment'] = {'root': 'tailored', 'relativePath': 'r1/v2.pdf', 'name': 'Candidate_Role_CV.pdf', 'sha256': hashlib.sha256(data).hexdigest()}
+            attached = list(worker._build_message(item, 'sender@example.test').iter_attachments())[0]
+            self.assertEqual(attached.get_filename(), 'Candidate_Role_CV.pdf')
+            self.assertEqual(attached.get_payload(decode=True), data)
+            item['attachment']['sha256'] = '0' * 64
+            with self.assertRaises(ValueError): worker._build_message(item, 'sender@example.test')
+            Path(cvs, 'r1').mkdir(); Path(cvs, 'r1', 'v3.pdf').write_bytes(data)
+            item['attachment'].update(relativePath='r1/v3.pdf', sha256=hashlib.sha256(data).hexdigest())
+            with self.assertRaises(ValueError): worker._build_message(item, 'sender@example.test')
+            Path(tailored, 'r1', 'v4.docx').write_bytes(b'PK')
+            item['attachment'].update(relativePath='r1/v4.docx', name='Candidate_Role_CV.docx')
+            with self.assertRaises(ValueError): worker._build_message(item, 'sender@example.test')
+
 
 if __name__ == '__main__':
     unittest.main()

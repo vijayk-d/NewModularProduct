@@ -6,7 +6,7 @@ import { finalizeOutreachIdentity } from './outreach-final-identity.js';
 import { createHash } from 'node:crypto';
 import { queueSnapshotSubject } from './review-subject.js';
 
-export function createOutreachQueueService({ repository, contactStore, getReview }) {
+export function createOutreachQueueService({ repository, contactStore, getReview, tailoredAttachment = null }) {
   function invalid(message, statusCode = 400) {
     const error = new Error(message);
     error.statusCode = statusCode;
@@ -38,7 +38,10 @@ export function createOutreachQueueService({ repository, contactStore, getReview
     const selectedCode = review.selectedCvRoleCode || review.prepared?.recommendation?.bestCv?.role_code || '';
     const selectedCv = (review.prepared?.rankedCvs || []).map(item=>item.cv).find(cv=>cv?.role_code===selectedCode)
       || (review.prepared?.recommendation?.bestCv?.role_code===selectedCode ? review.prepared.recommendation.bestCv : null);
-    const attachment = selectedCv?.local_path ? {relativePath:String(selectedCv.local_path),name:cvDisplayName(process.env.CANDIDATE_DISPLAY_NAME||'Vijay DAFAL',form.jobTitle||selectedCv.role_name,selectedCv.local_path)} : null;
+    // A tailored CV chosen for emails (PDF made by Word) replaces the library CV for items queued from now on.
+    const tailored = typeof tailoredAttachment === 'function' ? tailoredAttachment(reviewId) : null;
+    const attachment = tailored ? {...tailored,name:cvDisplayName(process.env.CANDIDATE_DISPLAY_NAME||'Vijay DAFAL',form.jobTitle||selectedCv?.role_name||'Application',tailored.relativePath)}
+      : selectedCv?.local_path ? {relativePath:String(selectedCv.local_path),name:cvDisplayName(process.env.CANDIDATE_DISPLAY_NAME||'Vijay DAFAL',form.jobTitle||selectedCv.role_name,selectedCv.local_path)} : null;
     const subject = queueSnapshotSubject(review, submittedSubject);
       if (!subject || /[\r\n]/.test(subject)) invalid('The application needs a valid single-line subject.');
       const items = recipients.map(recipient => {
