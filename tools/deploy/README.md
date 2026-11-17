@@ -60,6 +60,8 @@ Rollback switches CODE to the recorded previous verified release only after cont
 
 Failed release directories are retained with candidate.json and a log reference for diagnosis. They are never overwritten automatically. Inspect them before any manual cleanup/retry. A supervisor lock left after a crash similarly requires inspection.
 
+Memory: verification needs free memory (Windows commit charge). It stops before starting, before the tests and before the browser tests when less than 3 GB is free (`NMP_MIN_FREE_MEMORY_GB` changes the threshold), and a crash that looks like low memory says so. Node tests run two files at a time and the browser tests use one worker. If it stops, close browsers and other large apps or restart Windows, then ship again; production is unchanged.
+
 ## Dependencies, testing and limits
 Node 24+ with SQLite support is required. npm ci uses package-lock.json. A separate Python venv is created in each release; worker dependencies are pinned from the currently installed working closure. Node executable checksum and Python version are verified at production launch. The Python base runtime still belongs to this machine: this is not an OS/container image. Runtime updates require re-verification. Browser/dependency downloads require registry access and the full gates can take several minutes. Failing tests block commits/promotion rather than being bypassed.
 

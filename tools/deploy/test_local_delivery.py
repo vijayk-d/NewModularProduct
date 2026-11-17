@@ -338,4 +338,20 @@ class SchedulerSourcePolicyTests(unittest.TestCase):
   with self.assertRaisesRegex(RuntimeError,'already running'):d.clear_stale_lock(self.prod,lock)
   self.assertTrue(lock.exists())
 
+class MemoryGuardTests(unittest.TestCase):
+ def test_low_free_memory_stops_with_plain_advice(self):
+  with patch.dict(os.environ,{'NMP_MIN_FREE_MEMORY_GB':'3'}):
+   with self.assertRaises(RuntimeError) as e:d.memory_check('before the tests',free=0.4)
+   self.assertIn('0.4 GB free, 3 GB needed',str(e.exception));self.assertIn('Production is unchanged',str(e.exception))
+   self.assertEqual(d.memory_check('before the tests',free=8),8)
+ def test_unreadable_memory_does_not_block(self):
+  with patch.object(d,'free_memory_gb',lambda:None):self.assertIsNone(d.memory_check('x'))
+ def test_crash_output_gets_a_memory_hint(self):
+  self.assertIn('short of memory',d.low_memory_hint(b'FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory'))
+  self.assertIn('short of memory',d.low_memory_hint(b'Error: Target page, context or browser has been closed'))
+  self.assertEqual(d.low_memory_hint(b'AssertionError: expected 1 to equal 2'),'')
+ def test_failed_command_message_includes_the_hint(self):
+  fake=type('R',(),{'returncode':1,'stdout':b'','stderr':b'JavaScript heap out of memory'})()
+  with patch.object(d.subprocess,'run',lambda *a,**k:fake),self.assertRaises(RuntimeError) as e:d.run(['node','x'])
+  self.assertIn('short of memory',str(e.exception))
 if __name__=='__main__':unittest.main()
