@@ -1,6 +1,6 @@
-# Tailored CV (CV rebuilding, part 1)
+# Tailored CV (CV rebuilding, parts 1 and 2)
 
-Status: part 1, employer bullets and chosen headings merged. Robust Word-file lookup, saved choices and **Check all CVs** on branch `fix/cv-tailoring-robust-word` (17 November 2026).
+Status: part 1 (tailoring, Word-file lookup, **Check all CVs**, Save to folder) released. Part 2, the optional paid **Polish** step, on branch `feat/cv-polishing` (17 November 2026).
 
 ## What it does
 
@@ -16,6 +16,24 @@ On the application review page, **Tailored CV** makes a copy of the selected Wor
 Unchanged lines keep their original paragraph, so bold lead-ins and highlights survive a reorder. Edited lines take the style of that section's first bullet. Everything else stays as in your CV: name, contact details, Skills, Education, Certifications, References, fonts and layout.
 
 Each build is saved as a new version. You can download it as a DOCX, save it to your output folder, or include it in the Export pack by choosing **Tailored CV (DOCX)**.
+
+## Polish wording (optional, paid)
+
+After drafting, **Polish wording (paid)…** asks a model to improve the wording of the Summary, the bullets under each employer and the Key achievements (if your CV has them), for this job, in British English.
+
+1. **Estimate (free).** The page shows the polishing models with an estimated cost for this request. The default is this application's polishing model (the same choice cards as letter polishing, otherwise the catalogue default). Nothing is sent yet.
+2. **Confirm.** **Send to <model> (about $…)** sends one request. If you change the wording or the model after the estimate, the request is refused and you estimate again. There are no automatic retries; a failure changes nothing.
+3. **Review.** The polished wording replaces the text in the boxes only. Nothing is built. **Undo polish** brings back your previous wording.
+4. **Build** as usual.
+
+What is sent: the wording in the boxes, the original lines of those sections from your CV, the achievements selected for this application, and the job title, organisation, keywords and the first 6,000 characters of the job description. No web search, no contact details, no other CV sections, no Gmail.
+
+Safeguards:
+- The model is told to use only facts in that text, keep every figure exactly, keep each employer's bullets under that employer and not add bullets.
+- A reply with a different number of employers, or without a summary or Key achievements, is refused and nothing changes.
+- The same figures check as **Build** runs on the reply. Any problem (an invented figure, a figure moved to another employer, extra bullets) is listed under the boxes, and **Build** refuses it until you fix it.
+
+**Setting.** Polish uses the same switch as letter polishing: `ENABLE_COVER_LETTER_REFINEMENT=true` and `PERPLEXITY_API_KEY` in `.env` (development also needs `NMP_ALLOW_DEVELOPMENT_INTEGRATIONS=true`). When it is off, the estimate still works and the page says how to turn it on. No new database or schema; the polish result is not stored until you build.
 
 ## Save to folder (opens in Word without Unblock)
 
@@ -38,7 +56,7 @@ Saving to a folder is allowed only from this app's own page on this computer (sa
 
 ## Rules
 
-- **Free and local.** No Perplexity call, no Gmail action, nothing sent anywhere. The optional paid Polish step is part 2 and not built yet.
+- **Free and local by default.** Drafting and building make no Perplexity call, no Gmail action and send nothing anywhere. Only the optional **Polish** step (below) is paid, and only after you confirm its cost.
 - **Original untouched.** Your original CV file is never written. A tailored CV is stored as a new version in `<state folder>/cv-tailoring-v1.db`, which also holds your per-CV choices (Word file and headings) in a separate `cv_preferences` table. No existing database or schema is changed.
 - **Evidence only.** Drafts use only lines that already exist in your CV or in this application's selected achievements.
 - **Figures checked.** Any figure you type (%, £, numbers) must already appear in that evidence, or the build is refused and the figure is named. A figure in an employer's bullets must come from that same employer's original bullets.
@@ -73,3 +91,4 @@ Nothing in the code lists CVs. Everything follows the live CV library, so after 
 2. Open the downloaded DOCX in Word. Check that it opens without a repair prompt and that the bullets and fonts match your CV.
 3. Export a pack with **Tailored CV (DOCX)**.
 4. With `APPLICATION_OUTPUT_FOLDER` set, click **Save to folder** and **Save pack to folder**, then open the saved DOCX straight from the folder: it should open in Word without Protected View or Unblock.
+5. With polishing turned on, draft, click **Polish wording (paid)…**, check the estimate, send once with the cheapest model, read every polished line, try **Undo polish**, then polish again and build. Check the cost reported on the page against your Perplexity usage.

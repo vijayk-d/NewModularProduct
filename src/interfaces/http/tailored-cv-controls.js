@@ -1,4 +1,4 @@
-// Tailored CV section on the review page. Local only: drafting and building make no paid or Gmail call.
+// Tailored CV section on the review page. Drafting and building are local; only the optional Polish step makes one paid call, after the owner confirms its cost. No Gmail call.
 const SOURCE = {cv: 'From your CV', selected: 'Selected for this application'};
 
 export function parseProfile(value) { return String(value || '').split(/\n\s*\n/).map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean); }
@@ -81,6 +81,68 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
     latest.append(link, doc.createTextNode(' '), saveButton, saveStatus, doc.createTextNode(` Built from ${item.baseName}. It can also go in the Export pack ("Tailored CV").`));
   };
 
+  // Optional paid Polish: estimate first (free), then one request only after the owner confirms the cost.
+  // The polished wording only fills the boxes above; nothing is built until the owner clicks Build.
+  function polishControls({profile, bullets, roleBoxes, currentBody}) {
+    const panel = el(doc, 'div', {class: 'tailored-polish', 'data-tailored-polish': ''});
+    const start = el(doc, 'button', {type: 'button', text: 'Polish wording (paid)…'});
+    const choice = el(doc, 'div', {'data-tailored-polish-choice': '', hidden: ''});
+    const status = el(doc, 'p', {role: 'status', 'aria-live': 'polite', 'data-tailored-polish-status': ''});
+    const result = el(doc, 'div', {'data-tailored-polish-result': '', hidden: ''});
+    panel.append(el(doc, 'h3', {text: 'Polish wording (optional, paid)'}),
+      el(doc, 'p', {class: 'tailored-cv-note', text: 'Sends the wording above, your CV lines and the selected achievements to the polishing model you choose. No web search. You see the estimated cost first; nothing is sent until you confirm, and nothing is built until you click Build.'}),
+      el(doc, 'div', {class: 'actions'}, [start]), choice, status, result);
+    const values = () => ({profile: profile.value, bullets: bullets ? bullets.value : null, roles: roleBoxes.map(b => b.value)});
+    const restore = v => { profile.value = v.profile; if (bullets) bullets.value = v.bullets; roleBoxes.forEach((b, i) => { b.value = v.roles[i]; }); };
+    let estimate = null;
+    async function post(path, body) {
+      const response = await fetchImpl(api + path, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)});
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Polishing failed. Nothing was changed.');
+      return data;
+    }
+    async function runEstimate(model) {
+      start.disabled = true; status.textContent = 'Estimating the cost (nothing is sent)…';
+      try {
+        estimate = await post('/polish/estimate', {...currentBody(), ...(model ? {model} : {})});
+        choice.textContent = '';
+        if (!estimate.available) { choice.hidden = true; status.textContent = estimate.message; return; }
+        const select = el(doc, 'select', {id: 'tailored-polish-model'});
+        for (const m of estimate.models) { const o = el(doc, 'option', {value: m.id, text: `${m.label} (${m.provider}), about $${m.estimatedTokenCostUsd.toFixed(4)}`}); if (m.id === estimate.model) o.selected = true; select.append(o); }
+        select.addEventListener('change', () => runEstimate(select.value));
+        const chosen = estimate.models.find(m => m.id === estimate.model);
+        const send = el(doc, 'button', {type: 'button', 'data-tailored-polish-send': '', text: `Send to ${chosen.label} (about $${chosen.estimatedTokenCostUsd.toFixed(4)})`});
+        const cancel = el(doc, 'button', {type: 'button', text: 'Cancel'});
+        cancel.addEventListener('click', () => { choice.hidden = true; estimate = null; status.textContent = 'Cancelled. Nothing was sent.'; });
+        send.addEventListener('click', () => runPolish(send, select));
+        choice.append(el(doc, 'label', {for: select.id, text: 'Polishing model'}), select,
+          el(doc, 'p', {class: 'tailored-cv-note', text: `About ${estimate.estimatedInputTokens} input tokens, up to ${estimate.outputTokenBudget} output tokens. ${estimate.limitation}`}),
+          el(doc, 'div', {class: 'actions'}, [send, cancel]));
+        choice.hidden = false; status.textContent = 'Check the model and estimated cost, then send or cancel.';
+      } catch (error) { choice.hidden = true; status.textContent = error.message; } finally { start.disabled = false; }
+    }
+    async function runPolish(send, select) {
+      send.disabled = true; select.disabled = true; start.disabled = true; status.textContent = 'Polishing… (one paid request, no retries)';
+      try {
+        const data = await post('/polish', {...currentBody(), model: estimate.model, confirmedCostProof: estimate.costProof});
+        const before = values();
+        profile.value = data.proposal.profile.join('\n\n');
+        if (bullets && data.proposal.achievements) bullets.value = data.proposal.achievements.join('\n');
+        if (data.proposal.roles) roleBoxes.forEach((b, i) => { if (data.proposal.roles[i]) b.value = data.proposal.roles[i].join('\n'); });
+        choice.hidden = true; estimate = null; result.textContent = '';
+        const cost = data.attempt?.providerReportedCostUsd;
+        status.textContent = `Polished wording is in the boxes above${cost != null ? ` (reported cost $${cost.toFixed(4)})` : ''}. Check every line, then Build.`;
+        if (data.problems.length) { const list = el(doc, 'ul', {'data-tailored-polish-problems': ''}); for (const p of data.problems) list.append(el(doc, 'li', {text: p})); result.append(el(doc, 'p', {text: 'Fix these before building:'}), list); }
+        if (data.notes) result.append(el(doc, 'p', {class: 'tailored-cv-note', text: 'Note from the polish: ' + data.notes}));
+        const undo = el(doc, 'button', {type: 'button', text: 'Undo polish'});
+        undo.addEventListener('click', () => { restore(before); result.hidden = true; status.textContent = 'Your previous wording is back.'; });
+        result.append(el(doc, 'div', {class: 'actions'}, [undo])); result.hidden = false;
+      } catch (error) { status.textContent = error.message; send.disabled = false; select.disabled = false; } finally { start.disabled = false; }
+    }
+    start.addEventListener('click', () => runEstimate(''));
+    return panel;
+  }
+
   function render(data) {
     editor.textContent = '';
     const parts = [];
@@ -120,14 +182,19 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
       parts.push(el(doc, 'label', {for: box.id, text: role.title}), box, el(doc, 'div', {class: 'tailored-role-actions'}, [original]));
       return box;
     });
+    const currentBody = () => {
+      const body = {profile: parseProfile(profile.value), expectedSha256: data.baseSha256, expectedRoleCode: data.roleCode, ...(data.chosen || {}), ...(data.word?.match === 'chosen' ? {wordFile: data.word.name} : {})};
+      if (bullets) body.achievements = parseBullets(bullets.value);
+      if (roleBoxes.length) body.roles = roleBoxes.map(box => parseBullets(box.value));
+      return body;
+    };
+    const polish = polishControls({profile, bullets, roleBoxes, currentBody});
     const build = el(doc, 'button', {type: 'button', text: 'Build tailored CV (DOCX)'});
     const message = el(doc, 'p', {role: 'status', 'aria-live': 'polite', 'data-tailored-build-status': ''});
     build.addEventListener('click', async () => {
       build.disabled = true; message.textContent = 'Checking wording and building the Word file…';
       try {
-        const body = {profile: parseProfile(profile.value), expectedSha256: data.baseSha256, expectedRoleCode: data.roleCode, ...(data.chosen || {}), ...(data.word?.match === 'chosen' ? {wordFile: data.word.name} : {})};
-        if (bullets) body.achievements = parseBullets(bullets.value);
-        if (roleBoxes.length) body.roles = roleBoxes.map(box => parseBullets(box.value));
+        const body = currentBody();
         const response = await fetchImpl(api, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)});
         const result = await response.json();
         if (!response.ok || !result.ok) throw new Error(result.error || 'Tailored CV was not built.');
@@ -135,7 +202,7 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
         showLatest(result.tailored);
       } catch (error) { message.textContent = error.message; } finally { build.disabled = false; }
     });
-    editor.append(...parts, el(doc, 'div', {class: 'actions'}, [build]), message);
+    editor.append(...parts, polish, el(doc, 'div', {class: 'actions'}, [build]), message);
     editor.hidden = false;
   }
 
