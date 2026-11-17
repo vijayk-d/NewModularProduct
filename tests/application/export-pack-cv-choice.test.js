@@ -88,6 +88,14 @@ test('tailored choice includes the latest tailored CV built from the selected CV
   assert.match(packSummary('tailored', 'DM'), /CV DM tailored for this job \(DOCX\)/);
 });
 
+test('the DOCX is found by the Word-file lookup when its name differs from the PDF', async () => {
+  disk.set('DM/Renamed source.docx', Buffer.from('PKrenamed'));
+  const r = await run(fixture({cvFormat: 'both'}), {wordPathFor: async (code, pdf) => code === 'DM' && pdf === 'DM/Vijay_CV.pdf' ? 'DM/Renamed source.docx' : ''});
+  assert.deepEqual(file(r, 'Vijay_DAFAL_Senior_Delivery_Manager_CV.docx').bytes, Buffer.from('PKrenamed'));
+  const fallback = await run(fixture({cvFormat: 'docx'}), {wordPathFor: async () => ''});
+  assert.deepEqual(file(fallback, 'Vijay_DAFAL_Senior_Delivery_Manager_CV.docx').bytes, disk.get('DM/Vijay_CV.docx'));
+});
+
 test('client sends the chosen CV format', async () => {
   let body;
   await exportFromEditor({save: async () => {}, getVersions: () => ({bodyVersion: 'b', subjectVersion: 's', revision: 1}), isDirty: () => false, getCvRoleCode: () => 'DM', includeCv: true, cvFormat: 'both', reviewId: 'r', fetchImpl: async (u, o) => { body = JSON.parse(o.body); return {ok: true, blob: async () => 'blob', headers: {get: () => 'attachment; filename="Example-application.zip"'}}; }, download: async () => {}});

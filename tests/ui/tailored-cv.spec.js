@@ -4,6 +4,7 @@ import {createLocalServer} from '../../src/interfaces/http/create-local-server.j
 import {createCvTailoringService} from '../../src/application/cv-tailoring.js';
 import {createCvTailoringStore} from '../../src/infrastructure/applications/sqlite-cv-tailoring-store.js';
 import {fakeWorker, reviewFixture} from '../fixtures/cv-tailoring-fixtures.js';
+import {createWordCvLocator} from '../../src/infrastructure/documents/word-cv-locator.js';
 
 const customCv = payload => payload.profileHeading === 'About My Work' && payload.achievementsHeading === 'Impact Delivered'
   ? {headings: ['About My Work', 'Impact Delivered'], profile: {heading: 'About My Work', paragraphs: ['Custom profile.'], bullets: 0, supported: true}, achievements: {heading: 'Impact Delivered', paragraphs: ['Led a 40-person Agile programme.'], bullets: 1, supported: true}}
@@ -17,7 +18,11 @@ const experienceCv = {headings: ['SUMMARY', 'EXPERIENCE'], profile: {heading: 'S
 const test = base.extend({cvLayout: ['standard', {option: true}], app: async ({cvLayout}, use) => {
   const sections = cvLayout === 'custom' ? customCv : cvLayout === 'experience' ? experienceCv : undefined;
   const reviews = reviewFixture(), calls = [];
-  const service = createCvTailoringService({reviews, store: createCvTailoringStore({filePath: ':memory:'}), worker: fakeWorker(calls, {sections}), cvFolder: 'C:/cv', cvLibrary: async () => [{role_code: 'PM', local_path: 'PM/PM_CV.pdf'}]});
+  // 'folders' layout: the PM folder holds two Word files, neither named like the PDF; a second CV has no Word file.
+  const folders = {PM: ['PM_CV.pdf', 'PM Long Version.docx', 'PM Short.docx'], GCC: ['GCC.pdf']};
+  const locateWord = cvLayout === 'folders' ? createWordCvLocator({cvFolder: 'C:/cv', list: async folder => folders[folder] || []}) : null;
+  const catalogue = [{role_code: 'PM', local_path: 'PM/PM_CV.pdf'}, ...(cvLayout === 'folders' ? [{role_code: 'GCC', role_name: 'Gulf', local_path: 'GCC/GCC.pdf'}] : [])];
+  const service = createCvTailoringService({reviews, store: createCvTailoringStore({filePath: ':memory:'}), worker: fakeWorker(calls, {sections}), cvFolder: 'C:/cv', cvLibrary: async () => catalogue, locateWord});
   const server = createLocalServer({applicationReviewStore: reviews, cvTailoringService: service, candidateDisplayName: 'Test Candidate',
     recruiterContactStore: {async listAll() { return []; }, async listByReview() { return []; }}, outreachRepository: {list: () => [], listDraftOperations: () => [], listSendAttempts: () => [], listSentEmails: () => []}});
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
@@ -96,5 +101,27 @@ test.describe('a CV with Summary and Experience but no Key achievements', () => 
     await section.getByRole('button', {name: 'Build tailored CV (DOCX)'}).click();
     await expect(section.locator('[data-tailored-build-status]')).toContainText('version 1 built');
     expect(app.calls.find(c => c.action === 'tailor').roles).toEqual([['Built a CoE.', 'Cut risk incidents by 30% through agile risk reviews.'], ['Coached 5 teams.']]);
+  });
+});
+
+test.describe('Word files that are not named like the PDF', () => {
+  test.use({cvLayout: 'folders'});
+  test('asks which Word file to use, remembers it, and checks every CV', async ({page, app}) => {
+    await page.goto(app.url + '/applications/r1');
+    const section = page.locator('#tailored-cv');
+    await section.getByRole('button', {name: 'Draft tailored CV'}).click();
+    await expect(section.locator('[data-tailored-status]')).toContainText('has several Word files');
+    await section.getByLabel('Which Word file is the source of "PM_CV.pdf"?').selectOption('PM Short.docx');
+    await section.getByRole('button', {name: 'Use this Word file'}).click();
+    await expect(section.locator('[data-tailored-status]')).toContainText('Word file: chosen by you');
+    expect(app.calls.at(-1).relativePath).toBe('PM/PM Short.docx');
+    await page.reload();
+    await page.locator('#tailored-cv').getByRole('button', {name: 'Draft tailored CV'}).click();
+    await expect(page.locator('#tailored-cv [data-tailored-status]')).toContainText('Word file: chosen by you');
+    await page.locator('#tailored-cv').getByRole('button', {name: 'Check all CVs'}).click();
+    const report = page.locator('#tailored-cv [data-tailored-library]');
+    await expect(report).toContainText('1 of 2 CVs are ready for tailoring.');
+    await expect(report.locator('tr', {hasText: 'PM Short.docx'})).toContainText('Ready');
+    await expect(report.locator('tr', {hasText: 'GCC (Gulf)'})).toContainText('No Word file in "GCC"');
   });
 });

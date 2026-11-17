@@ -14,7 +14,7 @@ export const CV_FORMATS=['saved','pdf','docx','both','tailored'];
 // Upload-friendly names, ASCII only so every portal and ZIP tool accepts them: Vijay_DAFAL_Delivery_Manager_CV.pdf
 export function uploadFileName(candidate,role,kind,ext){const part=(v,f)=>String(v||'').normalize('NFKD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9 _-]/g,' ').trim().replace(/[\s_-]+/g,'_').slice(0,60).replace(/_+$/,'')||f;return `${part(candidate,'Candidate')}_${part(role,'Application')}_${kind}${ext}`;}
 const otherFormat=path=>path.replace(/\.(pdf|docx)$/i,m=>m.toLowerCase()==='.pdf'?'.docx':'.pdf');
-export async function exportApplicationPack({store,request,readCv,pack,word=null,documents=null,cvLibrary=null,candidateName='Candidate',tailoredCv=null}){
+export async function exportApplicationPack({store,request,readCv,pack,word=null,documents=null,cvLibrary=null,candidateName='Candidate',tailoredCv=null,wordPathFor=null}){
  if(!request||typeof request!=='object'||Array.isArray(request))fail('An explicit export request is required.');
  const {reviewId,expectedBodyVersion,expectedSubjectVersion,expectedRevision,includeCv,expectedCvRoleCode,cvFormat='saved'}=request;
  if(!/^[A-Za-z0-9_-]{1,100}$/.test(String(reviewId||''))||typeof includeCv!=='boolean')fail('Choose an application and explicit CV inclusion.');
@@ -68,7 +68,8 @@ export async function exportApplicationPack({store,request,readCv,pack,word=null
   const wanted=cvFormat==='saved'?[savedExt]:cvFormat==='both'?['.pdf','.docx']:['.'+cvFormat];
   const lines=[];
   for(const ext of wanted){
-   const path=ext===savedExt?cvPath:otherFormat(cvPath);let bytes;
+   // The Word version is found the same way as for Tailored CV (same name, saved choice, or the only Word file in the folder).
+   let path=ext===savedExt?cvPath:otherFormat(cvPath);if(ext==='.docx'&&ext!==savedExt&&typeof wordPathFor==='function'){try{path=(await wordPathFor(cv.code,cvPath))||path;}catch{}}let bytes;
    try{bytes=await readCv(path);}catch(e){if(ext===savedExt)throw e;fail(`No ${ext.slice(1).toUpperCase()} version of this CV was found. Save it as "${path.split(/[\\/]/).pop()}" in the same CV folder as the ${savedExt.slice(1).toUpperCase()}, or choose another format.`,409);}
    const name=uploadFileName(candidateName,role,'CV',ext);files.push({name,bytes});lines.push(`${name} (SHA-256 ${hash(bytes)})`);
   }

@@ -44,6 +44,7 @@ import {resolveEvidenceLibraryPath} from '../../config/evidence-library-runtime.
 import {createCvTailoringStore} from '../../infrastructure/applications/sqlite-cv-tailoring-store.js';
 import {createCvTailoringService} from '../../application/cv-tailoring.js';
 import {documentWorker} from '../../infrastructure/documents/cv-document-adapter.js';
+import {createWordCvLocator} from '../../infrastructure/documents/word-cv-locator.js';
 
 const DEFAULT_TEMPLATE_ID = 'standard-cover-letter';
 const deployment=deploymentRuntime({env:process.env,projectRoot:fileURLToPath(new URL('../../../',import.meta.url))});
@@ -131,7 +132,7 @@ try{workflowAutomationStore=createWorkflowAutomationStore({filePath:path.join(de
 // Tailored CVs keep their own new database; if it cannot open, the feature is simply off.
 const candidateDisplayName=process.env.CANDIDATE_DISPLAY_NAME||'Vijay DAFAL';
 let cvTailoringStore=null,cvTailoringService=null;
-try{cvTailoringStore=createCvTailoringStore({filePath:path.join(deployment.state,'cv-tailoring-v1.db')});cvTailoringService=createCvTailoringService({reviews:applicationReviewStore,store:cvTailoringStore,worker:payload=>documentWorker(payload),cvFolder:config.storage.cvFolder,cvLibrary:async()=>{const data=await cvInventoryRepository.load();return data?.cv_inventory?.cvs||data?.cvs||[];}});}catch{cvTailoringStore?.close();cvTailoringStore=null;console.warn('[CV_TAILORING] LOCAL_STORE_UNAVAILABLE');}
+try{cvTailoringStore=createCvTailoringStore({filePath:path.join(deployment.state,'cv-tailoring-v1.db')});cvTailoringService=createCvTailoringService({reviews:applicationReviewStore,store:cvTailoringStore,worker:payload=>documentWorker(payload),cvFolder:config.storage.cvFolder,locateWord:createWordCvLocator({cvFolder:config.storage.cvFolder}),cvLibrary:async()=>{const data=await cvInventoryRepository.load();return data?.cv_inventory?.cvs||data?.cvs||[];}});}catch{cvTailoringStore?.close();cvTailoringStore=null;console.warn('[CV_TAILORING] LOCAL_STORE_UNAVAILABLE');}
 
 let assignmentEvidenceStore=null;
 try{
@@ -145,7 +146,7 @@ const server = createLocalServer({
   coverLetterRefinementMaxWords:config.application.coverLetterRefinementMaxWords,
   jobImportService,
   applicationReviewStore,
-  applicationPackExporter:createApplicationPackExporter({cvFolder:config.storage.cvFolder,documents:createTemplateCoverLetterDocuments({stateDirectory:deployment.state}),cvInventory:cvInventoryRepository,candidateName:process.env.CANDIDATE_DISPLAY_NAME||'Vijay DAFAL',tailoredCv:cvTailoringStore?id=>{const l=cvTailoringStore.latest(id);return l?cvTailoringStore.get(id,l.version):null;}:null,recordExport:workflowAutomationStore?(id,link)=>workflowAutomationStore.recordPortalExport(id,link):null}),
+  applicationPackExporter:createApplicationPackExporter({cvFolder:config.storage.cvFolder,documents:createTemplateCoverLetterDocuments({stateDirectory:deployment.state}),cvInventory:cvInventoryRepository,candidateName:process.env.CANDIDATE_DISPLAY_NAME||'Vijay DAFAL',wordPathFor:cvTailoringService?(code,pdf)=>cvTailoringService.wordPathForExport(code,pdf):null,tailoredCv:cvTailoringStore?id=>{const l=cvTailoringStore.latest(id);return l?cvTailoringStore.get(id,l.version):null;}:null,recordExport:workflowAutomationStore?(id,link)=>workflowAutomationStore.recordPortalExport(id,link):null}),
   portalExports:workflowAutomationStore?()=>workflowAutomationStore.portalExports():null,
   // Automatic research is on when organisation research is enabled; ENABLE_AUTO_RESEARCH=false turns it off.
   organisationResearchService:workflowAutomationStore?createOrganisationResearchService({store:workflowAutomationStore,research:companyResearchPort?request=>researchOrganization(request,{companyResearchPort}):null,enabled:String(process.env.ENABLE_AUTO_RESEARCH||'true').toLowerCase()!=='false',dailyCap:Math.max(0,Number.parseInt(process.env.AUTO_RESEARCH_DAILY_CAP||'10',10)||0)}):null,

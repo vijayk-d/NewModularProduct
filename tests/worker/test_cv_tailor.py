@@ -107,6 +107,21 @@ class TailorTests(unittest.TestCase):
         self.assertEqual(s['profile']['paragraphs'], ['Row profile.'])
         self.assertEqual(s['achievements']['paragraphs'], ['Row bullet.'])
 
+    def test_untitled_opening_profile_is_used_when_there_is_no_summary_heading(self):
+        body = (para('EXAMPLE NAME', style='Title') + para('Email: example@example.test', style='Title') +
+                para('Senior Project Manager | Agile | Public Sector Delivery Leader', style='Heading4') +
+                para('Delivery leader with fifteen years of programme experience across regulated sectors.') +
+                para('Core Competencies', style='Heading3') + para('Planning', bullet=True) +
+                para('Professional Experience', style='Heading3') + para('ACME LTD') + para('Led delivery.', bullet=True))
+        s = t.describe(docx(body))
+        self.assertEqual(s['profile']['heading'], 'Opening profile (no heading)')
+        self.assertEqual(s['profile']['paragraphs'], ['Delivery leader with fifteen years of programme experience across regulated sectors.'])
+        out = t.tailor(docx(body), ['Tailored opening profile for this role.'], None, roles=[['Led delivery.']])
+        text = d.extract(out)
+        self.assertIn('Tailored opening profile for this role.', text)
+        self.assertIn('Senior Project Manager | Agile', text)
+        self.assertIn('Email: example@example.test', text)
+
     def test_missing_section_is_reported_and_refused(self):
         src = docx(para('Profile', style='Heading1') + para('Only a profile.'))
         self.assertIsNone(t.describe(src)['achievements'])

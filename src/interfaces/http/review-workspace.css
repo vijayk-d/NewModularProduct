@@ -196,3 +196,7 @@ html.review-workspace #polishing-model[data-workspace-choice-carrier],html.revie
 .tailored-cv [data-tailored-headings] select{display:block;min-width:16rem;max-width:100%;margin:.3rem 0 .5rem;padding:.4rem;font:inherit}
 .tailored-cv h3{margin:1.2rem 0 .2rem;font-size:1.05rem}
 .tailored-cv .tailored-role-actions button{font-size:.85em;padding:.2rem .55rem}
+.tailored-cv [data-tailored-word] select{display:block;min-width:16rem;max-width:100%;margin:.3rem 0 .5rem;padding:.4rem;font:inherit}
+.tailored-cv [data-tailored-library] table{width:100%;border-collapse:collapse;margin-top:.5rem;font-size:.92em}
+.tailored-cv [data-tailored-library] th,.tailored-cv [data-tailored-library] td{border-bottom:1px solid #e2e8f0;padding:.35rem .4rem;text-align:left;vertical-align:top;overflow-wrap:anywhere}
+.tailored-cv [data-tailored-library] tr[data-ready="false"] td:last-child{color:#9a3412}

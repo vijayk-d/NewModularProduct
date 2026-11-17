@@ -3,6 +3,7 @@
 import {createHash} from 'node:crypto';
 import {draftTailoredCv, checkTailoredCv} from '../domain/cv/cv-tailoring-policy.js';
 import {extractJobKeywords} from '../domain/job-description/extract-job-keywords.js';
+import {MATCH_LABELS} from '../domain/cv/word-cv-match.js';
 
 const fail = (message, statusCode = 400, code = 'CV_TAILORING_BLOCKED') => { throw Object.assign(new Error(message), {statusCode, code}); };
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -55,62 +56,91 @@ export function sectionsMessage(profile, achievements, experience = null) {
   return problems.join(' ') + ' Choose the headings your CV uses below, then draft again.';
 }
 
-export function createCvTailoringService({reviews, cvLibrary, worker, cvFolder, store}) {
+export function createCvTailoringService({reviews, cvLibrary, worker, cvFolder, store, locateWord = null}) {
   if (!reviews || typeof worker !== 'function' || !store) throw new Error('Tailored CV service needs reviews, a document worker and a store.');
+  // Without a folder lookup (tests), only the same-name Word file is tried.
+  const locate = locateWord || (async libraryPath => {
+    const relativePath = wordPathFor(libraryPath), parts = relativePath.split('/');
+    return {relativePath, name: parts.at(-1), match: relativePath ? 'same-name' : 'none', candidates: [], folder: parts.slice(0, -1).join('/'), pdfName: String(libraryPath || '').split('/').pop()};
+  });
+  const preferences = code => (typeof store.preferences === 'function' ? store.preferences(code) : null) || {};
 
   async function call(payload) {
     if (typeof cvFolder !== 'string' || !cvFolder.trim()) fail('CV_FOLDER is not configured.', 409);
     try { return await worker({root: cvFolder, ...payload}); }
     catch (error) {
       const file = String(payload.relativePath || '').split(/[\\/]/), name = file.pop(), folder = file.join('/') || 'the CV folder';
-      if (error.code === 'CV_FILE_NOT_FOUND') fail(`No Word file named "${name}" was found in "${folder}". Save the Word version of this CV there with exactly the same name as its PDF (only the extension differs), or choose another CV.`, 409, error.code);
+      if (error.code === 'CV_FILE_NOT_FOUND') fail(`The Word file "${name}" is no longer in "${folder}". Check the CV folder, then draft again.`, 409, error.code);
       fail(MESSAGES[error.code] || (error.code === 'CV_DOCX_REQUIRED' ? 'A Word (.docx) version of this CV is needed.' : `The Word file "${name}" could not be read (${error.code || 'DOCUMENT_UNAVAILABLE'}). If it is open in Word, close it and try again.`), 409, error.code || 'CV_TAILORING_DOCUMENT');
     }
   }
 
-  async function resolve(reviewId) {
+  async function libraryEntries() { return typeof cvLibrary === 'function' ? (await cvLibrary()) || [] : []; }
+
+  async function resolve(reviewId, wordFile = '') {
     const review = reviews.get(reviewId);
     if (!review) fail('Saved application not found.', 404);
     const roleCode = selectedCvCode(review);
     if (!roleCode) fail('Choose and apply a CV for this application first.', 409);
-    const entries = typeof cvLibrary === 'function' ? await cvLibrary() : [];
-    const entry = entries.find(e => e?.role_code === roleCode) || (review.prepared?.rankedCvs || []).map(r => r.cv).find(cv => cv?.role_code === roleCode);
-    const relativePath = wordPathFor(entry?.local_path);
-    if (!relativePath) fail(`CV ${roleCode} is not in the CV library.`, 409);
-    return {review, roleCode, relativePath, roleName: entry?.role_name || ''};
+    const entry = (await libraryEntries()).find(e => e?.role_code === roleCode) || (review.prepared?.rankedCvs || []).map(r => r.cv).find(cv => cv?.role_code === roleCode);
+    if (!entry?.local_path) fail(`CV ${roleCode} is not in the CV library.`, 409);
+    const saved = preferences(roleCode);
+    const word = await locate(entry.local_path, String(wordFile || saved.wordFile || ''));
+    return {review, roleCode, roleName: entry.role_name || '', word, saved};
   }
 
-  async function inspect(reviewId, headings = {}) {
-    const target = await resolve(reviewId);
-    const chosen = chosenHeadings(headings);
-    const result = await call({action: 'sections', relativePath: target.relativePath, expectedHash: null, ...chosen});
-    return {...target, chosen, name: result.name, sha256: result.sha256, sections: result.sections};
+  async function inspect(reviewId, options = {}) {
+    const target = await resolve(reviewId, options.wordFile);
+    const chosen = chosenHeadings({profileHeading: options.profileHeading || target.saved.profileHeading, achievementsHeading: options.achievementsHeading || target.saved.achievementsHeading});
+    if (!target.word.relativePath) return {...target, chosen, missingWord: true};
+    const result = await call({action: 'sections', relativePath: target.word.relativePath, expectedHash: null, ...chosen});
+    return {...target, chosen, relativePath: target.word.relativePath, name: result.name, sha256: result.sha256, sections: result.sections};
   }
 
   const usable = sections => {
     const {profile, achievements, experience} = sections || {};
     return {profile: profile?.supported ? profile : null, achievements: achievements?.supported ? achievements : null, experience: experience?.supported ? experience : null};
   };
+  const wordInfo = word => ({name: word.name, match: word.match, label: MATCH_LABELS[word.match] || word.match, folder: word.folder, pdfName: word.pdfName, candidates: word.candidates});
+  const summary = sections => {
+    const u = usable(sections), parts = [];
+    if (u.profile) parts.push(u.profile.heading);
+    if (u.achievements) parts.push(u.achievements.heading);
+    if (u.experience) parts.push(`${u.experience.heading} (${u.experience.roles.length} employers)`);
+    return parts.join(' + ');
+  };
 
   return {
-    async draft(reviewId, headings = {}) {
-      const found = await inspect(reviewId, headings);
+    async draft(reviewId, options = {}) {
+      const found = await inspect(reviewId, options);
+      const latest = store.latest(reviewId);
+      if (found.missingWord) {
+        const {word} = found;
+        return {reviewId, roleCode: found.roleCode, latest, ready: false, needsWordFile: true, word: wordInfo(word), headings: [],
+          message: word.match === 'choose'
+            ? `The folder "${word.folder || 'CV folder'}" has several Word files and none has the same name as "${word.pdfName}". Choose the Word version of this CV below.`
+            : `No Word (.docx) file was found in "${word.folder || 'CV folder'}" for "${word.pdfName}". Save the Word version of this CV in that folder, then draft again.`};
+      }
       const {profile, achievements, experience} = found.sections || {};
       const use = usable(found.sections);
-      const latest = store.latest(reviewId);
-      const base = {reviewId, roleCode: found.roleCode, baseName: found.name, baseSha256: found.sha256, latest, chosen: found.chosen, headings: found.sections?.headings || [],
+      const base = {reviewId, roleCode: found.roleCode, baseName: found.name, baseSha256: found.sha256, latest, chosen: found.chosen, word: wordInfo(found.word), headings: found.sections?.headings || [],
         sections: {profile: profile ? {heading: profile.heading, lines: profile.paragraphs.length, supported: profile.supported} : null,
           achievements: achievements ? {heading: achievements.heading, lines: achievements.paragraphs.length, bullets: achievements.bullets, supported: achievements.supported} : null,
           experience: experience ? {heading: experience.heading, roles: experience.roles.length, supported: experience.supported} : null}};
       if (!use.profile || (!use.achievements && !use.experience)) return {...base, ready: false, message: sectionsMessage(profile, achievements, experience)};
+      // Explicit choices that work are remembered for this CV, for every application and the Export pack.
+      if ((options.wordFile || options.profileHeading || options.achievementsHeading) && typeof store.savePreferences === 'function') {
+        store.savePreferences(found.roleCode, {wordFile: found.word.match === 'chosen' ? found.word.name : '', ...found.chosen});
+      }
       return {...base, ready: true, roleOrder: use.experience ? use.experience.roles.map(r => r.bullets) : [], ...draftTailoredCv({profile: use.profile.paragraphs, achievements: use.achievements ? use.achievements.paragraphs : null, roles: use.experience ? use.experience.roles : [], selected: selectedEvidence(found.review), keywords: jobKeywords(found.review)})};
     },
 
     async build(reviewId, request) {
       if (!request || typeof request !== 'object' || Array.isArray(request)) fail('An explicit build request is required.');
-      const {profile, achievements = null, roles = null, expectedSha256, expectedRoleCode, profileHeading = '', achievementsHeading = ''} = request;
-      const found = await inspect(reviewId, {profileHeading, achievementsHeading});
+      const {profile, achievements = null, roles = null, expectedSha256, expectedRoleCode, profileHeading = '', achievementsHeading = '', wordFile = ''} = request;
+      const found = await inspect(reviewId, {profileHeading, achievementsHeading, wordFile});
       if (expectedRoleCode !== found.roleCode) fail('The CV selection changed. Draft again for the current CV.', 409);
+      if (found.missingWord) fail('The Word version of this CV is not available. Draft again.', 409);
       if (expectedSha256 !== found.sha256) fail(MESSAGES.CV_VERSION_CHANGED, 409);
       const use = usable(found.sections);
       if (!use.profile || (achievements !== null && !use.achievements) || (roles !== null && !use.experience)) fail(MESSAGES.CV_SECTIONS_NOT_FOUND, 409);
@@ -123,6 +153,35 @@ export function createCvTailoringService({reviews, cvLibrary, worker, cvFolder, 
       const bytes = Buffer.from(built.data, 'base64');
       return store.save({reviewId, roleCode: found.roleCode, baseName: found.name, baseSha256: found.sha256, profile: check.profile,
         achievements: check.roles ? {achievements: check.achievements, roles: check.roles} : check.achievements, bytes, sha256: sha(bytes)});
+    },
+
+    // Read-only check of every CV in the library: Word file found, and sections recognised. No CV is changed.
+    async checkLibrary() {
+      const rows = [];
+      for (const entry of await libraryEntries()) {
+        const roleCode = String(entry?.role_code || ''), saved = preferences(roleCode);
+        const row = {roleCode, roleName: entry?.role_name || '', pdf: entry?.local_path || '', word: '', match: '', label: '', sections: '', ready: false, problem: ''};
+        try {
+          const word = await locate(entry.local_path, saved.wordFile || '');
+          Object.assign(row, {word: word.name, match: word.match, label: MATCH_LABELS[word.match] || word.match});
+          if (!word.relativePath) {
+            row.problem = word.match === 'choose' ? `Several Word files in "${word.folder}"; open an application with this CV and choose one.` : `No Word file in "${word.folder}".`;
+          } else {
+            const result = await call({action: 'sections', relativePath: word.relativePath, expectedHash: null, ...chosenHeadings(saved)});
+            const use = usable(result.sections);
+            row.sections = summary(result.sections);
+            row.ready = Boolean(use.profile && (use.achievements || use.experience));
+            if (!row.ready) row.problem = sectionsMessage(result.sections?.profile, result.sections?.achievements, result.sections?.experience).replace(' Choose the headings your CV uses below, then draft again.', ' Open an application with this CV to choose its headings.');
+          }
+        } catch (error) { row.problem = error.statusCode ? error.message : 'Could not be checked.'; }
+        rows.push(row);
+      }
+      return {checked: rows.length, ready: rows.filter(r => r.ready).length, rows};
+    },
+
+    // Word file for the Export pack: the same lookup and saved choice as Tailored CV.
+    async wordPathForExport(roleCode, libraryPath) {
+      return (await locate(libraryPath, preferences(roleCode).wordFile || '')).relativePath;
     },
 
     latest: reviewId => store.latest(reviewId),
