@@ -60,39 +60,59 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
 
   function render(data) {
     editor.textContent = '';
-    const profile = el(doc, 'textarea', {id: 'tailored-profile', rows: '6', 'aria-describedby': 'tailored-profile-help'});
+    const parts = [];
+    const profile = el(doc, 'textarea', {id: 'tailored-profile', rows: '7', 'aria-describedby': 'tailored-profile-help'});
     profile.value = data.profile.join('\n\n');
-    const bullets = el(doc, 'textarea', {id: 'tailored-achievements', rows: '9', 'aria-describedby': 'tailored-achievements-help'});
-    bullets.value = data.achievements.map(a => a.text).join('\n');
-    const hints = [];
-    if (data.keywordsToWorkIn.length) hints.push(el(doc, 'p', {'data-tailored-hints': '', text: 'In your evidence but not yet in the draft: ' + data.keywordsToWorkIn.join(', ') + '.'}));
-    if (data.keywordGaps.length) hints.push(el(doc, 'p', {class: 'tailored-cv-note', text: 'Job keywords with no evidence in these sections (not added): ' + data.keywordGaps.join(', ') + '.'}));
-    const list = el(doc, 'ul', {'data-tailored-suggestions': ''});
-    for (const s of data.suggestions) {
-      const add = el(doc, 'button', {type: 'button', text: 'Add'});
-      add.addEventListener('click', () => { bullets.value = (bullets.value.trim() ? bullets.value.trim() + '\n' : '') + s.text; add.disabled = true; });
-      list.append(el(doc, 'li', {}, [add, doc.createTextNode(' ' + s.text + ' '), el(doc, 'small', {text: '(' + (SOURCE[s.source] || s.source) + ')'})]));
+    parts.push(el(doc, 'label', {for: 'tailored-profile', text: `${data.sections.profile.heading} (blank line between paragraphs)`}), profile,
+      el(doc, 'p', {id: 'tailored-profile-help', class: 'tailored-cv-note', text: 'Starts as your current wording. Edit freely; figures must already be in your CV or selected evidence.'}));
+    if (data.keywordsToWorkIn.length) parts.push(el(doc, 'p', {'data-tailored-hints': '', text: 'In your evidence but not yet in the draft: ' + data.keywordsToWorkIn.join(', ') + '.'}));
+    if (data.keywordGaps.length) parts.push(el(doc, 'p', {class: 'tailored-cv-note', text: 'Job keywords with no evidence in your CV (not added): ' + data.keywordGaps.join(', ') + '.'}));
+    if (!data.achievements && data.selected?.length) {
+      const refs = el(doc, 'ul', {'data-tailored-selected': ''});
+      for (const text of data.selected) refs.append(el(doc, 'li', {text}));
+      parts.push(el(doc, 'p', {class: 'tailored-cv-note', text: 'Achievements selected for this application (for reference when wording your summary):'}), refs);
     }
+    let bullets = null;
+    if (data.achievements) {
+      bullets = el(doc, 'textarea', {id: 'tailored-achievements', rows: '9', 'aria-describedby': 'tailored-achievements-help'});
+      bullets.value = data.achievements.map(x => x.text).join('\n');
+      const list = el(doc, 'ul', {'data-tailored-suggestions': ''});
+      for (const item of data.suggestions) {
+        const add = el(doc, 'button', {type: 'button', text: 'Add'});
+        add.addEventListener('click', () => { bullets.value = (bullets.value.trim() ? bullets.value.trim() + '\n' : '') + item.text; add.disabled = true; });
+        list.append(el(doc, 'li', {}, [add, doc.createTextNode(' ' + item.text + ' '), el(doc, 'small', {text: '(' + (SOURCE[item.source] || item.source) + ')'})]));
+      }
+      parts.push(el(doc, 'label', {for: 'tailored-achievements', text: `${data.sections.achievements.heading} (one bullet per line)`}), bullets,
+        el(doc, 'p', {id: 'tailored-achievements-help', class: 'tailored-cv-note', text: 'Ordered by relevance to this job. Bullet style and fonts are copied from your CV.'}),
+        ...(data.suggestions.length ? [el(doc, 'p', {text: 'More evidence you can add:'}), list] : []));
+    }
+    if (data.roles.length) parts.push(el(doc, 'h3', {text: `${data.sections.experience.heading}: bullets for each employer`}),
+      el(doc, 'p', {class: 'tailored-cv-note', text: 'Most relevant first. One bullet per line; delete a line to leave it out. Employers, titles and dates stay as in your CV, and a bullet cannot move to another employer. Unchanged bullets keep their exact formatting.'}));
+    const roleBoxes = data.roles.map((role, i) => {
+      const box = el(doc, 'textarea', {id: 'tailored-role-' + i, rows: String(Math.min(8, Math.max(3, role.bullets.length + 1))), 'data-tailored-role': String(i)});
+      box.value = role.bullets.map(x => x.text).join('\n');
+      const original = el(doc, 'button', {type: 'button', text: 'Back to CV order'});
+      const cvOrder = data.roleOrder?.[i];
+      if (cvOrder) original.addEventListener('click', () => { box.value = cvOrder.join('\n'); }); else original.hidden = true;
+      parts.push(el(doc, 'label', {for: box.id, text: role.title}), box, el(doc, 'div', {class: 'tailored-role-actions'}, [original]));
+      return box;
+    });
     const build = el(doc, 'button', {type: 'button', text: 'Build tailored CV (DOCX)'});
     const message = el(doc, 'p', {role: 'status', 'aria-live': 'polite', 'data-tailored-build-status': ''});
     build.addEventListener('click', async () => {
       build.disabled = true; message.textContent = 'Checking wording and building the Word file…';
       try {
-        const response = await fetchImpl(api, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({profile: parseProfile(profile.value), achievements: parseBullets(bullets.value), expectedSha256: data.baseSha256, expectedRoleCode: data.roleCode, ...(data.chosen || {})})});
+        const body = {profile: parseProfile(profile.value), expectedSha256: data.baseSha256, expectedRoleCode: data.roleCode, ...(data.chosen || {})};
+        if (bullets) body.achievements = parseBullets(bullets.value);
+        if (roleBoxes.length) body.roles = roleBoxes.map(box => parseBullets(box.value));
+        const response = await fetchImpl(api, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)});
         const result = await response.json();
         if (!response.ok || !result.ok) throw new Error(result.error || 'Tailored CV was not built.');
         message.textContent = `Tailored CV version ${result.tailored.version} built.`;
         showLatest(result.tailored);
       } catch (error) { message.textContent = error.message; } finally { build.disabled = false; }
     });
-    editor.append(
-      el(doc, 'label', {for: 'tailored-profile', text: `Profile (replaces "${data.sections.profile.heading}"; blank line between paragraphs)`}), profile,
-      el(doc, 'p', {id: 'tailored-profile-help', class: 'tailored-cv-note', text: 'Starts as your current profile. Edit freely; figures must already be in your CV or selected evidence.'}),
-      ...hints,
-      el(doc, 'label', {for: 'tailored-achievements', text: `Key achievements (replaces "${data.sections.achievements.heading}"; one bullet per line)`}), bullets,
-      el(doc, 'p', {id: 'tailored-achievements-help', class: 'tailored-cv-note', text: 'Ordered by relevance to this job. Bullet style and fonts are copied from your CV.'}),
-      ...(data.suggestions.length ? [el(doc, 'p', {text: 'More evidence you can add:'}), list] : []),
-      el(doc, 'div', {class: 'actions'}, [build]), message);
+    editor.append(...parts, el(doc, 'div', {class: 'actions'}, [build]), message);
     editor.hidden = false;
   }
 
@@ -106,7 +126,10 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
       draft = data; showLatest(data.latest);
       if (!data.ready) { editor.hidden = true; status.textContent = data.message; showChooser(data); return; }
       chooser.hidden = true;
-      status.textContent = `Drafted from ${data.baseName} (CV ${data.roleCode}). Found "${data.sections.profile.heading}" and "${data.sections.achievements.heading}". Check the wording, then build.`;
+      const sec = data.sections, found = [`"${sec.profile.heading}"`];
+      if (sec.achievements?.supported) found.push(`"${sec.achievements.heading}"`);
+      if (sec.experience?.supported) found.push(`"${sec.experience.heading}" (${sec.experience.roles} employers)`);
+      status.textContent = `Drafted from ${data.baseName} (CV ${data.roleCode}). Found ${found.join(' and ')}. Check the wording, then build.`;
       render(data);
     } catch (error) { status.textContent = error.message; } finally { draftButton.disabled = false; }
   }

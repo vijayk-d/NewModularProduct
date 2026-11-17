@@ -39,7 +39,7 @@ test('empty, oversized, markup and placeholder content is refused', () => {
   const sources = [];
   assert.equal(checkTailoredCv({profile: [], achievements: ['a'], sources}).ok, false);
   assert.equal(checkTailoredCv({profile: ['a'], achievements: Array(13).fill('b'), sources}).ok, false);
-  assert.equal(checkTailoredCv({profile: ['x'.repeat(601)], achievements: ['b'], sources}).ok, false);
+  assert.equal(checkTailoredCv({profile: ['x'.repeat(1201)], achievements: ['b'], sources}).ok, false);
   assert.equal(checkTailoredCv({profile: ['<b>x</b>'], achievements: ['b'], sources}).ok, false);
   assert.equal(checkTailoredCv({profile: ['Hi {{firstname}}'], achievements: ['b'], sources}).ok, false);
   assert.equal(checkTailoredCv({profile: 'text', achievements: ['b'], sources}).ok, false);

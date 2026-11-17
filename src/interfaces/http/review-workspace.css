@@ -194,3 +194,5 @@ html.review-workspace #polishing-model[data-workspace-choice-carrier],html.revie
 .tailored-cv ul[data-tailored-suggestions] li{margin:.35rem 0}
 .tailored-cv ul[data-tailored-suggestions] button{margin-right:.4rem}
 .tailored-cv [data-tailored-headings] select{display:block;min-width:16rem;max-width:100%;margin:.3rem 0 .5rem;padding:.4rem;font:inherit}
+.tailored-cv h3{margin:1.2rem 0 .2rem;font-size:1.05rem}
+.tailored-cv .tailored-role-actions button{font-size:.85em;padding:.2rem .55rem}

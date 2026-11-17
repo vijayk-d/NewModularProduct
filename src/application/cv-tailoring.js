@@ -45,10 +45,13 @@ export function chosenHeadings({profileHeading = '', achievementsHeading = ''} =
   return Object.fromEntries(Object.entries(out).filter(([, v]) => v));
 }
 
-export function sectionsMessage(profile, achievements) {
+export function sectionsMessage(profile, achievements, experience = null) {
   const part = (section, name) => !section ? `No ${name} heading was recognised.`
     : `Found "${section.heading}" but no text directly under it; the text may be in a text box or a separate column.`;
-  const problems = [!profile?.supported && part(profile, 'Profile'), !achievements?.supported && part(achievements, 'Key achievements')].filter(Boolean);
+  const bullets = achievements?.supported || experience?.supported ? null
+    : experience ? `Found "${experience.heading}" but no bulleted lines under its employers, and no Key achievements section.`
+    : part(achievements, 'Key achievements or Experience');
+  const problems = [!profile?.supported && part(profile, 'Profile or Summary'), bullets].filter(Boolean);
   return problems.join(' ') + ' Choose the headings your CV uses below, then draft again.';
 }
 
@@ -80,31 +83,42 @@ export function createCvTailoringService({reviews, cvLibrary, worker, cvFolder, 
     return {...target, chosen, name: result.name, sha256: result.sha256, sections: result.sections};
   }
 
+  const usable = sections => {
+    const {profile, achievements, experience} = sections || {};
+    return {profile: profile?.supported ? profile : null, achievements: achievements?.supported ? achievements : null, experience: experience?.supported ? experience : null};
+  };
+
   return {
     async draft(reviewId, headings = {}) {
       const found = await inspect(reviewId, headings);
-      const {profile, achievements} = found.sections || {};
+      const {profile, achievements, experience} = found.sections || {};
+      const use = usable(found.sections);
       const latest = store.latest(reviewId);
       const base = {reviewId, roleCode: found.roleCode, baseName: found.name, baseSha256: found.sha256, latest, chosen: found.chosen, headings: found.sections?.headings || [],
         sections: {profile: profile ? {heading: profile.heading, lines: profile.paragraphs.length, supported: profile.supported} : null,
-          achievements: achievements ? {heading: achievements.heading, lines: achievements.paragraphs.length, bullets: achievements.bullets, supported: achievements.supported} : null}};
-      if (!profile?.supported || !achievements?.supported) return {...base, ready: false, message: sectionsMessage(profile, achievements)};
-      return {...base, ready: true, ...draftTailoredCv({profile: profile.paragraphs, achievements: achievements.paragraphs, selected: selectedEvidence(found.review), keywords: jobKeywords(found.review)})};
+          achievements: achievements ? {heading: achievements.heading, lines: achievements.paragraphs.length, bullets: achievements.bullets, supported: achievements.supported} : null,
+          experience: experience ? {heading: experience.heading, roles: experience.roles.length, supported: experience.supported} : null}};
+      if (!use.profile || (!use.achievements && !use.experience)) return {...base, ready: false, message: sectionsMessage(profile, achievements, experience)};
+      return {...base, ready: true, roleOrder: use.experience ? use.experience.roles.map(r => r.bullets) : [], ...draftTailoredCv({profile: use.profile.paragraphs, achievements: use.achievements ? use.achievements.paragraphs : null, roles: use.experience ? use.experience.roles : [], selected: selectedEvidence(found.review), keywords: jobKeywords(found.review)})};
     },
 
     async build(reviewId, request) {
       if (!request || typeof request !== 'object' || Array.isArray(request)) fail('An explicit build request is required.');
-      const {profile, achievements, expectedSha256, expectedRoleCode, profileHeading = '', achievementsHeading = ''} = request;
+      const {profile, achievements = null, roles = null, expectedSha256, expectedRoleCode, profileHeading = '', achievementsHeading = ''} = request;
       const found = await inspect(reviewId, {profileHeading, achievementsHeading});
       if (expectedRoleCode !== found.roleCode) fail('The CV selection changed. Draft again for the current CV.', 409);
       if (expectedSha256 !== found.sha256) fail(MESSAGES.CV_VERSION_CHANGED, 409);
-      const s = found.sections || {};
-      if (!s.profile?.supported || !s.achievements?.supported) fail(MESSAGES.CV_SECTIONS_NOT_FOUND, 409);
-      const check = checkTailoredCv({profile, achievements, sources: [...s.profile.paragraphs, ...s.achievements.paragraphs, ...selectedEvidence(found.review)]});
+      const use = usable(found.sections);
+      if (!use.profile || (achievements !== null && !use.achievements) || (roles !== null && !use.experience)) fail(MESSAGES.CV_SECTIONS_NOT_FOUND, 409);
+      const roleSources = use.experience ? use.experience.roles : [];
+      const check = checkTailoredCv({profile, achievements, roles, roleSources,
+        sources: [...use.profile.paragraphs, ...(use.achievements?.paragraphs || []), ...roleSources.flatMap(r => r.bullets), ...selectedEvidence(found.review)]});
       if (!check.ok) fail(check.problems.join(' '), 400, 'CV_TAILORING_CHECK');
-      const built = await call({action: 'tailor', relativePath: found.relativePath, expectedHash: found.sha256, profile: check.profile, achievements: check.achievements, ...found.chosen});
+      const built = await call({action: 'tailor', relativePath: found.relativePath, expectedHash: found.sha256, profile: check.profile,
+        ...(check.achievements ? {achievements: check.achievements} : {}), ...(check.roles ? {roles: check.roles} : {}), ...found.chosen});
       const bytes = Buffer.from(built.data, 'base64');
-      return store.save({reviewId, roleCode: found.roleCode, baseName: found.name, baseSha256: found.sha256, profile: check.profile, achievements: check.achievements, bytes, sha256: sha(bytes)});
+      return store.save({reviewId, roleCode: found.roleCode, baseName: found.name, baseSha256: found.sha256, profile: check.profile,
+        achievements: check.roles ? {achievements: check.achievements, roles: check.roles} : check.achievements, bytes, sha256: sha(bytes)});
     },
 
     latest: reviewId => store.latest(reviewId),
