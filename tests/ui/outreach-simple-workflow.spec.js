@@ -1,7 +1,7 @@
 import { test,expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-async function fixture(page){
+async function fixture(page,opts={}){
  const writes=[],drafts=[],items=[];let linked=false;
  const contact={id:'c',firstName:'Zoe',lastName:'Jones',fullName:'Zoe Jones',selectedEmail:'zoe.jones@business.test',emailCandidates:['zoe.jones@business.test','jones.zoe@business.test'],emailSource:'inferred'};
  await page.route('http://127.0.0.1:31299/**',async route=>{
@@ -16,7 +16,7 @@ async function fixture(page){
    for(const row of p.rows)items.push({id:'q'+items.length,status:'new',email:row.email,fullName:row.firstName+' '+row.lastName,subject:p.subject,bodyPlainText:p.bodyPlainText,emailSource:'inferred'});
    body={ok:true,added:p.rows.length,updated:0,duplicates:0,items:items.slice(-p.rows.length)};
   }else if(url.pathname==='/api/outreach-queue/draft-one'){
-   const p=route.request().postDataJSON();drafts.push(p);items.find(i=>i.id===p.queueId).status='drafted';body={ok:true,created:true,draftId:'test-draft',sendingAccount:'sender@business.test'};
+   if(opts.delayMs)await new Promise(r=>setTimeout(r,opts.delayMs));const p=route.request().postDataJSON();drafts.push(p);items.find(i=>i.id===p.queueId).status='drafted';body={ok:true,created:true,draftId:'test-draft',sendingAccount:'sender@business.test'};
   }else if(url.pathname.startsWith('/api/'))body={ok:true,models:[]};
   else{await route.fulfill({contentType:'text/html',body:`<main><section class="review-section"><table><thead></thead><tbody class="linked-imported-contacts-body"></tbody></table><div class="linked-contact-actions"></div><form action="/recruiter-contacts/link"><input type="hidden" name="reviewId" value="r"><table><thead></thead><tbody class="available-imported-contacts-body"></tbody></table><button type="submit">Link selected contacts</button></form><div id="cover-letter-draft" contenteditable="true">Dear Wrong,<br><br>I led delivery.<br><br>Warm regards,<br>Candidate</div><input id="current-cover-letter-subject" value="Application | Vijay DAFAL"><input id="email-domain-input" value="business.test"></section></main><script type="module" src="/outreach-queue.js"></script>`});return;}
   await route.fulfill({contentType:'application/json',body:JSON.stringify(body)});
@@ -36,4 +36,16 @@ test('custom row generates an editable address',async({page})=>{
  await fixture(page);await page.getByRole('button',{name:'Add contact row'}).click();const row=page.locator('.available-imported-contacts-body tr').last();
  await row.locator('.candidate-first').fill('Alex');await row.locator('.candidate-last').fill('Smith');await row.getByRole('button',{name:'Suggest email (inferred)',exact:true}).click();
  await expect(row.locator('.candidate-email')).toHaveValue('alex.smith@business.test');await expect(row.locator('[type=checkbox]')).toBeChecked();
+});
+test('a progress bar shows while a Gmail operation runs, and the letter stays editable',async({page})=>{
+ await fixture(page,{delayMs:1500});const rows=page.locator('.available-imported-contacts-body tr');await expect(rows).toHaveCount(2);
+ await rows.nth(1).locator('[type=checkbox]').check();await page.getByRole('button',{name:/Link and add selected to queue/}).click();
+ await expect(page.locator('.outreach-queue-body tr')).toHaveCount(1);
+ const progress=page.locator('[data-queue-progress]');await expect(progress).toBeHidden();
+ await page.getByRole('button',{name:'Draft for Zoe Jones',exact:true}).click();
+ await expect(progress).toBeVisible();await expect(page.locator('.outreach-queue-status')).toHaveClass(/is-busy/);
+ await expect(page.getByRole('button',{name:'Draft for Zoe Jones',exact:true})).toBeDisabled();
+ await page.locator('#current-cover-letter-subject').fill('Still editable');await expect(page.locator('#current-cover-letter-subject')).toHaveValue('Still editable');
+ await expect(page.locator('.outreach-queue-status')).toContainText('1 draft(s) created');await expect(progress).toBeHidden();
+ await expect(page.locator('.outreach-queue-status')).not.toHaveClass(/is-busy/);
 });
