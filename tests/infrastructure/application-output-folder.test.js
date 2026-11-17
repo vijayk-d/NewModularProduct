@@ -4,7 +4,7 @@ import {mkdtemp, mkdir, readFile, readdir, rm, writeFile} from 'node:fs/promises
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {once} from 'node:events';
-import {checkOutputFolder, createApplicationOutputFolder, versionedName} from '../../src/infrastructure/applications/application-output-folder.js';
+import {checkOutputFolder, createApplicationOutputFolder, copyName} from '../../src/infrastructure/applications/application-output-folder.js';
 import {createApplicationPackExporter} from '../../src/infrastructure/applications/application-pack-exporter.js';
 import {createDurableReviewStore, createMemoryReviewRepository} from '../../src/application/durable-review-store.js';
 import {reviewEditorState} from '../../src/application/save-application-review.js';
@@ -46,11 +46,15 @@ test('saving writes into the application folder and never overwrites', async t =
   const first = await folder.save('Example-Delivery-Manager', [{name: 'Test_Candidate_Delivery_Manager_CV.docx', bytes: Buffer.from('one')}]);
   assert.deepEqual(first.files, ['Test_Candidate_Delivery_Manager_CV.docx']);
   const second = await folder.save('Example-Delivery-Manager', [{name: 'Test_Candidate_Delivery_Manager_CV.docx', bytes: Buffer.from('two')}]);
-  assert.deepEqual(second.files, ['Test_Candidate_Delivery_Manager_CV_v2.docx']);
+  assert.deepEqual(second.files, ['Test_Candidate_Delivery_Manager_CV_copy2.docx']);
+  // Saving identical bytes again writes nothing and says so.
+  const same = await folder.save('Example-Delivery-Manager', [{name: 'Test_Candidate_Delivery_Manager_CV.docx', bytes: Buffer.from('one')}]);
+  assert.deepEqual(same, {folder: same.folder, files: ['Test_Candidate_Delivery_Manager_CV.docx'], unchanged: ['Test_Candidate_Delivery_Manager_CV.docx']});
   const where = path.join(dir, 'Example-Delivery-Manager');
   assert.equal(await readFile(path.join(where, 'Test_Candidate_Delivery_Manager_CV.docx'), 'utf8'), 'one');
-  assert.equal(await readFile(path.join(where, 'Test_Candidate_Delivery_Manager_CV_v2.docx'), 'utf8'), 'two');
-  assert.equal(versionedName('a.txt', 3), 'a_v3.txt');
+  assert.equal(await readFile(path.join(where, 'Test_Candidate_Delivery_Manager_CV_copy2.docx'), 'utf8'), 'two');
+  assert.equal((await readdir(where)).length, 2);
+  assert.equal(copyName('a.txt', 3), 'a_copy3.txt');
 });
 
 test('unsafe folder or file names are refused and nothing is written', async t => {
@@ -87,7 +91,8 @@ test('Save pack to folder writes the pack files, not a ZIP, and versions repeats
   assert.deepEqual((await readdir(where)).sort(), [...data.files].sort());
   assert.match(await readFile(path.join(where, 'cover-letter.txt'), 'utf8'), /Dear Hiring Manager\/Talent Recruiter,/);
   const again = await (await post('/api/application-reviews/export-to-folder', f.request)).json();
-  assert.ok(again.files.includes('cover-letter_v2.txt'));
+  assert.deepEqual([...again.unchanged].sort(), [...data.files].sort(), 'an identical pack is not saved twice');
+  assert.deepEqual((await readdir(where)).sort(), [...data.files].sort());
 });
 
 test('Save to folder routes refuse cross-origin or missing-origin calls and write nothing', async t => {
@@ -108,9 +113,18 @@ test('Save tailored CV to folder uses the upload-friendly name in the applicatio
   const response = await post('/api/reviews/r/tailored-cv/1/save-to-folder', {});
   const data = await response.json();
   assert.equal(response.status, 200, JSON.stringify(data));
-  assert.deepEqual(data.files, ['Test_Candidate_Delivery_Manager_CV.docx']);
-  assert.equal(await readFile(path.join(dir, 'Example-Delivery-Manager', 'Test_Candidate_Delivery_Manager_CV.docx'), 'utf8'), 'docx bytes');
+  assert.deepEqual(data.files, ['Test_Candidate_Delivery_Manager_CV_v1.docx']);
+  assert.equal(await readFile(path.join(dir, 'Example-Delivery-Manager', 'Test_Candidate_Delivery_Manager_CV_v1.docx'), 'utf8'), 'docx bytes');
   assert.equal((await post('/api/reviews/r/tailored-cv/9/save-to-folder', {})).status, 404);
+});
+
+test('a tailored version with a PDF saves both files under the same built version number', async t => {
+  const dir = await temp(t), f = packFixture();
+  const service = {file: () => ({bytes: Buffer.from('docx bytes'), roleCode: 'DM'}), pdfBytes: async (id, version) => (version === 7 ? Buffer.from('%PDF-7') : null)};
+  const {post} = await serve(t, {applicationReviewStore: f.store, cvTailoringService: service, candidateDisplayName: 'Test Candidate', applicationOutputFolder: createApplicationOutputFolder({folder: dir})});
+  const data = await (await post('/api/reviews/r/tailored-cv/7/save-to-folder', {})).json();
+  assert.deepEqual(data.files, ['Test_Candidate_Delivery_Manager_CV_v7.docx', 'Test_Candidate_Delivery_Manager_CV_v7.pdf']);
+  assert.equal(await readFile(path.join(dir, 'Example-Delivery-Manager', 'Test_Candidate_Delivery_Manager_CV_v7.pdf'), 'utf8'), '%PDF-7');
 });
 
 test('an unset folder reaches the page as a how-to-set message', async t => {

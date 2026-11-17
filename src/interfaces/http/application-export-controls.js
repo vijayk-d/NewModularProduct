@@ -39,7 +39,7 @@ export function attachApplicationExportControls({doc,bar,save,getVersions,isDirt
  folderButton.addEventListener('click',async()=>{
   if(folderButton.disabled)return;folderButton.disabled=true;button.disabled=true;select.disabled=true;message.textContent='Saving and writing files to the output folder…';
   const includeCv=select.value!=='none';
-  try{const r=await saveToFolderFromEditor({save,getVersions,isDirty,reviewId,fetchImpl,includeCv,cvFormat:includeCv?select.value:'saved',getCvRoleCode:cvCode});message.textContent=`Saved ${r.files.length} file(s) in ${r.folder}. Not an ATS submission.`;}
+  try{const r=await saveToFolderFromEditor({save,getVersions,isDirty,reviewId,fetchImpl,includeCv,cvFormat:includeCv?select.value:'saved',getCvRoleCode:cvCode});const fresh=r.files.length-(r.unchanged?.length||0);message.textContent=`${fresh?`Saved ${fresh} file(s)`:'No new files'}${r.unchanged?.length?`; ${r.unchanged.length} already saved and unchanged`:''} in ${r.folder}. Not an ATS submission.`;}
   catch(e){message.textContent=e.message+' Queue/Gmail unchanged.';}
   finally{folderButton.disabled=false;button.disabled=false;select.disabled=false;}
  });

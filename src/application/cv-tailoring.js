@@ -170,6 +170,15 @@ export function createCvTailoringService({reviews, cvLibrary, worker, cvFolder, 
   return {
     makePdf,
 
+    // The recorded PDF of a version, checked against its hash; null when that version has no PDF.
+    async pdfBytes(reviewId, version) {
+      const pdf = store.pdf(reviewId, version);
+      if (!pdf || !pdfFiles) return null;
+      const bytes = await pdfFiles.read(pdf.relativePath);
+      if (sha(bytes) !== pdf.sha256) fail('The saved PDF of this version changed. Click Make PDF on a new build.', 409, 'TAILORED_PDF_CHANGED');
+      return bytes;
+    },
+
     // Built versions with their PDF status, and which one recruiter emails attach (null = the selected library CV).
     versions(reviewId) {
       if (!reviews.get(reviewId)) fail('Saved application not found.', 404);
