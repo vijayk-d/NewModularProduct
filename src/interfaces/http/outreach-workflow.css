@@ -39,3 +39,10 @@
  .review-workspace table.contact-editor-table td.contact-email-cell input.candidate-email{width:calc(28.5ch + 16.5px)!important;min-width:0!important;max-width:none}
  .review-workspace table.contact-editor-table td.contact-role-cell input.candidate-role{width:calc(47.5ch + 27.5px)!important;min-width:0!important;max-width:none}
 }
+/* Busy look: indeterminate progress bar and a spinner before the status text. */
+.busy-bar{position:relative;height:4px;margin:.35rem 0;border-radius:2px;background:#e2e8f0;overflow:hidden}
+.busy-bar::after{content:"";position:absolute;inset:0 auto 0 -40%;width:40%;background:#2563eb;border-radius:2px;animation:busy-slide 1.2s ease-in-out infinite}
+.is-busy::before{content:"";display:inline-block;width:.85em;height:.85em;margin-right:.45em;vertical-align:-.1em;border:2px solid #93c5fd;border-top-color:#1d4ed8;border-radius:50%;animation:busy-spin .8s linear infinite}
+@keyframes busy-slide{from{left:-40%}to{left:100%}}
+@keyframes busy-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.busy-bar::after{animation:none;left:0;width:100%;opacity:.5}.is-busy::before{animation:none}}

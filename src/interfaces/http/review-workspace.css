@@ -206,3 +206,10 @@ html.review-workspace #polishing-model[data-workspace-choice-carrier],html.revie
 .tailored-cv [data-tailored-library] table{width:100%;border-collapse:collapse;margin-top:.5rem;font-size:.92em}
 .tailored-cv [data-tailored-library] th,.tailored-cv [data-tailored-library] td{border-bottom:1px solid #e2e8f0;padding:.35rem .4rem;text-align:left;vertical-align:top;overflow-wrap:anywhere}
 .tailored-cv [data-tailored-library] tr[data-ready="false"] td:last-child{color:#9a3412}
+/* Busy look: indeterminate progress bar and a spinner before the status text. */
+.busy-bar{position:relative;height:4px;margin:.35rem 0;border-radius:2px;background:#e2e8f0;overflow:hidden}
+.busy-bar::after{content:"";position:absolute;inset:0 auto 0 -40%;width:40%;background:#2563eb;border-radius:2px;animation:busy-slide 1.2s ease-in-out infinite}
+.is-busy::before{content:"";display:inline-block;width:.85em;height:.85em;margin-right:.45em;vertical-align:-.1em;border:2px solid #93c5fd;border-top-color:#1d4ed8;border-radius:50%;animation:busy-spin .8s linear infinite}
+@keyframes busy-slide{from{left:-40%}to{left:100%}}
+@keyframes busy-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.busy-bar::after{animation:none;left:0;width:100%;opacity:.5}.is-busy::before{animation:none}}

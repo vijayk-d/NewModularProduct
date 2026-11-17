@@ -22,7 +22,7 @@ Each build is saved as a new version. You can download it as a DOCX, save it to 
 After drafting, **Polish wording (paid)…** asks a model to improve the wording of the Summary, the bullets under each employer and the Key achievements (if your CV has them), for this job, in British English.
 
 1. **Estimate (free).** The page shows the polishing models with an estimated cost for this request. The default is this application's polishing model (the same choice cards as letter polishing, otherwise the catalogue default). Nothing is sent yet.
-2. **Confirm.** **Send to <model> (about $…)** sends one request. If you change the wording or the model after the estimate, the request is refused and you estimate again. There are no automatic retries; a failure changes nothing.
+2. **Confirm.** **Send to <model> (about $…)** sends one request. While it runs, the Polish panel shows a spinner and a moving progress bar and its buttons are locked, so it cannot be sent twice; the boxes above stay editable. If you change the wording or the model after the estimate, the request is refused and you estimate again. There are no automatic retries; a failure changes nothing.
 3. **Review.** The polished wording replaces the text in the boxes only. Nothing is built. Under the boxes, **Before and after** shows one table per section (Summary, each employer, Key achievements): your wording before the polish, the polished wording and the change (Unchanged, Reworded, Added or Removed), with the number of changed lines. For each section choose **Use previous wording** or **Use polished wording**, or edit the box. **Undo polish** brings back all your previous wording.
 4. **Build** as usual.
 

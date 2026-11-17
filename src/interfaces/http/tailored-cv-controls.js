@@ -99,10 +99,13 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
     const start = el(doc, 'button', {type: 'button', text: 'Polish wording (paid)…'});
     const choice = el(doc, 'div', {'data-tailored-polish-choice': '', hidden: ''});
     const status = el(doc, 'p', {role: 'status', 'aria-live': 'polite', 'data-tailored-polish-status': ''});
+    const progress = el(doc, 'div', {class: 'busy-bar', role: 'progressbar', 'aria-label': 'Polishing in progress. Please wait; do not click again.', 'data-tailored-polish-progress': '', hidden: ''});
+    // Busy look for this panel only: the boxes above stay editable.
+    const busy = on => { progress.hidden = !on; status.classList.toggle('is-busy', on); panel.setAttribute('aria-busy', String(on)); };
     const result = el(doc, 'div', {'data-tailored-polish-result': '', hidden: ''});
     panel.append(el(doc, 'h3', {text: 'Polish wording (optional, paid)'}),
       el(doc, 'p', {class: 'tailored-cv-note', text: 'Sends the wording above, your CV lines and the selected achievements to the polishing model you choose. No web search. You see the estimated cost first; nothing is sent until you confirm, and nothing is built until you click Build.'}),
-      el(doc, 'div', {class: 'actions'}, [start]), choice, status, result);
+      el(doc, 'div', {class: 'actions'}, [start]), choice, status, progress, result);
     const values = () => ({profile: profile.value, bullets: bullets ? bullets.value : null, roles: roleBoxes.map(b => b.value)});
     const restore = v => { profile.value = v.profile; if (bullets) bullets.value = v.bullets; roleBoxes.forEach((b, i) => { b.value = v.roles[i]; }); };
     let estimate = null;
@@ -113,7 +116,7 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
       return data;
     }
     async function runEstimate(model) {
-      start.disabled = true; status.textContent = 'Estimating the cost (nothing is sent)…';
+      start.disabled = true; busy(true); status.textContent = 'Estimating the cost (nothing is sent)…';
       try {
         estimate = await post('/polish/estimate', {...currentBody(), ...(model ? {model} : {})});
         choice.textContent = '';
@@ -125,12 +128,12 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
         const send = el(doc, 'button', {type: 'button', 'data-tailored-polish-send': '', text: `Send to ${chosen.label} (about $${chosen.estimatedTokenCostUsd.toFixed(4)})`});
         const cancel = el(doc, 'button', {type: 'button', text: 'Cancel'});
         cancel.addEventListener('click', () => { choice.hidden = true; estimate = null; status.textContent = 'Cancelled. Nothing was sent.'; });
-        send.addEventListener('click', () => runPolish(send, select));
+        send.addEventListener('click', () => runPolish(send, select, cancel));
         choice.append(el(doc, 'label', {for: select.id, text: 'Polishing model'}), select,
           el(doc, 'p', {class: 'tailored-cv-note', text: `About ${estimate.estimatedInputTokens} input tokens, up to ${estimate.outputTokenBudget} output tokens. ${estimate.limitation}`}),
           el(doc, 'div', {class: 'actions'}, [send, cancel]));
         choice.hidden = false; status.textContent = 'Check the model and estimated cost, then send or cancel.';
-      } catch (error) { choice.hidden = true; status.textContent = error.message; } finally { start.disabled = false; }
+      } catch (error) { choice.hidden = true; status.textContent = error.message; } finally { start.disabled = false; busy(false); }
     }
     // One table per box: your wording before the polish next to the polished wording, with a choice per box.
     function comparison(before) {
@@ -159,8 +162,8 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
       }
       return wrap;
     }
-    async function runPolish(send, select) {
-      send.disabled = true; select.disabled = true; start.disabled = true; status.textContent = 'Polishing… (one paid request, no retries)';
+    async function runPolish(send, select, cancel) {
+      send.disabled = true; select.disabled = true; cancel.disabled = true; start.disabled = true; busy(true); status.textContent = 'Polishing… waiting for the model (one paid request, no retries). You can keep editing other sections.';
       try {
         const data = await post('/polish', {...currentBody(), model: estimate.model, confirmedCostProof: estimate.costProof});
         const before = values();
@@ -176,7 +179,7 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
         const undo = el(doc, 'button', {type: 'button', text: 'Undo polish'});
         undo.addEventListener('click', () => { restore(before); result.hidden = true; status.textContent = 'Your previous wording is back.'; });
         result.append(el(doc, 'div', {class: 'actions'}, [undo])); result.hidden = false;
-      } catch (error) { status.textContent = error.message; send.disabled = false; select.disabled = false; } finally { start.disabled = false; }
+      } catch (error) { status.textContent = error.message; send.disabled = false; select.disabled = false; cancel.disabled = false; } finally { start.disabled = false; busy(false); }
     }
     start.addEventListener('click', () => runEstimate(''));
     return panel;

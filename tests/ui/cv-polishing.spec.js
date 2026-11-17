@@ -11,6 +11,7 @@ const test = base.extend({polish: ['good', {option: true}], app: async ({polish}
   const calls = [];
   const polisher = {available: polish !== 'off', buildRequest: buildCvPolishApiRequest, async polish(request, model) {
     calls.push({request, model});
+    if (polish === 'slow') await new Promise(r => setTimeout(r, 1500));
     return {result: {summary: [polish === 'figures' ? 'Saved £9M for clients.' : 'Polished delivery leader for Agile programmes.'], keyAchievements: ['Led a 40-person Agile programme.', 'Cut costs by 10% through vendor consolidation.'], employers: [], notes: 'Kept your figures.'},
       response: {model, usage: {cost: {total_cost: 0.0003}}}, durationMs: 3};
   }};
@@ -94,5 +95,27 @@ test.describe('with polishing turned off', () => {
     await expect(section.locator('[data-tailored-polish-status]')).toContainText('ENABLE_COVER_LETTER_REFINEMENT');
     await expect(section.locator('[data-tailored-polish-send]')).toHaveCount(0);
     expect(app.calls).toHaveLength(0);
+  });
+});
+
+test.describe('while the model is working', () => {
+  test.use({polish: 'slow'});
+  test('the Polish panel shows it is busy and the boxes stay editable', async ({page, app}) => {
+    const section = await drafted(page, app);
+    const progress = section.locator('[data-tailored-polish-progress]');
+    await section.getByRole('button', {name: 'Polish wording (paid)…'}).click();
+    await section.locator('[data-tailored-polish-send]').click();
+    await expect(progress).toBeVisible();
+    await expect(section.locator('[data-tailored-polish]')).toHaveAttribute('aria-busy', 'true');
+    await expect(section.locator('[data-tailored-polish-send]')).toBeDisabled();
+    await expect(section.getByRole('button', {name: 'Cancel'})).toBeDisabled();
+    await expect(section.getByRole('button', {name: 'Polish wording (paid)…'})).toBeDisabled();
+    const bullets = section.getByLabel(/^Key Achievements \(one bullet/);
+    await bullets.fill('Led a 40-person Agile programme.');
+    await expect(bullets).toHaveValue('Led a 40-person Agile programme.');
+    await expect(section.locator('[data-tailored-polish-status]')).toContainText('Check every line, then Build');
+    await expect(progress).toBeHidden();
+    await expect(section.locator('[data-tailored-polish]')).toHaveAttribute('aria-busy', 'false');
+    expect(app.calls).toHaveLength(1);
   });
 });
