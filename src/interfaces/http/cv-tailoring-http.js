@@ -1,7 +1,9 @@
 import {readFile} from 'node:fs/promises';
-import {uploadFileName} from '../../application/export-application-pack.js';
+import {uploadFileName, safeExportStem} from '../../application/export-application-pack.js';
+import {isLocalSameOrigin} from './local-write-guard.js';
 
 const ROUTE = /^\/api\/reviews\/([A-Za-z0-9_-]{1,100})\/tailored-cv(?:\/(\d{1,6})\.docx)?$/;
+const SAVE_ROUTE = /^\/api\/reviews\/([A-Za-z0-9_-]{1,100})\/tailored-cv\/(\d{1,6})\/save-to-folder$/;
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 async function jsonBody(req) {
@@ -11,7 +13,7 @@ async function jsonBody(req) {
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw Object.assign(new Error('Valid JSON required.'), {statusCode: 400}); }
 }
 
-export function createCvTailoringHandler({service, getReview, sendJson, sendText, candidateName = 'Candidate'}) {
+export function createCvTailoringHandler({service, getReview, sendJson, sendText, candidateName = 'Candidate', outputFolder = null}) {
   return async (req, res, url) => {
     const method = req.method || 'GET', route = url.pathname;
     if (method === 'GET' && route === '/tailored-cv-controls.js') {
@@ -24,6 +26,22 @@ export function createCvTailoringHandler({service, getReview, sendJson, sendText
       if (!service) { sendJson(res, 503, {ok: false, code: 'CV_TAILORING_DISABLED', error: 'Tailored CVs are unavailable in this server configuration.'}); return true; }
       try { sendJson(res, 200, {ok: true, ...(await service.checkLibrary())}); }
       catch (error) { sendJson(res, error.statusCode || 503, {ok: false, error: error.statusCode ? error.message : 'The CV check could not run.'}); }
+      return true;
+    }
+    const save = method === 'POST' && SAVE_ROUTE.exec(route);
+    if (save) {
+      // Writes the DOCX into <APPLICATION_OUTPUT_FOLDER>/<Organisation>-<Job title>/ so Word opens it without Unblock.
+      if (!isLocalSameOrigin(req)) { sendJson(res, 403, {ok: false, error: 'Saving to a folder needs this app open on this computer.'}); return true; }
+      try {
+        if (!service || !outputFolder) { sendJson(res, 503, {ok: false, code: 'CV_TAILORING_DISABLED', error: 'Save to folder is unavailable in this server configuration.'}); return true; }
+        const file = service.file(save[1], Number(save[2]));
+        if (!file) { sendJson(res, 404, {ok: false, error: 'Tailored CV version not found.'}); return true; }
+        const form = getReview?.(save[1])?.formData || {};
+        const name = uploadFileName(candidateName, form.jobTitle || file.roleCode, 'CV', '.docx');
+        sendJson(res, 200, {ok: true, ...(await outputFolder.save(safeExportStem([form.organisationName, form.jobTitle].filter(Boolean).join('-')), [{name, bytes: file.bytes}]))});
+      } catch (error) {
+        sendJson(res, error.statusCode || 503, {ok: false, code: error.code || 'CV_TAILORING_FAILED', error: error.statusCode ? error.message : 'The tailored CV could not be saved. Nothing was changed.'});
+      }
       return true;
     }
     const match = ROUTE.exec(route);

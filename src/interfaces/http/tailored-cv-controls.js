@@ -65,7 +65,20 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
     latest.textContent = '';
     if (!item) return;
     const link = el(doc, 'a', {href: api + '/' + item.version + '.docx', 'data-tailored-download': '', text: `Download tailored CV (version ${item.version}, DOCX)`});
-    latest.append(link, doc.createTextNode(` Built from ${item.baseName}. It can also go in the Export pack ("Tailored CV").`));
+    // Save to folder: the app writes the file itself, so Word opens it without the Unblock step a browser download needs.
+    const saveButton = el(doc, 'button', {type: 'button', 'data-tailored-save-folder': '', text: 'Save to folder', title: 'Write this DOCX into your application output folder (APPLICATION_OUTPUT_FOLDER). Opens in Word without Unblock.'});
+    const saveStatus = el(doc, 'span', {role: 'status', 'aria-live': 'polite', 'data-tailored-save-status': ''});
+    saveButton.addEventListener('click', async () => {
+      saveButton.disabled = true; saveStatus.textContent = ' Saving…';
+      try {
+        const response = await fetchImpl(api + '/' + item.version + '/save-to-folder', {method: 'POST', headers: {'content-type': 'application/json'}, body: '{}'});
+        const data = await response.json();
+        if (!response.ok || !data.ok) throw new Error(data.error || 'Save to folder failed. Nothing was written.');
+        saveStatus.textContent = ` Saved ${data.files.join(', ')} in ${data.folder}.`;
+      } catch (error) { saveStatus.textContent = ' ' + error.message; }
+      finally { saveButton.disabled = false; }
+    });
+    latest.append(link, doc.createTextNode(' '), saveButton, saveStatus, doc.createTextNode(` Built from ${item.baseName}. It can also go in the Export pack ("Tailored CV").`));
   };
 
   function render(data) {

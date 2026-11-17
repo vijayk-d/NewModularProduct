@@ -4,6 +4,7 @@ import {createAssignmentEvidenceStore} from '../../infrastructure/applications/s
 import {createApplicationIntelligenceStore} from '../../infrastructure/applications/sqlite-application-intelligence.js';
 import {createApplicationIntelligence} from '../../application/application-intelligence.js';
 import {createApplicationPackExporter} from '../../infrastructure/applications/application-pack-exporter.js';
+import {createApplicationOutputFolder} from '../../infrastructure/applications/application-output-folder.js';
 import {createWorkflowAutomationStore} from '../../infrastructure/applications/sqlite-workflow-automation-store.js';
 import {createOrganisationResearchService} from '../../application/organisation-research-cache.js';
 import {createTemplateCoverLetterDocuments} from '../../infrastructure/documents/template-cover-letter.js';
@@ -140,7 +141,11 @@ try{
  if(filePath)assignmentEvidenceStore=createAssignmentEvidenceStore({filePath});
 }catch{console.warn('[ASSIGNMENT_EVIDENCE] LOCAL_STORE_UNAVAILABLE');}
 
+// Save to folder: only an explicit APPLICATION_OUTPUT_FOLDER, never a default. Checked on every save; when unset the page explains how to set it.
+const applicationOutputFolder=createApplicationOutputFolder({folder:process.env.APPLICATION_OUTPUT_FOLDER||'',forbidden:[projectRoot,deployment.state,config.storage.cvFolder,'D:\\NewModularProduct-Production']});
+
 const server = createLocalServer({
+  applicationOutputFolder,
   assignmentEvidenceStore,
   applicationIntelligence,
   coverLetterRefinementMaxWords:config.application.coverLetterRefinementMaxWords,

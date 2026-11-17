@@ -210,6 +210,7 @@ export function createLocalServer({
   gmailDraftUpdatePort = null,
   jobImportService = null,
   applicationPackExporter = null,
+  applicationOutputFolder = null,
   researchOrganization = null,
   organisationResearchService = null,
   cvTailoringService = null,
@@ -421,8 +422,8 @@ export function createLocalServer({
   const handleSavedDelete=createSavedApplicationDeleteHandler({store:reviewStore,contactStore:recruiterContactStore,outreachRepository,sendJson,sendText});
   const handleOrganisationContacts=createOrganisationContactHandler({contactStore:recruiterContactStore,outreachRepository,getReview:id=>reviewStore.get(id),sendJson});
   const letterUpdates=outreachRepository?createUnsentLetterUpdateService({getReview:id=>reviewStore.get(id),repository:outreachRepository,draftUpdates:gmailDraftUpdatePort||createGmailDraftUpdatePort()}):null;
-  const handleApplications=createApplicationReviewHandler({store:reviewStore,renderReview:renderCompleteReview,sendJson,sendHtml,sendText,applicationPackExporter,letterUpdates});
-  const handleCvTailoring=createCvTailoringHandler({service:cvTailoringService,getReview:id=>reviewStore.get(id),sendJson,sendText,candidateName:candidateDisplayName});
+  const handleApplications=createApplicationReviewHandler({store:reviewStore,renderReview:renderCompleteReview,sendJson,sendHtml,sendText,applicationPackExporter,letterUpdates,outputFolder:applicationOutputFolder});
+  const handleCvTailoring=createCvTailoringHandler({service:cvTailoringService,getReview:id=>reviewStore.get(id),sendJson,sendText,candidateName:candidateDisplayName,outputFolder:applicationOutputFolder});
   const handleCvDocument=createCvDocumentHandler({store:reviewStore,inventory:cvInventoryRepository,adapter:cvDocumentAdapter});
   const handleIntelligence=createApplicationIntelligenceHttp({service:applicationIntelligence});
   const handleOutreach = createOutreachHttpHandler({

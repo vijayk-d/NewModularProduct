@@ -34,8 +34,9 @@ export function zipStored(files){
 export function createApplicationPackExporter({cvFolder,documents=null,cvInventory=null,candidateName='Candidate',recordExport=null,tailoredCv=null,wordPathFor=null}={}){
  const readCv=createExportCvReader(cvFolder);let busy=false;
  const cvLibrary=cvInventory?async()=>{const data=await cvInventory.load();return data?.cv_inventory?.cvs||data?.cvs||[];}:null;
- return async({store,request})=>{if(busy)throw Object.assign(new Error('Another pack is exporting. Wait, then retry.'),{statusCode:409,code:'APPLICATION_EXPORT_BUSY'});busy=true;try{const result=await exportApplicationPack({store,request,readCv,pack:zipStored,documents,cvLibrary,candidateName,tailoredCv,wordPathFor,word:text=>createCvDocumentAdapter({cvFolder}).word(text)});
+ // asFiles: the same checked files as the ZIP, unzipped, for Save pack to folder.
+ return async({store,request,asFiles=false})=>{if(busy)throw Object.assign(new Error('Another pack is exporting. Wait, then retry.'),{statusCode:409,code:'APPLICATION_EXPORT_BUSY'});busy=true;try{const result=await exportApplicationPack({store,request,readCv,pack:asFiles?files=>{zipStored(files);return files;}:zipStored,documents,cvLibrary,candidateName,tailoredCv,wordPathFor,word:text=>createCvDocumentAdapter({cvFolder}).word(text)});
   // Recorded only after a complete pack, for advert status. A recording failure never blocks the download.
   if(typeof recordExport==='function'){try{recordExport(request.reviewId,store.get(request.reviewId)?.formData?.jobAdvertLink||'');}catch{console.warn('[EXPORT] PORTAL_EXPORT_NOT_RECORDED');}}
-  return result;}finally{busy=false;}};
+  return asFiles?{stem:result.stem,files:result.bytes}:result;}finally{busy=false;}};
 }
