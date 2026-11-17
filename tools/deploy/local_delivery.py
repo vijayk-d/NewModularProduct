@@ -17,8 +17,29 @@ def run(args,cwd=None,env=None,log=None):
  r=subprocess.run([str(x) for x in args],cwd=cwd or ROOT,env=env,capture_output=True)
  if log:
   with log.open('ab') as f:f.write(('COMMAND: '+' '.join(map(str,args))+'\n').encode()+r.stdout+r.stderr+b'\n')
- if r.returncode:fail('Command failed. '+('See '+str(log) if log else r.stderr.decode('utf-8','replace')[-1200:]))
+ if r.returncode:fail('Command failed. '+low_memory_hint(r.stdout+r.stderr)+('See '+str(log) if log else r.stderr.decode('utf-8','replace')[-1200:]))
  return r.stdout.decode('utf-8','replace').strip()
+# Release verification needs free memory. A nearly full Windows commit charge makes Node and Chromium crash midway,
+# so check first and say so plainly instead of failing with a crash. NMP_MIN_FREE_MEMORY_GB overrides the threshold.
+MEMORY_ADVICE='Close browsers and other large apps (or restart Windows), then run ship again. Production is unchanged.'
+LOW_MEMORY_SIGNS=[b'JavaScript heap out of memory',b'Reached heap limit',b'Allocation failed',b'ERR_WORKER_OUT_OF_MEMORY',b'Target page, context or browser has been closed',b'browser has disconnected',b'Page crashed',b'MemoryError',b'paging file is too small']
+def low_memory_hint(output):
+ return 'The machine looks short of memory. '+MEMORY_ADVICE+' ' if any(sign.lower() in output.lower() for sign in LOW_MEMORY_SIGNS) else ''
+def free_memory_gb():
+ """Free commit charge (memory plus page file) in GB, or None where it cannot be read."""
+ if os.name!='nt':return None
+ try:
+  import ctypes
+  class Status(ctypes.Structure):_fields_=[('dwLength',ctypes.c_ulong),('dwMemoryLoad',ctypes.c_ulong)]+[(n,ctypes.c_ulonglong) for n in ['ullTotalPhys','ullAvailPhys','ullTotalPageFile','ullAvailPageFile','ullTotalVirtual','ullAvailVirtual','ullAvailExtendedVirtual']]
+  m=Status();m.dwLength=ctypes.sizeof(Status)
+  return m.ullAvailPageFile/2**30 if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m)) else None
+ except Exception:return None
+def memory_check(stage,free=None):
+ free=free_memory_gb() if free is None else free
+ try:need=float(os.getenv('NMP_MIN_FREE_MEMORY_GB') or 3)
+ except ValueError:need=3.0
+ if free is not None and free<need:fail(f'Not enough free memory {stage}: {free:.1f} GB free, {need:g} GB needed. '+MEMORY_ADVICE)
+ return free
 def git(*args):return run(['git',*args],env={**os.environ,'GIT_OPTIONAL_LOCKS':'0'})
 def staged_source_bytes(name):
  r=subprocess.run(['git','show',':'+name],cwd=ROOT,env={**os.environ,'GIT_OPTIONAL_LOCKS':'0'},capture_output=True)
@@ -186,7 +207,7 @@ def verify_env(candidate,state,port):
  env.update(CV_FOLDER=str(p/'cv'),CV_INVENTORY_PATH=str(inv),TEMPLATE_DIRECTORY=str(candidate/'tools/deploy/assets'),PYTHON=str(python_at(candidate)))
  write_env(candidate/'.env',{k:v for k,v in env.items() if k not in base_env()});return env
 def verify_candidate(candidate,log):
- preflight()
+ preflight();memory_check('to start release verification')
  if busy(3000):fail('Stop development during release verification; legacy UI tests may reference port 3000. Production stays separate.')
  n=node();env=verify_env(candidate,candidate/'var/verification/state',3200)
  asset=candidate/'tools/deploy/assets/standard-cover-letter.md';template=candidate/'templates/standard-cover-letter.md';lock=candidate/'tools/deploy/requirements.lock.txt'
@@ -199,10 +220,13 @@ def verify_candidate(candidate,log):
  run([py,'-m','pip','install','--disable-pip-version-check','-r',lock],candidate,env,log);run([py,'-m','pip','check'],candidate,env,log)
  tests=sorted(p.relative_to(candidate).as_posix() for p in (candidate/'tests').rglob('*.test.js'))
  if not tests:fail('No Node tests discovered.')
- for start in range(0,len(tests),30):run([n,'--test',*tests[start:start+30]],candidate,env,log)
+ memory_check('before the tests')
+ # Two test files at a time: Node's default (one per CPU core) can exhaust memory on a busy desktop.
+ for start in range(0,len(tests),30):run([n,'--test','--test-concurrency=2',*tests[start:start+30]],candidate,env,log)
  if (candidate/'tests/worker').is_dir():run([py,'-B','-m','unittest','discover','-s','tests/worker','-p','test_*.py'],candidate,env,log)
  run([py,'-B','tools/deploy/test_local_delivery.py'],candidate,env,log)
  run([n,candidate/'node_modules/playwright/cli.js','install','chromium'],candidate,env,log)
+ memory_check('before the browser tests')
  run([n,candidate/'node_modules/playwright/cli.js','test','--config=tools/deploy/playwright.release.config.mjs'],candidate,env,log)
  if template.read_bytes()!=asset.read_bytes():fail('Verification altered the template.')
  return {'node':n,'nodeHash':hashed(Path(n)),'nodeVersion':run([n,'--version']),'pythonVersion':run([py,'--version']),'contract':read(candidate/'tools/deploy/storage-contract.json')['version']}
