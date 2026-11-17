@@ -219,3 +219,38 @@ Evidence boundary: Git history on master up to `fcadb54` and the Patch A branch.
 1. Gmail readiness display: distinguish "turned off in configuration" from missing credentials or sign-in failure. Needs the owner's drafts-only versus drafts-and-sending decision first; production configuration is changed by the owner.
 2. Patch B, evidence-library quality: audit one assignment and fill scenario gaps (multiple scenario selection already delivered in PRs #10 and #17).
 3. Larger, each needing its own design: application follow-up/interview tracking, CV indexing cache (area 11), CV rebuilding (area 12).
+
+
+## Current reconciliation — 17 November 2026
+
+This section supersedes the 16 November "In progress" and "Next candidates" lists. Evidence boundary: Git history on master up to `1c94a02`. Production states are as reported by the owner.
+
+### Released and user-verified in production
+- Everything listed as released on 16 November.
+- Patch A (PR #26): email background radio buttons with swatches; open the exact CV PDF in a new tab.
+
+### Merged to master, release and production check pending
+Merged on 16–17 November (`a68435d`, `8b67a66`, `1c94a02`). Ship with `tools\deploy\ship.cmd`, then verify in production.
+- **Review layout and letter length** (`11e87f3`): grouped action bar ("Export pack", "Unsent messages"); a Custom letter length of 150–700 words in steps of 25, capped by the configured maximum; length labels "Standard senior", "Extended strategic" and "Custom N words".
+- **Workflow automation** (`60c68d1`), see [docs/workflow-automation-opportunities.md](docs/workflow-automation-opportunities.md):
+  1. Choosing a stored advert loads and applies it in one step.
+  2. The Export pack CV choice is remembered in the browser.
+  3. Same-organisation contacts get a badge and are listed first.
+  4. Advert status: Complete once a portal pack is exported; Needs attention after 14 days without activity.
+  5. Follow-ups due on the dashboard (confirmed email, no later activity for 7–60 days; reminder only).
+  6. Organisation research once per organisation: automatic on the first application (at most 10 calls a day, `ENABLE_AUTO_RESEARCH` / `AUTO_RESEARCH_DAILY_CAP`), reused for 30 days and on page reloads; the button always researches again; no retries.
+- **Email domain fix** (`a346d07`): a domain found by research or **Find email domain** replaces the old one, is saved on the application, refreshes linked contact emails and updates the browser copy used by the LinkedIn contact bridge.
+- **Storage:** new file `<state>/workflow-automation-v1.db` only; no existing database or schema changed.
+- **Tests at merge:** Node 1581 pass, 1 known failure (`default template generates linked rich opening and valid plain fallback`, also failing before these changes); UI suite unchanged apart from the new passing specs (4 known `application-preparation` failures in the local worktree run).
+
+### Known issues
+- The two known local test failures above should be investigated in their own slice; CI is the release gate.
+- A failed delivery leaves `releases\<commit>` behind and blocks a reship; the workaround is to move it to `failed-releases`. Automating this in `local_delivery.py` is a candidate fix.
+- A manually typed email domain is now replaced if research later finds a different one (intended; owner request).
+
+### Next candidates, in recommended order
+1. Verify the release above in production.
+2. Gmail readiness display: distinguish "turned off in configuration" from missing credentials or sign-in failure. Needs the owner's drafts-only versus drafts-and-sending decision first.
+3. Patch B, evidence-library quality: audit one assignment and fill scenario gaps; strengthen evidence lines that have no measurable outcome without inventing figures.
+4. Deployment robustness: move a failed release folder aside automatically.
+5. Larger, each needing its own design: interview tracking (follow-ups are now listed), CV indexing cache (area 11), CV rebuilding (area 12).
