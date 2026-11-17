@@ -6,7 +6,7 @@ export const SHA = 'a'.repeat(64);
 export function fakeWorker(calls = [], {sha = () => SHA, sections} = {}) {
   return async payload => {
     calls.push(payload);
-    if (payload.action === 'sections') return {ok: true, name: 'PM_CV.docx', sha256: sha(), sections: sections || {
+    if (payload.action === 'sections') return {ok: true, name: 'PM_CV.docx', sha256: sha(), sections: (typeof sections === 'function' ? sections(payload) : sections) || {
       profile: {heading: 'Profile', paragraphs: ['Delivery leader across programmes.'], bullets: 0, supported: true},
       achievements: {heading: 'Key Achievements', paragraphs: ['Cut costs by 10% through vendor consolidation.', 'Led a 40-person Agile programme.'], bullets: 2, supported: true}}};
     if (payload.action === 'tailor') return {ok: true, name: 'PM_CV.docx', sha256: sha(), data: Buffer.from('PK' + JSON.stringify([payload.profile, payload.achievements])).toString('base64')};

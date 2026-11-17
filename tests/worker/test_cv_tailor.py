@@ -85,6 +85,28 @@ class TailorTests(unittest.TestCase):
         out = t.tailor(docx(TABLE), ['Tailored table profile.'], ['Tailored one.', 'Tailored two.'])
         self.assertIn('Tailored two.', d.extract(out))
 
+    def test_owner_chosen_headings_and_detected_heading_list(self):
+        custom = (para('Vijay Example', bold=True) + para('About My Work', bold=True) + para('Custom profile text.') +
+                  para('Impact Delivered:', bold=True) + para('Custom bullet.', bullet=True) + para('Experience', style='Heading1'))
+        s = t.describe(docx(custom))
+        self.assertIsNone(s['profile'])
+        self.assertEqual(s['headings'], ['Vijay Example', 'About My Work', 'Impact Delivered:', 'Experience'])
+        chosen = t.describe(docx(custom), 'About My Work', 'impact delivered')
+        self.assertEqual(chosen['profile']['paragraphs'], ['Custom profile text.'])
+        self.assertEqual(chosen['achievements']['paragraphs'], ['Custom bullet.'])
+        out = t.tailor(docx(custom), ['New profile.'], ['New bullet.'], 'About My Work', 'Impact Delivered')
+        self.assertIn('New bullet.', d.extract(out))
+        with self.assertRaises(d.DocumentError):
+            t.describe(docx(custom), 'Same', 'same')
+
+    def test_ampersand_and_single_column_table_rows(self):
+        rows = ('<w:tbl><w:tr><w:tc>' + para('PROFESSIONAL PROFILE') + '</w:tc></w:tr><w:tr><w:tc>' + para('Row profile.') +
+                '</w:tc></w:tr><w:tr><w:tc>' + para('Key Achievements &amp; Impact') + '</w:tc></w:tr><w:tr><w:tc>' +
+                para('Row bullet.', bullet=True) + '</w:tc></w:tr></w:tbl>')
+        s = t.describe(docx(rows))
+        self.assertEqual(s['profile']['paragraphs'], ['Row profile.'])
+        self.assertEqual(s['achievements']['paragraphs'], ['Row bullet.'])
+
     def test_missing_section_is_reported_and_refused(self):
         src = docx(para('Profile', style='Heading1') + para('Only a profile.'))
         self.assertIsNone(t.describe(src)['achievements'])
@@ -92,9 +114,40 @@ class TailorTests(unittest.TestCase):
             t.tailor(src, ['x'], ['y'])
 
     def test_invalid_lines_are_refused(self):
-        for profile, bullets in [([], ['a']), (['a'], []), (['a'], ['b'] * 13), (['a' * 601], ['b']), ([3], ['b'])]:
+        for profile, bullets in [([], ['a']), (['a'], []), (['a'], ['b'] * 13), (['a' * 1201], ['b']), (['a'], ['b' * 601]), ([3], ['b'])]:
             with self.assertRaises(d.DocumentError):
                 t.tailor(docx(LINEAR), profile, bullets)
+        self.assertIn('a' * 900, d.extract(t.tailor(docx(LINEAR), ['a' * 900], ['b'])))
+
+    def test_experience_roles_are_found_and_reordered_within_each_employer(self):
+        tab = '<w:r><w:tab/></w:r>'
+        lead = ('<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="5"/></w:numPr></w:pPr>'
+                '<w:r><w:rPr><w:b/></w:rPr><w:t>Cost:</w:t></w:r><w:r><w:rPr><w:sz w:val="20"/></w:rPr>'
+                '<w:t xml:space="preserve"> cut spend by 12% across vendors.</w:t></w:r></w:p>')
+        employer = lambda name: f'<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>{name}</w:t></w:r>{tab}<w:r><w:t>Leeds, UK</w:t></w:r></w:p>'
+        body = (para('SUMMARY', bold=True) + para('Summary one.') + para('SKILLS', bold=True) + para('Skill line.') +
+                para('EXPERIENCE', bold=True) + employer('ACME BANK') + para('Delivery Lead | 2021 – 2022') + lead +
+                para('Ran PI planning.', bullet=True) + para('Built a CoE.', bullet=True) +
+                employer('OTHER CO') + para('Scrum Master') + para('Coached teams.', bullet=True) +
+                para('EDUCATION', bold=True) + para('MBA'))
+        src = docx(body)
+        s = t.describe(src)
+        self.assertIsNone(s['achievements'])
+        roles = s['experience']['roles']
+        self.assertEqual([r['title'] for r in roles], ['ACME BANK | Leeds, UK — Delivery Lead | 2021 – 2022', 'OTHER CO | Leeds, UK — Scrum Master'])
+        self.assertEqual(roles[0]['bullets'], ['Cost: cut spend by 12% across vendors.', 'Ran PI planning.', 'Built a CoE.'])
+        new = [['Built a CoE.', 'Cost: cut spend by 12% across vendors.', 'Ran PI planning (edited).'], ['Coached teams.']]
+        out = t.tailor(src, ['New summary.'], None, roles=new)
+        s2 = t.describe(out)
+        self.assertEqual([r['bullets'] for r in s2['experience']['roles']], new)
+        self.assertEqual(s2['headings'], s['headings'])
+        xml = zipfile.ZipFile(io.BytesIO(out)).read('word/document.xml').decode()
+        self.assertRegex(xml, r'<w:b\s*/>\s*</w:rPr>\s*<w:t>Cost:</w:t>', 'unchanged bullet keeps its bold lead-in')
+        self.assertIn('Skill line.', d.extract(out))
+        with self.assertRaises(d.DocumentError):
+            t.tailor(src, ['S.'], None, roles=[['only one employer']])
+        with self.assertRaises(d.DocumentError):
+            t.tailor(src, ['S.'], None, roles=[['a'], []])
 
     def test_worker_reads_by_hash_and_never_writes_the_source(self):
         with tempfile.TemporaryDirectory() as tmp:

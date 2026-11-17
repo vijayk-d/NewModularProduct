@@ -45,6 +45,53 @@ test('a CV without recognisable sections is reported, not built', async () => {
   await assert.rejects(service.build('r1', {profile: ['a'], achievements: ['b'], expectedSha256: SHA, expectedRoleCode: 'PM'}), e => e.statusCode === 409);
 });
 
+const customCv = payload => payload.profileHeading === 'About My Work' && payload.achievementsHeading === 'Impact Delivered'
+  ? {headings: ['About My Work', 'Impact Delivered'], profile: {heading: 'About My Work', paragraphs: ['Custom profile.'], bullets: 0, supported: true}, achievements: {heading: 'Impact Delivered', paragraphs: ['Led a 40-person Agile programme.'], bullets: 1, supported: true}}
+  : {headings: ['About My Work', 'Impact Delivered'], profile: null, achievements: {heading: 'Achievements', paragraphs: [], bullets: 0, supported: false}};
+
+test('unrecognised headings are listed, and chosen headings are used for draft and build', async () => {
+  const calls = [];
+  const service = createCvTailoringService({reviews: reviewFixture(), store: createCvTailoringStore({filePath: ':memory:'}), worker: fakeWorker(calls, {sections: customCv}), cvFolder: 'C:/cv', cvLibrary: library});
+  const first = await service.draft('r1');
+  assert.equal(first.ready, false);
+  assert.deepEqual(first.headings, ['About My Work', 'Impact Delivered']);
+  assert.match(first.message, /No Profile or Summary heading was recognised\. Found "Achievements" but no text directly under it/);
+  const chosen = {profileHeading: ' About My Work ', achievementsHeading: 'Impact Delivered'};
+  const second = await service.draft('r1', chosen);
+  assert.equal(second.ready, true);
+  assert.deepEqual(second.chosen, {profileHeading: 'About My Work', achievementsHeading: 'Impact Delivered'});
+  await service.build('r1', {profile: ['P.'], achievements: ['Led a 40-person Agile programme.'], expectedSha256: SHA, expectedRoleCode: 'PM', ...chosen});
+  assert.equal(calls.at(-1).action, 'tailor');
+  assert.equal(calls.at(-1).profileHeading, 'About My Work');
+  await assert.rejects(service.draft('r1', {profileHeading: 'Same', achievementsHeading: 'same'}), /two different headings/);
+  await assert.rejects(service.draft('r1', {profileHeading: 'x'.repeat(81)}), /80 characters/);
+});
+
+const experienceCv = {headings: ['SUMMARY', 'EXPERIENCE'], profile: {heading: 'SUMMARY', paragraphs: ['Agile delivery leader.'], bullets: 0, supported: true}, achievements: null,
+  experience: {heading: 'EXPERIENCE', supported: true, roles: [
+    {title: 'ACME BANK — Delivery Lead', bullets: ['Built a CoE.', 'Cut risk incidents by 30% through agile risk reviews.']},
+    {title: 'OTHER CO — Scrum Master', bullets: ['Coached 5 teams.']}]}};
+
+test('a CV with Summary and Experience: bullets ranked within each employer, figures stay with their employer', async () => {
+  const calls = [];
+  const service = createCvTailoringService({reviews: reviewFixture(), store: createCvTailoringStore({filePath: ':memory:'}), worker: fakeWorker(calls, {sections: experienceCv}), cvFolder: 'C:/cv', cvLibrary: library});
+  const draft = await service.draft('r1');
+  assert.equal(draft.ready, true);
+  assert.equal(draft.achievements, null);
+  assert.deepEqual(draft.roles.map(r => r.title), ['ACME BANK — Delivery Lead', 'OTHER CO — Scrum Master']);
+  assert.equal(draft.roles[0].bullets[0].text, 'Cut risk incidents by 30% through agile risk reviews.', 'most relevant first within the employer');
+  const request = {profile: ['Agile delivery leader.'], roles: [['Cut risk incidents by 30% through agile risk reviews.', 'Built a CoE.'], ['Coached 5 teams.']], expectedSha256: SHA, expectedRoleCode: 'PM'};
+  await assert.rejects(service.build('r1', {...request, roles: [['Built a CoE.'], ['Coached teams, cutting incidents by 30%.']]}), e => e.statusCode === 400 && /OTHER CO — Scrum Master: figures 30%/.test(e.message));
+  await assert.rejects(service.build('r1', {...request, roles: [['Built a CoE.']]}), /employers in your CV changed/);
+  await assert.rejects(service.build('r1', {...request, roles: [['Built a CoE.'], []]}), /needs at least one line/);
+  const built = await service.build('r1', request);
+  assert.equal(built.version, 1);
+  const call = calls.at(-1);
+  assert.deepEqual(call.roles, request.roles);
+  assert.equal('achievements' in call, false);
+  assert.deepEqual(service.latest('r1').achievements.roles, request.roles);
+});
+
 test('the store refuses an unrecognised database', () => {
   assert.throws(() => createCvTailoringStore({}), /path required/);
 });

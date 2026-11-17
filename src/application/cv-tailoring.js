@@ -36,6 +36,25 @@ function jobKeywords(review) {
   return extractJobKeywords(String(review?.formData?.jobDescriptionText || ''));
 }
 
+// Headings the owner picked for a CV whose section names are not recognised automatically.
+export function chosenHeadings({profileHeading = '', achievementsHeading = ''} = {}) {
+  const clean = v => String(v ?? '').replace(/\s+/g, ' ').trim();
+  const out = {profileHeading: clean(profileHeading), achievementsHeading: clean(achievementsHeading)};
+  if (out.profileHeading.length > 80 || out.achievementsHeading.length > 80) fail('Chosen headings must be 80 characters or fewer.');
+  if (out.profileHeading && out.profileHeading.toLowerCase() === out.achievementsHeading.toLowerCase()) fail('Choose two different headings for Profile and Key achievements.');
+  return Object.fromEntries(Object.entries(out).filter(([, v]) => v));
+}
+
+export function sectionsMessage(profile, achievements, experience = null) {
+  const part = (section, name) => !section ? `No ${name} heading was recognised.`
+    : `Found "${section.heading}" but no text directly under it; the text may be in a text box or a separate column.`;
+  const bullets = achievements?.supported || experience?.supported ? null
+    : experience ? `Found "${experience.heading}" but no bulleted lines under its employers, and no Key achievements section.`
+    : part(achievements, 'Key achievements or Experience');
+  const problems = [!profile?.supported && part(profile, 'Profile or Summary'), bullets].filter(Boolean);
+  return problems.join(' ') + ' Choose the headings your CV uses below, then draft again.';
+}
+
 export function createCvTailoringService({reviews, cvLibrary, worker, cvFolder, store}) {
   if (!reviews || typeof worker !== 'function' || !store) throw new Error('Tailored CV service needs reviews, a document worker and a store.');
 
@@ -57,37 +76,49 @@ export function createCvTailoringService({reviews, cvLibrary, worker, cvFolder, 
     return {review, roleCode, relativePath, roleName: entry?.role_name || ''};
   }
 
-  async function inspect(reviewId) {
+  async function inspect(reviewId, headings = {}) {
     const target = await resolve(reviewId);
-    const result = await call({action: 'sections', relativePath: target.relativePath, expectedHash: null});
-    return {...target, name: result.name, sha256: result.sha256, sections: result.sections};
+    const chosen = chosenHeadings(headings);
+    const result = await call({action: 'sections', relativePath: target.relativePath, expectedHash: null, ...chosen});
+    return {...target, chosen, name: result.name, sha256: result.sha256, sections: result.sections};
   }
 
+  const usable = sections => {
+    const {profile, achievements, experience} = sections || {};
+    return {profile: profile?.supported ? profile : null, achievements: achievements?.supported ? achievements : null, experience: experience?.supported ? experience : null};
+  };
+
   return {
-    async draft(reviewId) {
-      const found = await inspect(reviewId);
-      const {profile, achievements} = found.sections || {};
+    async draft(reviewId, headings = {}) {
+      const found = await inspect(reviewId, headings);
+      const {profile, achievements, experience} = found.sections || {};
+      const use = usable(found.sections);
       const latest = store.latest(reviewId);
-      const base = {reviewId, roleCode: found.roleCode, baseName: found.name, baseSha256: found.sha256, latest,
+      const base = {reviewId, roleCode: found.roleCode, baseName: found.name, baseSha256: found.sha256, latest, chosen: found.chosen, headings: found.sections?.headings || [],
         sections: {profile: profile ? {heading: profile.heading, lines: profile.paragraphs.length, supported: profile.supported} : null,
-          achievements: achievements ? {heading: achievements.heading, lines: achievements.paragraphs.length, bullets: achievements.bullets, supported: achievements.supported} : null}};
-      if (!profile?.supported || !achievements?.supported) return {...base, ready: false, message: MESSAGES.CV_SECTIONS_NOT_FOUND + ' Headings recognised include "Profile", "Professional Summary", "Key Achievements" and "Career Highlights".'};
-      return {...base, ready: true, ...draftTailoredCv({profile: profile.paragraphs, achievements: achievements.paragraphs, selected: selectedEvidence(found.review), keywords: jobKeywords(found.review)})};
+          achievements: achievements ? {heading: achievements.heading, lines: achievements.paragraphs.length, bullets: achievements.bullets, supported: achievements.supported} : null,
+          experience: experience ? {heading: experience.heading, roles: experience.roles.length, supported: experience.supported} : null}};
+      if (!use.profile || (!use.achievements && !use.experience)) return {...base, ready: false, message: sectionsMessage(profile, achievements, experience)};
+      return {...base, ready: true, roleOrder: use.experience ? use.experience.roles.map(r => r.bullets) : [], ...draftTailoredCv({profile: use.profile.paragraphs, achievements: use.achievements ? use.achievements.paragraphs : null, roles: use.experience ? use.experience.roles : [], selected: selectedEvidence(found.review), keywords: jobKeywords(found.review)})};
     },
 
     async build(reviewId, request) {
       if (!request || typeof request !== 'object' || Array.isArray(request)) fail('An explicit build request is required.');
-      const {profile, achievements, expectedSha256, expectedRoleCode} = request;
-      const found = await inspect(reviewId);
+      const {profile, achievements = null, roles = null, expectedSha256, expectedRoleCode, profileHeading = '', achievementsHeading = ''} = request;
+      const found = await inspect(reviewId, {profileHeading, achievementsHeading});
       if (expectedRoleCode !== found.roleCode) fail('The CV selection changed. Draft again for the current CV.', 409);
       if (expectedSha256 !== found.sha256) fail(MESSAGES.CV_VERSION_CHANGED, 409);
-      const s = found.sections || {};
-      if (!s.profile?.supported || !s.achievements?.supported) fail(MESSAGES.CV_SECTIONS_NOT_FOUND, 409);
-      const check = checkTailoredCv({profile, achievements, sources: [...s.profile.paragraphs, ...s.achievements.paragraphs, ...selectedEvidence(found.review)]});
+      const use = usable(found.sections);
+      if (!use.profile || (achievements !== null && !use.achievements) || (roles !== null && !use.experience)) fail(MESSAGES.CV_SECTIONS_NOT_FOUND, 409);
+      const roleSources = use.experience ? use.experience.roles : [];
+      const check = checkTailoredCv({profile, achievements, roles, roleSources,
+        sources: [...use.profile.paragraphs, ...(use.achievements?.paragraphs || []), ...roleSources.flatMap(r => r.bullets), ...selectedEvidence(found.review)]});
       if (!check.ok) fail(check.problems.join(' '), 400, 'CV_TAILORING_CHECK');
-      const built = await call({action: 'tailor', relativePath: found.relativePath, expectedHash: found.sha256, profile: check.profile, achievements: check.achievements});
+      const built = await call({action: 'tailor', relativePath: found.relativePath, expectedHash: found.sha256, profile: check.profile,
+        ...(check.achievements ? {achievements: check.achievements} : {}), ...(check.roles ? {roles: check.roles} : {}), ...found.chosen});
       const bytes = Buffer.from(built.data, 'base64');
-      return store.save({reviewId, roleCode: found.roleCode, baseName: found.name, baseSha256: found.sha256, profile: check.profile, achievements: check.achievements, bytes, sha256: sha(bytes)});
+      return store.save({reviewId, roleCode: found.roleCode, baseName: found.name, baseSha256: found.sha256, profile: check.profile,
+        achievements: check.roles ? {achievements: check.achievements, roles: check.roles} : check.achievements, bytes, sha256: sha(bytes)});
     },
 
     latest: reviewId => store.latest(reviewId),
