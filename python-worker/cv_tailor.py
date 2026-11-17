@@ -221,6 +221,8 @@ def describe(data, profile_heading='', achievements_heading=''):
     z.close()
     found = locate(root)
     result = {'headings': candidates(root)}
+    # Every non-empty line of the CV body, for the local ATS keyword match (read only).
+    result['lines'] = [x for x in (norm(p) for p in root.iter(q('p'))) if x][:2000]
     for kind in KINDS:
         if kind not in found:
             result[kind] = None

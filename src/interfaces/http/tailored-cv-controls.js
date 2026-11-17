@@ -94,7 +94,41 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
 
   // Optional paid Polish: estimate first (free), then one request only after the owner confirms the cost.
   // The polished wording only fills the boxes above; nothing is built until the owner clicks Build.
-  function polishControls({profile, bullets, roleBoxes, currentBody}) {
+  // Free, local ATS keyword match: the whole CV before tailoring against the CV with the wording in the boxes.
+  function atsControls(currentBody) {
+    const panel = el(doc, 'div', {class: 'tailored-ats', 'data-tailored-ats': ''});
+    const check = el(doc, 'button', {type: 'button', text: 'Check ATS match (free)'});
+    const status = el(doc, 'p', {role: 'status', 'aria-live': 'polite', 'data-tailored-ats-status': ''});
+    const details = el(doc, 'div', {'data-tailored-ats-details': ''});
+    panel.append(el(doc, 'h3', {text: 'ATS keyword match'}),
+      el(doc, 'p', {class: 'tailored-cv-note', text: 'How many of this job\'s keywords your whole CV contains, before tailoring and with the wording above. Free and local. Keywords with no evidence are never added for you.'}),
+      el(doc, 'div', {class: 'actions'}, [check]), status, details);
+    const list = (title, items, attr) => items.length ? [el(doc, 'p', {text: title}), el(doc, 'ul', {[attr]: ''}, items.map(t => el(doc, 'li', {text: t})))] : [];
+    async function run() {
+      check.disabled = true; status.classList.add('is-busy'); status.textContent = 'Checking keywords…';
+      try {
+        const response = await fetchImpl(api + '/ats', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(currentBody())});
+        const data = await response.json();
+        if (!response.ok || !data.ok) throw new Error(data.error || 'The ATS match could not run.');
+        const change = data.after.score - data.before.score;
+        status.textContent = data.total
+          ? `Base CV ${data.before.score}% → tailored CV ${data.after.score}% (${data.after.matched} of ${data.total} job keywords${change ? `, ${change > 0 ? '+' : ''}${change} points` : ', no change'}).`
+          : 'No job keywords were found in this advert.';
+        details.textContent = '';
+        details.append(
+          ...list('Now covered by your tailoring:', data.gained, 'data-ats-gained'),
+          ...list('Lost by your tailoring (put back if relevant):', data.lost, 'data-ats-lost'),
+          ...list('Missing, but in your CV lines or selected achievements (work these in):', data.workIn, 'data-ats-work-in'),
+          ...list('Missing with no evidence (leave out; do not claim):', data.noEvidence, 'data-ats-no-evidence'),
+          ...(data.wholeCv ? [] : [el(doc, 'p', {class: 'tailored-cv-note', text: 'Only the tailored sections could be read, so the score covers those sections.'})]));
+      } catch (error) { status.textContent = error.message; }
+      finally { check.disabled = false; status.classList.remove('is-busy'); }
+    }
+    check.addEventListener('click', run);
+    return {panel, run};
+  }
+
+  function polishControls({profile, bullets, roleBoxes, currentBody, onPolished = () => {}}) {
     const panel = el(doc, 'div', {class: 'tailored-polish', 'data-tailored-polish': ''});
     const start = el(doc, 'button', {type: 'button', text: 'Polish wording (paid)…'});
     const choice = el(doc, 'div', {'data-tailored-polish-choice': '', hidden: ''});
@@ -179,6 +213,7 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
         const undo = el(doc, 'button', {type: 'button', text: 'Undo polish'});
         undo.addEventListener('click', () => { restore(before); result.hidden = true; status.textContent = 'Your previous wording is back.'; });
         result.append(el(doc, 'div', {class: 'actions'}, [undo])); result.hidden = false;
+        onPolished();
       } catch (error) { status.textContent = error.message; send.disabled = false; select.disabled = false; cancel.disabled = false; } finally { start.disabled = false; busy(false); }
     }
     start.addEventListener('click', () => runEstimate(''));
@@ -230,7 +265,8 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
       if (roleBoxes.length) body.roles = roleBoxes.map(box => parseBullets(box.value));
       return body;
     };
-    const polish = polishControls({profile, bullets, roleBoxes, currentBody});
+    const ats = atsControls(currentBody);
+    const polish = polishControls({profile, bullets, roleBoxes, currentBody, onPolished: ats.run});
     const build = el(doc, 'button', {type: 'button', text: 'Build tailored CV (DOCX)'});
     const message = el(doc, 'p', {role: 'status', 'aria-live': 'polite', 'data-tailored-build-status': ''});
     build.addEventListener('click', async () => {
@@ -244,8 +280,9 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
         showLatest(result.tailored);
       } catch (error) { message.textContent = error.message; } finally { build.disabled = false; }
     });
-    editor.append(...parts, polish, el(doc, 'div', {class: 'actions'}, [build]), message);
+    editor.append(...parts, ats.panel, polish, el(doc, 'div', {class: 'actions'}, [build]), message);
     editor.hidden = false;
+    ats.run();
   }
 
   async function runDraft(next = {}) {

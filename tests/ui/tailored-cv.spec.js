@@ -125,3 +125,18 @@ test.describe('Word files that are not named like the PDF', () => {
     await expect(report.locator('tr', {hasText: 'GCC (Gulf)'})).toContainText('No Word file in "GCC"');
   });
 });
+
+test('ATS keyword match runs after drafting, flags a lost keyword and is free', async ({page, app}) => {
+  await page.goto(app.url + '/applications/r1');
+  const section = page.locator('#tailored-cv');
+  await section.getByRole('button', {name: 'Draft tailored CV'}).click();
+  const status = section.locator('[data-tailored-ats-status]');
+  await expect(status).toContainText('Base CV 50% → tailored CV 100% (2 of 2 job keywords, +50 points)');
+  await expect(section.locator('[data-ats-gained]')).toContainText('risk');
+  await section.getByLabel(/^Key Achievements \(one bullet/).fill('Cut costs by 10% through vendor consolidation.');
+  await section.getByRole('button', {name: 'Check ATS match (free)'}).click();
+  await expect(status).toContainText('Base CV 50% → tailored CV 0%');
+  await expect(section.locator('[data-ats-lost]')).toContainText('agile');
+  await expect(section.locator('[data-ats-work-in]')).toContainText('agile');
+  expect(app.calls.filter(c => c.action === 'tailor')).toHaveLength(0);
+});
