@@ -17,6 +17,19 @@ Unchanged lines keep their original paragraph, so bold lead-ins and highlights s
 
 Each build is saved as a new version. You can download it as a DOCX, save it to your output folder, or include it in the Export pack by choosing **Tailored CV (DOCX)**.
 
+## ATS keyword match (free)
+
+Under the boxes, **ATS keyword match** shows how many of this job's keywords your whole CV contains, before tailoring and with the wording in the boxes, for example "Base CV 50% → tailored CV 80% (8 of 10 job keywords, +30 points)". It runs after **Draft tailored CV** and after each **Polish**, and again whenever you click **Check ATS match (free)** after editing.
+
+- **Keywords** are the ones the app already extracts from the job description (up to 40). A keyword counts when it appears anywhere in the CV text, ignoring case: the same rule as the keyword part of the CV ranking score.
+- **Whole CV.** Skills, education and every other section count too. Only the tailored sections are swapped for your new wording.
+- **Lists:**
+  - **Now covered**: keywords your tailoring added.
+  - **Lost**: keywords that were in the base CV but are gone from the tailored wording. Put them back if they matter.
+  - **Missing, but in your CV lines or selected achievements**: safe to work in.
+  - **Missing with no evidence**: leave them out. The app never adds a keyword for you, and the figures check still applies.
+- **Limits.** This is a keyword-coverage guide, not any recruiter's real ATS score. Real systems also weigh job titles, dates and formatting. Free and local, with no paid call.
+
 ## Polish wording (optional, paid)
 
 After drafting, **Polish wording (paid)…** asks a model to improve the wording of the Summary, the bullets under each employer and the Key achievements (if your CV has them), for this job, in British English.

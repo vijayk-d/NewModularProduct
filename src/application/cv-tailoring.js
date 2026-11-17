@@ -6,6 +6,7 @@ import {extractJobKeywords} from '../domain/job-description/extract-job-keywords
 import {MATCH_LABELS} from '../domain/cv/word-cv-match.js';
 import {DEFAULT_POLISHING_MODEL, normalizePolishingModel, buildPolishingAttempt} from './polishing-model-catalog.js';
 import {estimatePolishingApiRequest} from './polishing-cost-estimator.js';
+import {compareTailoredAts} from '../domain/cv/tailored-cv-ats.js';
 
 const fail = (message, statusCode = 400, code = 'CV_TAILORING_BLOCKED') => { throw Object.assign(new Error(message), {statusCode, code}); };
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -120,9 +121,9 @@ export function createCvTailoringService({reviews, cvLibrary, worker, cvFolder, 
     return value.map(v => v.replace(/\s+/g, ' ').trim()).filter(Boolean);
   };
   const POLISH_OFF = 'CV polishing is off. It uses the same setting as letter polishing: ENABLE_COVER_LETTER_REFINEMENT=true and PERPLEXITY_API_KEY in .env, then restart.';
-  async function polishTarget(reviewId, body) {
-    if (!polisher || typeof polisher.buildRequest !== 'function') fail('CV polishing is unavailable in this server configuration.', 503, 'CV_POLISH_DISABLED');
-    if (!body || typeof body !== 'object' || Array.isArray(body)) fail('An explicit polishing request is required.');
+  // The wording on the page, checked against the current CV (same checks as Build). Used by Polish and the ATS match.
+  async function currentWording(reviewId, body) {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) fail('An explicit request is required.');
     const {expectedSha256, expectedRoleCode, profileHeading = '', achievementsHeading = '', wordFile = ''} = body;
     const found = await inspect(reviewId, {profileHeading, achievementsHeading, wordFile});
     if (expectedRoleCode !== found.roleCode) fail('The CV selection changed. Draft again for the current CV.', 409);
@@ -132,13 +133,19 @@ export function createCvTailoringService({reviews, cvLibrary, worker, cvFolder, 
     if (!use.profile || (!use.achievements && !use.experience)) fail(MESSAGES.CV_SECTIONS_NOT_FOUND, 409);
     const roleSources = use.experience ? use.experience.roles : [];
     const profile = textList(body.profile, 'Summary');
-    if (!profile.length) fail('Write or keep a summary before polishing.');
+    if (!profile.length) fail('Write or keep a summary first.');
     const achievements = use.achievements && body.achievements != null ? textList(body.achievements, 'Key achievements') : null;
     let roles = [];
     if (roleSources.length && body.roles != null) {
       if (!Array.isArray(body.roles) || body.roles.length !== roleSources.length) fail('The employers in your CV changed. Draft again.', 409);
       roles = body.roles.map((r, i) => ({title: roleSources[i].title || `Employer ${i + 1}`, bullets: textList(r, roleSources[i].title || 'Employer bullets'), originalBullets: roleSources[i].bullets}));
     }
+    return {found, use, roleSources, profile, achievements, roles};
+  }
+
+  async function polishTarget(reviewId, body) {
+    if (!polisher || typeof polisher.buildRequest !== 'function') fail('CV polishing is unavailable in this server configuration.', 503, 'CV_POLISH_DISABLED');
+    const {found, use, roleSources, profile, achievements, roles} = await currentWording(reviewId, body);
     const review = found.review, form = review.formData || {};
     const request = {jobTitle: String(form.jobTitle || ''), organisationName: String(form.organisationName || ''), keywords: jobKeywords(review).slice(0, 30), jobDescriptionText: String(form.jobDescriptionText || ''),
       profile, achievements, roles, originalProfile: use.profile.paragraphs, originalAchievements: use.achievements ? use.achievements.paragraphs : null, selectedEvidence: selectedEvidence(review)};
@@ -149,6 +156,15 @@ export function createCvTailoringService({reviews, cvLibrary, worker, cvFolder, 
   }
 
   return {
+    // Free and local: keyword coverage of the whole CV before tailoring and with the wording on the page.
+    async atsMatch(reviewId, body) {
+      const w = await currentWording(reviewId, body);
+      const original = [...w.use.profile.paragraphs, ...(w.achievements ? w.use.achievements.paragraphs : []), ...(w.roles.length ? w.roleSources.flatMap(r => r.bullets) : [])];
+      const tailored = [...w.profile, ...(w.achievements || []), ...w.roles.flatMap(r => r.bullets)];
+      const baseLines = Array.isArray(w.found.sections?.lines) && w.found.sections.lines.length ? w.found.sections.lines : original;
+      return {wholeCv: baseLines !== original, ...compareTailoredAts({keywords: jobKeywords(w.found.review).slice(0, 40), baseLines, originalLines: original, tailoredLines: tailored, evidence: selectedEvidence(w.found.review)})};
+    },
+
     // Cost estimate only: nothing is sent anywhere.
     async polishEstimate(reviewId, body) {
       const t = await polishTarget(reviewId, body), e = estimatePolishingApiRequest(t.apiBody);

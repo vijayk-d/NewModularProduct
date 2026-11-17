@@ -55,6 +55,9 @@ class TailorTests(unittest.TestCase):
         self.assertEqual(s['achievements']['paragraphs'], ['Cut costs by 10% through vendor consolidation.', 'Led a 40-person programme.'])
         self.assertEqual(s['achievements']['bullets'], 2)
         self.assertTrue(s['profile']['supported'] and s['achievements']['supported'])
+        # Every CV line is returned for the local ATS keyword match.
+        self.assertIn('Led a 40-person programme.', s['lines'])
+        self.assertIn('Delivery leader with programme experience.', s['lines'])
 
     def test_tailor_replaces_only_the_two_sections_and_keeps_formatting(self):
         src = docx(LINEAR)
