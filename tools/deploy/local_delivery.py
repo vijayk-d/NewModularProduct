@@ -296,6 +296,17 @@ def checked_release(release):
  if hashed(Path(m['runtime']['node']))!=m['runtime']['nodeHash']:fail('Node runtime changed; reverify release.')
  if run([python_at(release),'--version'])!=m['runtime']['pythonVersion']:fail('Python runtime changed; reverify release.')
  return m
+def unpromoted_candidate(release,commit,active):
+ """True only for a plain folder holding candidate.json, no release.json, and not the active commit."""
+ if release.is_symlink() or not release.is_dir():return False
+ if not (release/'candidate.json').is_file() or (release/'release.json').exists():return False
+ return not (active and active.get('commit')==commit)
+def set_aside_unpromoted(prod,release,commit,active):
+ """Rename a failed, never-promoted candidate to failed-releases/; nothing is deleted. Anything else is refused."""
+ if not unpromoted_candidate(release,commit,active):fail('Release path already exists. Inspect it or use rollback; never overwrite it.')
+ target=prod/'failed-releases'/(commit[:12]+'-'+stamp());target.parent.mkdir(parents=True,exist_ok=True)
+ if target.exists():fail('Failed-release target already exists: '+str(target))
+ release.rename(target);print('Moved unpromoted failed candidate '+str(release)+' to '+str(target))
 def deliver(args):
  prod=prod_root(args)
  with delivery_lock(prod):
@@ -305,7 +316,7 @@ def deliver(args):
   active=read(prod/'active.json')
   if active and active['commit']==commit:print('Commit already active.');return
   release=prod/'releases'/commit
-  if release.exists():fail('Release path already exists. Inspect it or use rollback; never overwrite it.')
+  if release.exists() or release.is_symlink():set_aside_unpromoted(prod,release,commit,active)
   release.mkdir(parents=True);log=prod/'shared/logs'/('release-'+commit[:12]+'-'+stamp()+'.log');log.parent.mkdir(parents=True,exist_ok=True)
   atomic(release/'candidate.json',{'commit':commit,'createdAt':stamp()});session=None;promoted=False
   try:

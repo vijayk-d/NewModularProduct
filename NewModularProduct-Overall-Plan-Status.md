@@ -245,12 +245,12 @@ Merged on 16–17 November (`a68435d`, `8b67a66`, `1c94a02`). Ship with `tools\d
 
 ### Known issues
 - The two known local test failures above should be investigated in their own slice; CI is the release gate.
-- A failed delivery leaves `releases\<commit>` behind and blocks a reship; the workaround is to move it to `failed-releases`. Automating this in `local_delivery.py` is a candidate fix.
+- Fixed: a failed delivery no longer blocks a reship. `local_delivery.py deliver` now renames a provably unpromoted `releases\<commit>` (has `candidate.json`, no `release.json`, not active) to `failed-releases\<commit12>-<timestamp>`; nothing is deleted and any other existing release folder is still refused.
 - A manually typed email domain is now replaced if research later finds a different one (intended; owner request).
 
 ### Next candidates, in recommended order
 1. Verify the release above in production.
 2. Gmail readiness display: distinguish "turned off in configuration" from missing credentials or sign-in failure. Needs the owner's drafts-only versus drafts-and-sending decision first.
 3. Patch B, evidence-library quality: audit one assignment and fill scenario gaps; strengthen evidence lines that have no measurable outcome without inventing figures.
-4. Deployment robustness: move a failed release folder aside automatically.
+4. Deployment robustness: done (failed release folders are moved aside automatically).
 5. Larger, each needing its own design: interview tracking (follow-ups are now listed), CV indexing cache (area 11), CV rebuilding (area 12).

@@ -77,6 +77,37 @@ class Tests(unittest.TestCase):
   with patch.object(d,'verify_candidate',side_effect=RuntimeError('synthetic')),patch.object(d,'pause') as pause:
    with self.assertRaises(RuntimeError):d.deliver(self.args(ref='HEAD'))
   pause.assert_not_called();self.assertEqual(d.read(self.prod/'active.json')['commit'],'old');self.assertFalse((self.prod/'delivery.lock').exists())
+ def leftover(self,commit,promoted=False):
+  release=self.prod/'releases'/commit;release.mkdir(parents=True);d.atomic(release/'candidate.json',{'commit':commit});(release/'diagnostic.log').write_text('kept')
+  if promoted:d.atomic(release/'release.json',{'commit':commit})
+  return release
+ def test_unpromoted_candidate_is_moved_aside_and_delivery_proceeds(self):
+  self.prodsetup();commit=d.git('rev-parse','HEAD');d.atomic(self.prod/'active.json',{'commit':'old'});self.leftover(commit);other=self.leftover('f'*40,promoted=True);out=io.StringIO()
+  with patch.object(d,'verify_candidate',side_effect=RuntimeError('stop after move')),contextlib.redirect_stdout(out):
+   with self.assertRaises(RuntimeError) as e:d.deliver(self.args(ref='HEAD'))
+  self.assertEqual(str(e.exception),'stop after move')
+  moved=list((self.prod/'failed-releases').iterdir());self.assertEqual(len(moved),1);self.assertTrue(moved[0].name.startswith(commit[:12]+'-'))
+  self.assertEqual((moved[0]/'diagnostic.log').read_text(),'kept');self.assertTrue((moved[0]/'candidate.json').is_file())
+  self.assertTrue((self.prod/'releases'/commit/'candidate.json').is_file());self.assertFalse((self.prod/'releases'/commit/'diagnostic.log').exists())
+  self.assertTrue((other/'release.json').is_file());self.assertEqual(d.read(self.prod/'active.json')['commit'],'old')
+  self.assertIn('Moved unpromoted failed candidate',out.getvalue());self.assertEqual(out.getvalue().count('Moved unpromoted'),1)
+ def test_promoted_or_unclear_release_folder_still_refuses_and_nothing_moves(self):
+  self.prodsetup();commit=d.git('rev-parse','HEAD')
+  def check(release):
+   before=sorted(p.relative_to(release).as_posix() for p in release.rglob('*'))
+   with patch.object(d,'verify_candidate') as verify:
+    with self.assertRaises(RuntimeError) as e:d.deliver(self.args(ref='HEAD'))
+   verify.assert_not_called();self.assertIn('Release path already exists',str(e.exception))
+   self.assertEqual(sorted(p.relative_to(release).as_posix() for p in release.rglob('*')),before);self.assertFalse((self.prod/'failed-releases').exists())
+  release=self.leftover(commit,promoted=True);check(release)
+  (release/'release.json').unlink();(release/'candidate.json').unlink();check(release)
+  self.assertFalse((self.prod/'delivery.lock').exists())
+ def test_active_commit_is_never_treated_as_failed_candidate(self):
+  release=self.prod/'releases'/('a'*40);release.mkdir(parents=True);d.atomic(release/'candidate.json',{'commit':'a'*40})
+  self.assertFalse(d.unpromoted_candidate(release,'a'*40,{'commit':'a'*40}))
+  self.assertTrue(d.unpromoted_candidate(release,'a'*40,{'commit':'b'*40}));self.assertTrue(d.unpromoted_candidate(release,'a'*40,None))
+  with self.assertRaises(RuntimeError):d.set_aside_unpromoted(self.prod,release,'a'*40,{'commit':'a'*40})
+  self.assertTrue((release/'candidate.json').is_file());self.assertFalse((self.prod/'failed-releases').exists())
  def test_promotion_retains_current_data(self):
   self.prodsetup();(self.prod/'shared/data/imported-recruiter-contacts.json').write_text('[{"id":"retained"}]')
   with patch.object(d,'verify_candidate',return_value={'contract':1}),patch.object(d,'smoke'),patch.object(d,'pause',return_value=None),contextlib.redirect_stdout(io.StringIO()):d.deliver(self.args(ref='HEAD'))
