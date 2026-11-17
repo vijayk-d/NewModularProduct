@@ -4,6 +4,7 @@ import {isLocalSameOrigin} from './local-write-guard.js';
 
 const ROUTE = /^\/api\/reviews\/([A-Za-z0-9_-]{1,100})\/tailored-cv(?:\/(\d{1,6})\.docx)?$/;
 const SAVE_ROUTE = /^\/api\/reviews\/([A-Za-z0-9_-]{1,100})\/tailored-cv\/(\d{1,6})\/save-to-folder$/;
+const POLISH_ROUTE = /^\/api\/reviews\/([A-Za-z0-9_-]{1,100})\/tailored-cv\/polish(\/estimate)?$/;
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 async function jsonBody(req) {
@@ -26,6 +27,20 @@ export function createCvTailoringHandler({service, getReview, sendJson, sendText
       if (!service) { sendJson(res, 503, {ok: false, code: 'CV_TAILORING_DISABLED', error: 'Tailored CVs are unavailable in this server configuration.'}); return true; }
       try { sendJson(res, 200, {ok: true, ...(await service.checkLibrary())}); }
       catch (error) { sendJson(res, error.statusCode || 503, {ok: false, error: error.statusCode ? error.message : 'The CV check could not run.'}); }
+      return true;
+    }
+    const polish = method === 'POST' && POLISH_ROUTE.exec(route);
+    if (polish) {
+      // Estimate is free; polish sends one paid request only with the confirmed estimate's proof. Local page only.
+      if (!isLocalSameOrigin(req)) { sendJson(res, 403, {ok: false, error: 'Polishing needs this app open on this computer.'}); return true; }
+      try {
+        if (!service || typeof service.polish !== 'function') { sendJson(res, 503, {ok: false, code: 'CV_TAILORING_DISABLED', error: 'Tailored CVs are unavailable in this server configuration.'}); return true; }
+        const body = await jsonBody(req);
+        if (polish[2]) sendJson(res, 200, {ok: true, ...(await service.polishEstimate(polish[1], body))});
+        else sendJson(res, 200, {ok: true, ...(await service.polish(polish[1], body))});
+      } catch (error) {
+        sendJson(res, error.statusCode || 503, {ok: false, code: error.code || 'CV_POLISH_FAILED', error: error.statusCode ? error.message : 'CV polishing is unavailable. Nothing was changed and no retry was made.'});
+      }
       return true;
     }
     const save = method === 'POST' && SAVE_ROUTE.exec(route);

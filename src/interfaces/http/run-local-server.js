@@ -4,6 +4,7 @@ import {createAssignmentEvidenceStore} from '../../infrastructure/applications/s
 import {createApplicationIntelligenceStore} from '../../infrastructure/applications/sqlite-application-intelligence.js';
 import {createApplicationIntelligence} from '../../application/application-intelligence.js';
 import {createApplicationPackExporter} from '../../infrastructure/applications/application-pack-exporter.js';
+import {createCvPolisher} from '../../infrastructure/refinement/perplexity-cv-polishing-adapter.js';
 import {createApplicationOutputFolder} from '../../infrastructure/applications/application-output-folder.js';
 import {createWorkflowAutomationStore} from '../../infrastructure/applications/sqlite-workflow-automation-store.js';
 import {createOrganisationResearchService} from '../../application/organisation-research-cache.js';
@@ -133,7 +134,7 @@ try{workflowAutomationStore=createWorkflowAutomationStore({filePath:path.join(de
 // Tailored CVs keep their own new database; if it cannot open, the feature is simply off.
 const candidateDisplayName=process.env.CANDIDATE_DISPLAY_NAME||'Vijay DAFAL';
 let cvTailoringStore=null,cvTailoringService=null;
-try{cvTailoringStore=createCvTailoringStore({filePath:path.join(deployment.state,'cv-tailoring-v1.db')});cvTailoringService=createCvTailoringService({reviews:applicationReviewStore,store:cvTailoringStore,worker:payload=>documentWorker(payload),cvFolder:config.storage.cvFolder,locateWord:createWordCvLocator({cvFolder:config.storage.cvFolder}),cvLibrary:async()=>{const data=await cvInventoryRepository.load();return data?.cv_inventory?.cvs||data?.cvs||[];}});}catch{cvTailoringStore?.close();cvTailoringStore=null;console.warn('[CV_TAILORING] LOCAL_STORE_UNAVAILABLE');}
+try{cvTailoringStore=createCvTailoringStore({filePath:path.join(deployment.state,'cv-tailoring-v1.db')});cvTailoringService=createCvTailoringService({polisher:createCvPolisher({apiKey:config.integrations.perplexity.apiKey,enabled:config.features.enableCoverLetterRefinement}),reviews:applicationReviewStore,store:cvTailoringStore,worker:payload=>documentWorker(payload),cvFolder:config.storage.cvFolder,locateWord:createWordCvLocator({cvFolder:config.storage.cvFolder}),cvLibrary:async()=>{const data=await cvInventoryRepository.load();return data?.cv_inventory?.cvs||data?.cvs||[];}});}catch{cvTailoringStore?.close();cvTailoringStore=null;console.warn('[CV_TAILORING] LOCAL_STORE_UNAVAILABLE');}
 
 let assignmentEvidenceStore=null;
 try{

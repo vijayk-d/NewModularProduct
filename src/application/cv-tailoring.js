@@ -1,9 +1,11 @@
 // Tailored CV workflow: inspect the base CV, draft from evidence, check owner edits, build a new DOCX version.
-// Local only: no paid call, no Gmail action, and the base CV file is never written.
+// Local only, except the optional Polish step: one paid request after the owner confirms its cost. No Gmail action; the base CV file is never written.
 import {createHash} from 'node:crypto';
 import {draftTailoredCv, checkTailoredCv} from '../domain/cv/cv-tailoring-policy.js';
 import {extractJobKeywords} from '../domain/job-description/extract-job-keywords.js';
 import {MATCH_LABELS} from '../domain/cv/word-cv-match.js';
+import {DEFAULT_POLISHING_MODEL, normalizePolishingModel, buildPolishingAttempt} from './polishing-model-catalog.js';
+import {estimatePolishingApiRequest} from './polishing-cost-estimator.js';
 
 const fail = (message, statusCode = 400, code = 'CV_TAILORING_BLOCKED') => { throw Object.assign(new Error(message), {statusCode, code}); };
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -56,7 +58,7 @@ export function sectionsMessage(profile, achievements, experience = null) {
   return problems.join(' ') + ' Choose the headings your CV uses below, then draft again.';
 }
 
-export function createCvTailoringService({reviews, cvLibrary, worker, cvFolder, store, locateWord = null}) {
+export function createCvTailoringService({reviews, cvLibrary, worker, cvFolder, store, locateWord = null, polisher = null}) {
   if (!reviews || typeof worker !== 'function' || !store) throw new Error('Tailored CV service needs reviews, a document worker and a store.');
   // Without a folder lookup (tests), only the same-name Word file is tried.
   const locate = locateWord || (async libraryPath => {
@@ -110,7 +112,87 @@ export function createCvTailoringService({reviews, cvLibrary, worker, cvFolder, 
     return parts.join(' + ');
   };
 
+  // Polish (part 2, paid): the request is rebuilt from the current CV and the wording on the page, so the cost proof
+  // the owner confirmed matches exactly what is sent. One request per confirmed click; no retries.
+  let polishing = false;
+  const textList = (value, name) => {
+    if (!Array.isArray(value) || value.some(v => typeof v !== 'string')) fail(`${name} must be a list of lines.`);
+    return value.map(v => v.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  };
+  const POLISH_OFF = 'CV polishing is off. It uses the same setting as letter polishing: ENABLE_COVER_LETTER_REFINEMENT=true and PERPLEXITY_API_KEY in .env, then restart.';
+  async function polishTarget(reviewId, body) {
+    if (!polisher || typeof polisher.buildRequest !== 'function') fail('CV polishing is unavailable in this server configuration.', 503, 'CV_POLISH_DISABLED');
+    if (!body || typeof body !== 'object' || Array.isArray(body)) fail('An explicit polishing request is required.');
+    const {expectedSha256, expectedRoleCode, profileHeading = '', achievementsHeading = '', wordFile = ''} = body;
+    const found = await inspect(reviewId, {profileHeading, achievementsHeading, wordFile});
+    if (expectedRoleCode !== found.roleCode) fail('The CV selection changed. Draft again for the current CV.', 409);
+    if (found.missingWord) fail('The Word version of this CV is not available. Draft again.', 409);
+    if (expectedSha256 !== found.sha256) fail(MESSAGES.CV_VERSION_CHANGED, 409);
+    const use = usable(found.sections);
+    if (!use.profile || (!use.achievements && !use.experience)) fail(MESSAGES.CV_SECTIONS_NOT_FOUND, 409);
+    const roleSources = use.experience ? use.experience.roles : [];
+    const profile = textList(body.profile, 'Summary');
+    if (!profile.length) fail('Write or keep a summary before polishing.');
+    const achievements = use.achievements && body.achievements != null ? textList(body.achievements, 'Key achievements') : null;
+    let roles = [];
+    if (roleSources.length && body.roles != null) {
+      if (!Array.isArray(body.roles) || body.roles.length !== roleSources.length) fail('The employers in your CV changed. Draft again.', 409);
+      roles = body.roles.map((r, i) => ({title: roleSources[i].title || `Employer ${i + 1}`, bullets: textList(r, roleSources[i].title || 'Employer bullets'), originalBullets: roleSources[i].bullets}));
+    }
+    const review = found.review, form = review.formData || {};
+    const request = {jobTitle: String(form.jobTitle || ''), organisationName: String(form.organisationName || ''), keywords: jobKeywords(review).slice(0, 30), jobDescriptionText: String(form.jobDescriptionText || ''),
+      profile, achievements, roles, originalProfile: use.profile.paragraphs, originalAchievements: use.achievements ? use.achievements.paragraphs : null, selectedEvidence: selectedEvidence(review)};
+    if (JSON.stringify(request).length > 60000) fail('The CV wording is too long to polish in one request.');
+    const model = normalizePolishingModel(body.model || review.polishingModel || DEFAULT_POLISHING_MODEL);
+    const apiBody = polisher.buildRequest(request, model);
+    return {found, use, roleSources, request, model, apiBody, costProof: sha(Buffer.from(JSON.stringify(apiBody)))};
+  }
+
   return {
+    // Cost estimate only: nothing is sent anywhere.
+    async polishEstimate(reviewId, body) {
+      const t = await polishTarget(reviewId, body), e = estimatePolishingApiRequest(t.apiBody);
+      return {available: Boolean(polisher.available), model: t.model, costProof: t.costProof, estimatedInputTokens: e.estimatedInputTokens, outputTokenBudget: e.outputTokenBudget,
+        models: e.models.map(m => ({id: m.id, label: m.label, provider: m.provider, estimatedTokenCostUsd: m.estimatedTokenCostUsd})), assumption: e.assumption, limitation: e.limitation,
+        ...(polisher.available ? {} : {message: POLISH_OFF})};
+    },
+
+    // Sends one paid request after the owner confirmed this exact estimate. The result only fills the editor.
+    async polish(reviewId, body) {
+      if (polishing) fail('A polishing request is already running. Wait for it to finish.', 409, 'CV_POLISH_BUSY');
+      polishing = true;
+      try {
+        const t = await polishTarget(reviewId, body);
+        if (!polisher.available || typeof polisher.polish !== 'function') fail(POLISH_OFF, 503, 'CV_POLISH_DISABLED');
+        if (body.confirmedCostProof !== t.costProof) fail('The wording or model changed since the cost estimate. Estimate again; nothing was sent.', 409, 'CV_POLISH_ESTIMATE_STALE');
+        let outcome;
+        try { outcome = await polisher.polish(t.request, t.model); }
+        catch (error) { fail(`${String(error.code || '').startsWith('CV_POLISH_') ? error.message : 'The polishing service failed.'} Nothing changed and no retry was made.`, 503, error.code || 'CV_POLISH_FAILED'); }
+        const r = outcome?.result || {}, problems = [];
+        const list = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string').map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean) : []);
+        const profile = list(r.summary);
+        if (!profile.length) fail('The polished wording had no summary, so nothing was changed.', 502, 'CV_POLISH_INVALID_RESPONSE');
+        const achievements = t.request.achievements ? list(r.keyAchievements) : null;
+        if (achievements && !achievements.length) fail('The polished wording dropped the Key achievements, so nothing was changed.', 502, 'CV_POLISH_INVALID_RESPONSE');
+        let roles = null;
+        if (t.request.roles.length) {
+          const employers = Array.isArray(r.employers) ? r.employers : [];
+          if (employers.length !== t.request.roles.length) fail('The polished wording changed the number of employers, so nothing was changed.', 502, 'CV_POLISH_INVALID_RESPONSE');
+          roles = employers.map((e, i) => {
+            const bullets = list(e?.bullets), given = t.request.roles[i];
+            if (!bullets.length) return given.bullets;
+            if (bullets.length > given.bullets.length) problems.push(`${given.title}: the polish added bullets; check them carefully.`);
+            return bullets;
+          });
+        }
+        const check = checkTailoredCv({profile, achievements, roles: t.roleSources.length ? roles || t.roleSources.map(x => x.bullets) : null, roleSources: t.roleSources,
+          sources: [...t.use.profile.paragraphs, ...(t.use.achievements?.paragraphs || []), ...t.roleSources.flatMap(x => x.bullets), ...t.request.selectedEvidence]});
+        const notes = typeof r.notes === 'string' ? r.notes.replace(/\s+/g, ' ').trim().slice(0, 600) : '';
+        return {proposal: {profile, achievements, roles}, problems: [...problems, ...check.problems], notes,
+          attempt: buildPolishingAttempt({requestModel: t.model, response: outcome.response, durationMs: outcome.durationMs, webSearchEnabled: false, outcome: 'passed'})};
+      } finally { polishing = false; }
+    },
+
     async draft(reviewId, options = {}) {
       const found = await inspect(reviewId, options);
       const latest = store.latest(reviewId);
@@ -132,7 +214,7 @@ export function createCvTailoringService({reviews, cvLibrary, worker, cvFolder, 
       if ((options.wordFile || options.profileHeading || options.achievementsHeading) && typeof store.savePreferences === 'function') {
         store.savePreferences(found.roleCode, {wordFile: found.word.match === 'chosen' ? found.word.name : '', ...found.chosen});
       }
-      return {...base, ready: true, roleOrder: use.experience ? use.experience.roles.map(r => r.bullets) : [], ...draftTailoredCv({profile: use.profile.paragraphs, achievements: use.achievements ? use.achievements.paragraphs : null, roles: use.experience ? use.experience.roles : [], selected: selectedEvidence(found.review), keywords: jobKeywords(found.review)})};
+      return {...base, ready: true, polishAvailable: Boolean(polisher?.available), roleOrder: use.experience ? use.experience.roles.map(r => r.bullets) : [], ...draftTailoredCv({profile: use.profile.paragraphs, achievements: use.achievements ? use.achievements.paragraphs : null, roles: use.experience ? use.experience.roles : [], selected: selectedEvidence(found.review), keywords: jobKeywords(found.review)})};
     },
 
     async build(reviewId, request) {
