@@ -59,7 +59,7 @@ export function sectionsMessage(profile, achievements, experience = null) {
   return problems.join(' ') + ' Choose the headings your CV uses below, then draft again.';
 }
 
-export function createCvTailoringService({reviews, cvLibrary, worker, cvFolder, store, locateWord = null, polisher = null}) {
+export function createCvTailoringService({reviews, cvLibrary, worker, cvFolder, store, locateWord = null, polisher = null, pdfConverter = null, pdfFiles = null}) {
   if (!reviews || typeof worker !== 'function' || !store) throw new Error('Tailored CV service needs reviews, a document worker and a store.');
   // Without a folder lookup (tests), only the same-name Word file is tried.
   const locate = locateWord || (async libraryPath => {
@@ -155,7 +155,44 @@ export function createCvTailoringService({reviews, cvLibrary, worker, cvFolder, 
     return {found, use, roleSources, request, model, apiBody, costProof: sha(Buffer.from(JSON.stringify(apiBody)))};
   }
 
+  async function makePdf(reviewId, version) {
+    if (!pdfConverter || !pdfFiles) fail('PDF copies are unavailable in this server configuration.', 503, 'TAILORED_PDF_DISABLED');
+    const existing = store.pdf(reviewId, version);
+    if (existing) return existing;
+    const item = store.get(reviewId, version);
+    if (!item) fail('Tailored CV version not found.', 404);
+    const {bytes, wordVersion} = await pdfConverter.convert(item.bytes);
+    const relativePath = await pdfFiles.write(reviewId, version, bytes);
+    store.savePdf({reviewId, version, relativePath, sha256: sha(bytes), sizeBytes: bytes.length, wordVersion});
+    return store.pdf(reviewId, version);
+  }
+
   return {
+    makePdf,
+
+    // Built versions with their PDF status, and which one recruiter emails attach (null = the selected library CV).
+    versions(reviewId) {
+      if (!reviews.get(reviewId)) fail('Saved application not found.', 404);
+      return {versions: store.versions(reviewId).map(v => ({version: v.version, roleCode: v.roleCode, baseName: v.baseName, createdAt: v.createdAt, pdf: Boolean(v.pdf)})), emailVersion: store.emailChoice(reviewId)};
+    },
+    setEmailChoice(reviewId, {version = null} = {}) {
+      if (!reviews.get(reviewId)) fail('Saved application not found.', 404);
+      if (version !== null) {
+        if (!Number.isInteger(version) || !store.get(reviewId, version, {withBytes: false})) fail('Choose a built tailored CV version.', 400);
+        if (!store.pdf(reviewId, version)) fail('That version has no PDF yet. Click Make PDF first.', 409, 'TAILORED_PDF_MISSING');
+      }
+      store.setEmailChoice(reviewId, version);
+      return {emailVersion: store.emailChoice(reviewId)};
+    },
+    // Attachment for emails queued from now on. Throws rather than silently falling back to the library CV.
+    emailAttachment(reviewId) {
+      const version = store.emailChoice(reviewId);
+      if (version === null) return null;
+      const pdf = store.pdf(reviewId, version);
+      if (!pdf) fail(`Tailored CV version ${version} is chosen for emails but has no PDF. Make the PDF or choose another CV.`, 409, 'TAILORED_PDF_MISSING');
+      return {root: 'tailored', relativePath: pdf.relativePath, sha256: pdf.sha256, tailoredVersion: version};
+    },
+
     // Free and local: keyword coverage of the whole CV before tailoring and with the wording on the page.
     async atsMatch(reviewId, body) {
       const w = await currentWording(reviewId, body);
@@ -211,7 +248,7 @@ export function createCvTailoringService({reviews, cvLibrary, worker, cvFolder, 
 
     async draft(reviewId, options = {}) {
       const found = await inspect(reviewId, options);
-      const latest = store.latest(reviewId);
+      const last = store.latest(reviewId), latest = last ? {...last, pdf: store.pdf(reviewId, last.version)} : null;
       if (found.missingWord) {
         const {word} = found;
         return {reviewId, roleCode: found.roleCode, latest, ready: false, needsWordFile: true, word: wordInfo(word), headings: [],
@@ -254,7 +291,10 @@ export function createCvTailoringService({reviews, cvLibrary, worker, cvFolder, 
       // ATS match of exactly what was built (not stored; shown with the new version).
       const original = [...use.profile.paragraphs, ...(check.achievements ? use.achievements.paragraphs : []), ...(check.roles ? roleSources.flatMap(r => r.bullets) : [])];
       const lines = Array.isArray(found.sections?.lines) && found.sections.lines.length ? found.sections.lines : original;
-      return {...saved, ats: compareTailoredAts({keywords: jobKeywords(found.review).slice(0, 40), baseLines: lines, originalLines: original,
+      // PDF for emailing, made by Word straight away. A failure never blocks the build; Make PDF tries once more on request.
+      let pdf = null, pdfError = '';
+      if (pdfConverter && pdfFiles) { try { pdf = await makePdf(reviewId, saved.version); } catch (error) { pdfError = error.statusCode ? error.message : 'Word could not make the PDF. Click Make PDF to try again.'; } }
+      return {...saved, pdf, pdfError, ats: compareTailoredAts({keywords: jobKeywords(found.review).slice(0, 40), baseLines: lines, originalLines: original,
         tailoredLines: [...check.profile, ...(check.achievements || []), ...(check.roles || []).flat()], evidence: selectedEvidence(found.review)})};
     },
 

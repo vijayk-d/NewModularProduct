@@ -31,13 +31,14 @@ def _build_message(draft, from_address):
     message.add_alternative(style_email_body(html, draft.get('emailTheme')), subtype='html')
     attachment = draft.get('attachment')
     if attachment:
-        folder = os.getenv('CV_FOLDER', '').strip()
+        tailored = attachment.get('root') == 'tailored'
+        folder = os.getenv('TAILORED_CV_FOLDER' if tailored else 'CV_FOLDER', '').strip()
         relative = str(attachment.get('relativePath', '')).replace('\\', '/')
         if not folder or not relative or re.match(r'^(?:/|[A-Za-z]:)', relative):
             raise ValueError('A configured CV_FOLDER and relative PDF/DOCX attachment are required.')
         root = Path(folder).resolve()
         path = (root / relative).resolve()
-        if not path.is_relative_to(root) or path.suffix.lower() not in ['.pdf','.docx'] or not path.is_file():
+        if not path.is_relative_to(root) or path.suffix.lower() not in (['.pdf'] if tailored else ['.pdf','.docx']) or not path.is_file():
             raise ValueError('Selected CV must be an existing PDF/DOCX beneath CV_FOLDER.')
         if path.stat().st_size > 20 * 1024 * 1024:
             raise ValueError('Selected CV exceeds the worker attachment limit.')

@@ -40,13 +40,56 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
   const status = el(doc, 'p', {role: 'status', 'aria-live': 'polite', 'data-tailored-status': ''});
   const latest = el(doc, 'p', {'data-tailored-latest': ''});
   const useBlock = el(doc, 'div', {class: 'tailored-use', hidden: ''}, [stepHeading('6', 'Use your tailored CV'), latest,
-    el(doc, 'p', {class: 'tailored-cv-note', text: 'Download it, save it to your output folder (opens in Word without Unblock), or choose "Tailored CV (DOCX)" in the Export pack for a job portal. Emails to recruiters still attach the CV selected above, not the tailored one.'})]);
+    el(doc, 'p', {class: 'tailored-cv-note', text: 'Download it, save it to your output folder (opens in Word without Unblock), or choose "Tailored CV (DOCX)" in the Export pack for a job portal. To email it, choose it under "CV attached to recruiter emails" above; recruiters get the PDF made by Word.'})]);
   const editor = el(doc, 'div', {'data-tailored-editor': '', hidden: ''});
   const chooser = el(doc, 'div', {'data-tailored-headings': '', hidden: ''});
   const wordChooser = el(doc, 'div', {'data-tailored-word': '', hidden: ''});
   section.append(el(doc, 'h2', {id: 'tailored-cv-title', text: 'Tailored CV'}), intro, stepBar, stepHeading('1', 'Draft from your CV'), el(doc, 'div', {class: 'actions'}, [draftButton, checkButton]), status, wordChooser, chooser, report, editor, useBlock);
+  const emailChoice = el(doc, 'fieldset', {class: 'tailored-email-choice', 'data-tailored-email-choice': ''});
+  const libraryRadio = el(doc, 'input', {type: 'radio', name: 'tailoredEmailCv', value: 'library', id: 'tailored-email-library'});
+  const tailoredRadio = el(doc, 'input', {type: 'radio', name: 'tailoredEmailCv', value: 'tailored', id: 'tailored-email-tailored'});
+  const versionSelect = el(doc, 'select', {id: 'tailored-email-version', 'aria-label': 'Tailored CV version for recruiter emails'});
+  const emailStatus = el(doc, 'span', {role: 'status', 'aria-live': 'polite', 'data-tailored-email-status': ''});
+  emailChoice.append(el(doc, 'legend', {text: 'CV attached to recruiter emails'}),
+    el(doc, 'div', {}, [libraryRadio, el(doc, 'label', {for: libraryRadio.id, text: 'Selected CV (as in the CV library)'})]),
+    el(doc, 'div', {}, [tailoredRadio, el(doc, 'label', {for: tailoredRadio.id, text: 'Tailored CV (PDF)'}), doc.createTextNode(' '), versionSelect]),
+    el(doc, 'p', {class: 'tailored-cv-note', text: 'Applies to emails added to the queue from now on. Emails already in the queue keep the CV they were queued with.'}), emailStatus);
+  async function refreshEmailChoice() {
+    try {
+      const response = await fetchImpl(api + '/versions', {cache: 'no-store'});
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Tailored CV versions are unavailable.');
+      versionSelect.textContent = '';
+      for (const v of data.versions) {
+        const o = el(doc, 'option', {value: String(v.version), text: `Version ${v.version}${v.pdf ? '' : ' (no PDF yet)'}, built ${new Date(v.createdAt).toLocaleString('en-GB', {dateStyle: 'medium', timeStyle: 'short'})}`});
+        if (!v.pdf) o.disabled = true;
+        if (v.version === data.emailVersion) o.selected = true;
+        versionSelect.append(o);
+      }
+      const usable = data.versions.some(v => v.pdf);
+      tailoredRadio.disabled = !usable; versionSelect.disabled = !usable;
+      libraryRadio.checked = data.emailVersion === null; tailoredRadio.checked = data.emailVersion !== null;
+      emailStatus.textContent = data.emailVersion !== null ? `Emails will attach tailored CV version ${data.emailVersion} (PDF).` : usable ? '' : 'Build a tailored CV with a PDF to choose it here.';
+    } catch (error) { emailStatus.textContent = error.message; }
+  }
+  async function saveEmailChoice() {
+    const version = tailoredRadio.checked ? Number(versionSelect.value) : null;
+    emailStatus.textContent = 'Saving…';
+    try {
+      const response = await fetchImpl(api + '/email-choice', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({version})});
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || 'The choice was not saved.');
+    } catch (error) { emailStatus.textContent = error.message; }
+    await refreshEmailChoice();
+  }
+  for (const control of [libraryRadio, tailoredRadio, versionSelect]) control.addEventListener('change', () => { if (control === versionSelect) tailoredRadio.checked = true; saveEmailChoice(); });
+  // Own small section just below CV selection, so refreshing that panel never removes the choice.
+  const emailSection = el(doc, 'section', {class: 'review-section tailored-email', id: 'tailored-email-cv'}, [emailChoice]);
+  refreshEmailChoice();
+
   const anchor = doc.querySelector('.panel--decision') || doc.getElementById('email-domain-resolution');
   if (anchor?.parentNode) anchor.after(section); else (doc.querySelector('main') || doc.body).append(section);
+  section.before(emailSection);
 
   let draft = null, options = {};
   // Choices are saved on the server per CV once a draft works, so every application and the Export pack use them.
@@ -97,7 +140,24 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
       finally { saveButton.disabled = false; }
     });
     const ats = item.ats ? ` ATS match of this version: ${item.ats.after.score}% (base CV ${item.ats.before.score}%).` : '';
-    latest.append(link, doc.createTextNode(' '), saveButton, saveStatus, doc.createTextNode(` Built from ${item.baseName}.${ats}`));
+    const pdfLine = el(doc, 'p', {'data-tailored-pdf': ''});
+    const showPdf = (pdf, problem) => {
+      pdfLine.textContent = '';
+      if (pdf) { pdfLine.append(doc.createTextNode(`PDF ready for emailing (made by Word). Choose it under "CV attached to recruiter emails".`)); return; }
+      const make = el(doc, 'button', {type: 'button', 'data-tailored-make-pdf': '', text: 'Make PDF'});
+      make.addEventListener('click', async () => {
+        make.disabled = true; pdfLine.classList.add('is-busy'); pdfLine.firstChild.textContent = 'Word is making the PDF… ';
+        try {
+          const response = await fetchImpl(api + '/' + item.version + '/pdf', {method: 'POST', headers: {'content-type': 'application/json'}, body: '{}'});
+          const data = await response.json();
+          if (!response.ok || !data.ok) throw new Error(data.error || 'The PDF could not be made.');
+          pdfLine.classList.remove('is-busy'); showPdf(data.pdf, ''); refreshEmailChoice();
+        } catch (error) { pdfLine.classList.remove('is-busy'); showPdf(null, error.message); }
+      });
+      pdfLine.append(doc.createTextNode((problem || 'No PDF for this version yet.') + ' '), make);
+    };
+    showPdf(item.pdf, item.pdfError);
+    latest.append(link, doc.createTextNode(' '), saveButton, saveStatus, doc.createTextNode(` Built from ${item.baseName}.${ats}`), pdfLine);
   };
 
   // Optional paid Polish: estimate first (free), then one request only after the owner confirms the cost.
@@ -297,7 +357,7 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
         const result = await response.json();
         if (!response.ok || !result.ok) throw new Error(result.error || 'Tailored CV was not built.');
         message.textContent = `Tailored CV version ${result.tailored.version} built.`;
-        showLatest(result.tailored);
+        showLatest(result.tailored); refreshEmailChoice();
       } catch (error) { message.textContent = error.message; } finally { build.disabled = false; }
     });
     editor.append(...parts, polish, ats.panel, stepHeading('5', 'Build the Word file'), el(doc, 'p', {class: 'tailored-cv-note', text: 'Builds a new version from the wording in the boxes. The figures check runs first.'}), el(doc, 'div', {class: 'actions'}, [build]), message);

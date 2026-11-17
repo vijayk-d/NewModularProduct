@@ -28,10 +28,11 @@ export function createGmailSendService({repository,mailboxPort,env=process.env,r
  async function withCV(item){
   const draft=prepareDraftSnapshot({...item,status:'new'}),relative=String(draft.attachment?.relativePath||'').replaceAll('\\','/');
   if(!relative||/^(?:\/|[A-Za-z]:)/.test(relative))fail('A relative PDF/DOCX CV is required.','SEND_CV');
-  try{const root=await realpath(path.resolve(String(env.CV_FOLDER||''))),file=await realpath(path.resolve(root,relative)),within=path.relative(root,file);
-   if(!within||within==='..'||within.startsWith('..'+path.sep)||path.isAbsolute(within)||!['.pdf','.docx'].includes(path.extname(file).toLowerCase()))fail('CV is outside its configured folder.','SEND_CV');
+  const tailored=draft.attachment?.root==='tailored';
+  try{const root=await realpath(path.resolve(String((tailored?env.TAILORED_CV_FOLDER:env.CV_FOLDER)||''))),file=await realpath(path.resolve(root,relative)),within=path.relative(root,file);
+   if(!within||within==='..'||within.startsWith('..'+path.sep)||path.isAbsolute(within)||!(tailored?['.pdf']:['.pdf','.docx']).includes(path.extname(file).toLowerCase()))fail('CV is outside its configured folder.','SEND_CV');
    const info=await stat(file);if(!info.isFile()||info.size>20*1024*1024)fail('CV unavailable or exceeds 20 MiB.','SEND_CV');
-   const bytes=await readFile(file);if(bytes.length>20*1024*1024)fail('CV exceeds 20 MiB.','SEND_CV');draft.attachment={...draft.attachment,sha256:hash(bytes),sizeBytes:bytes.length};return draft;
+   const bytes=await readFile(file);if(bytes.length>20*1024*1024)fail('CV exceeds 20 MiB.','SEND_CV');if(tailored&&hash(bytes)!==draft.attachment.sha256)fail('The tailored CV PDF changed after it was queued. Remove and requeue.','SEND_CV');draft.attachment={...draft.attachment,sha256:hash(bytes),sizeBytes:bytes.length};return draft;
   }catch(e){if(e.statusCode)throw e;fail('Selected CV could not be verified.','SEND_CV');}
  }
  return {getStatus,eligibility,cancel({ticket}={}){return {cancelled:tickets.delete(ticket),sent:false};},

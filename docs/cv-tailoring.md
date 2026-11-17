@@ -20,7 +20,15 @@ Unchanged lines keep their original paragraph, so bold lead-ins and highlights s
 
 Each build is saved as a new version. You can download it as a DOCX, save it to your output folder, or include it in the Export pack by choosing **Tailored CV (DOCX)**. The latest built version is the one used.
 
-**Emails to recruiters** still attach the CV selected for the application (the library CV), not the tailored one. Use the tailored CV for job portals through the Export pack or Save to folder.
+## Emailing the tailored CV (PDF)
+
+- **PDF made by Word.** Each **Build** asks Microsoft Word on this PC to save a PDF copy, exactly as Word would print it. Word runs hidden and closes again, which takes a few seconds. If Word is not installed or cannot start, the build still succeeds and step 6 says why, with a **Make PDF** button that tries once more when you click it. The app never retries on its own. PDFs are written once to `<state folder>/tailored-cv-pdfs/<application>/v<version>.pdf` and never overwritten.
+- **Choosing what recruiters get.** Under **CV selection**, the small section **CV attached to recruiter emails** offers:
+  - **Selected CV (as in the CV library)**, the default;
+  - **Tailored CV (PDF)**, with a list of built versions. Versions without a PDF are greyed out.
+- **The queue.** The choice applies to emails added to the queue from then on, under the upload-friendly name (for example `Vijay_DAFAL_Delivery_Manager_CV.pdf`). Emails already in the queue keep the CV they were queued with and keep sending until you pause or stop them.
+- **Checks.** Gmail drafting and sending read the tailored PDF only from that folder (`TAILORED_CV_FOLDER`, set by the app) and refuse it if its bytes changed after it was queued. Only PDFs are attached from there.
+- **Storage.** Two new tables in `cv-tailoring-v1.db` (`tailored_cv_pdfs`, `tailored_cv_email_choice`) and the new PDF folder. No existing table or schema changes.
 
 ## ATS keyword match (free)
 

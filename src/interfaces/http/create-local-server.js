@@ -428,6 +428,8 @@ export function createLocalServer({
   const handleIntelligence=createApplicationIntelligenceHttp({service:applicationIntelligence});
   const handleOutreach = createOutreachHttpHandler({
     repository: outreachRepository, contactStore: recruiterContactStore,
+    // Emails queued from now on attach the tailored CV PDF when one is chosen for that application.
+    tailoredAttachment: cvTailoringService && typeof cvTailoringService.emailAttachment === 'function' ? id => cvTailoringService.emailAttachment(id) : null,
     getReview: (id) => reviewStore.get(id)
   });
 
