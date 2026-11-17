@@ -1,0 +1,189 @@
+"""Tailor a copy of a DOCX CV: only the Profile and Key achievements sections are replaced.
+Offline and bounded. The source file is read, never written; everything else in the package is copied byte for byte."""
+import io, re, copy, zipfile, xml.etree.ElementTree as ET
+from cv_docx import package, xml, need, W
+
+PROFILE = {'profile', 'professional profile', 'personal profile', 'career profile', 'profile summary', 'summary',
+           'professional summary', 'career summary', 'executive summary', 'personal statement', 'about me'}
+ACHIEVEMENTS = {'key achievements', 'achievements', 'selected achievements', 'career highlights', 'key accomplishments',
+                'accomplishments', 'notable achievements', 'career achievements', 'key highlights', 'highlights'}
+OTHER = {'experience', 'professional experience', 'work experience', 'relevant experience', 'employment', 'employment history',
+         'career history', 'work history', 'skills', 'key skills', 'core skills', 'core competencies', 'competencies',
+         'technical skills', 'education', 'qualifications', 'education and qualifications', 'certifications', 'certificates',
+         'training', 'professional development', 'languages', 'interests', 'references', 'projects', 'memberships',
+         'awards', 'volunteering', 'additional information', 'tools', 'technologies', 'contact', 'contact details'}
+KINDS = ('profile', 'achievements')
+XML_SPACE = '{http://www.w3.org/XML/1998/namespace}space'
+MAX_LINES, MAX_LINE = 12, 600
+
+
+def q(tag): return '{' + W + '}' + tag
+def text(p): return ''.join(t.text or '' for t in p.iter(q('t')))
+def label(s): return re.sub(r'\s+', ' ', s.strip().rstrip(':').strip()).lower()
+
+
+def style(p):
+    s = p.find(q('pPr') + '/' + q('pStyle'))
+    return (s.get(q('val')) or '') if s is not None else ''
+
+
+def is_bullet(p):
+    ppr = p.find(q('pPr'))
+    return ppr is not None and (ppr.find(q('numPr')) is not None or 'list' in style(p).lower())
+
+
+def heading_kind(p):
+    raw = text(p).strip()
+    s = label(raw)
+    if not s or len(s) > 45:
+        return None
+    if s in PROFILE: return 'profile'
+    if s in ACHIEVEMENTS: return 'achievements'
+    if s in OTHER: return 'other'
+    st = style(p).lower()
+    if st.startswith('heading') or st == 'title': return 'other'
+    if raw.isupper() and len(raw) <= 40 and not raw.endswith('.') and not is_bullet(p): return 'other'
+    return None
+
+
+def parents(root): return {c: p for p in root.iter() for c in p}
+
+
+def body_after(container, start):
+    """Paragraphs after `start` inside the same container, up to the next heading, table or section break."""
+    kids = list(container)
+    out = []
+    for el in kids[kids.index(start) + 1:] if start is not None else kids:
+        if el.tag != q('p') or heading_kind(el):
+            break
+        out.append(el)
+    return out
+
+
+def locate(root):
+    """Finds each section once. Returns {kind: (container, heading, body paragraphs)}."""
+    up = parents(root)
+    found = {}
+    for p in root.iter(q('p')):
+        kind = heading_kind(p)
+        if kind not in KINDS or kind in found:
+            continue
+        container = up[p]
+        body = body_after(container, p)
+        if not any(text(x).strip() for x in body) and container.tag == q('tc'):
+            row = up.get(container)
+            cells = [c for c in row if c.tag == q('tc')] if row is not None else []
+            nxt = cells[cells.index(container) + 1] if cells.index(container) + 1 < len(cells) else None
+            if nxt is not None and not any(heading_kind(x) for x in nxt.iter(q('p'))):
+                container, body = nxt, body_after(nxt, None)
+        found[kind] = (container, p, body)
+    return found
+
+
+def describe(data):
+    z, root = package(data)
+    z.close()
+    found = locate(root)
+    result = {}
+    for kind in KINDS:
+        if kind not in found:
+            result[kind] = None
+            continue
+        _, heading, body = found[kind]
+        lines = [text(x).strip() for x in body if text(x).strip()]
+        result[kind] = {'heading': text(heading).strip()[:60], 'paragraphs': lines[:40],
+                        'bullets': sum(1 for x in body if text(x).strip() and is_bullet(x)),
+                        'supported': 0 < len(lines) <= 40}
+    return result
+
+
+def new_paragraph(template, line):
+    p = ET.Element(q('p'))
+    ppr = template.find(q('pPr'))
+    if ppr is not None:
+        ppr = copy.deepcopy(ppr)
+        for s in ppr.findall(q('sectPr')):
+            ppr.remove(s)
+        p.append(ppr)
+    run = ET.SubElement(p, q('r'))
+    first = next((r for r in template.iter(q('r')) if r.find(q('t')) is not None), None)
+    if first is not None and first.find(q('rPr')) is not None:
+        run.append(copy.deepcopy(first.find(q('rPr'))))
+    t = ET.SubElement(run, q('t'), {XML_SPACE: 'preserve'})
+    t.text = line
+    return p
+
+
+def clean_lines(lines, code):
+    need(isinstance(lines, list) and 0 < len(lines) <= MAX_LINES, code)
+    out = []
+    for line in lines:
+        need(isinstance(line, str), code)
+        line = re.sub(r'\s+', ' ', line).strip()
+        need(0 < len(line) <= MAX_LINE and not re.search(r'[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff]', line), code)
+        out.append(line)
+    return out
+
+
+def replace(container, body, lines, bullets):
+    filled = [x for x in body if text(x).strip()]
+    need(0 < len(filled) <= 40, 'CV_SECTION_LAYOUT_UNSUPPORTED')
+    kids = list(container)
+    first, last = kids.index(filled[0]), kids.index(filled[-1])
+    span = [x for x in kids[first:last + 1] if x in body]
+    need(not any(x.find(q('pPr') + '/' + q('sectPr')) is not None for x in span), 'CV_SECTION_BREAK_INSIDE')
+    template = next((x for x in filled if is_bullet(x)), filled[0]) if bullets else filled[0]
+    for x in span:
+        container.remove(x)
+    for i, line in enumerate(lines):
+        container.insert(first + i, new_paragraph(template, line))
+
+
+def namespaces(raw):
+    found = []
+    for _, (prefix, uri) in ET.iterparse(io.BytesIO(raw), events=['start-ns']):
+        if (prefix, uri) not in found:
+            found.append((prefix, uri))
+    return found
+
+
+def serialise(root, raw):
+    declared = namespaces(raw)
+    for prefix, uri in declared:
+        try:
+            ET.register_namespace(prefix, uri)
+        except ValueError:
+            pass
+    out = ET.tostring(root, encoding='UTF-8', xml_declaration=True)
+    start = out.index(b'<', out.index(b'?>') + 2)
+    end = out.index(b'>', start)
+    tag = out[start:end]
+    extra = b''.join(b' xmlns:' + p.encode() + b'="' + u.encode() + b'"' for p, u in declared
+                     if p and (b' xmlns:' + p.encode() + b'=') not in tag)
+    return out[:end] + extra + out[end:]
+
+
+def tailor(data, profile, achievements):
+    profile = clean_lines(profile, 'CV_PROFILE_INVALID')
+    achievements = clean_lines(achievements, 'CV_ACHIEVEMENTS_INVALID')
+    z, _ = package(data)
+    with z:
+        raw = z.read('word/document.xml')
+        root = xml(raw)
+        found = locate(root)
+        need(all(k in found for k in KINDS), 'CV_SECTIONS_NOT_FOUND')
+        replace(found['profile'][0], found['profile'][2], profile, False)
+        replace(found['achievements'][0], found['achievements'][2], achievements, True)
+        document = serialise(root, raw)
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as out:
+            for item in z.infolist():
+                out.writestr(item, document if item.filename == 'word/document.xml' else z.read(item.filename),
+                             compress_type=zipfile.ZIP_DEFLATED)
+    result = buffer.getvalue()
+    z2, root2 = package(result)
+    z2.close()
+    check = describe(result)
+    need(check['profile'] and check['achievements'] and check['profile']['paragraphs'] == profile
+         and check['achievements']['paragraphs'] == achievements, 'CV_TAILOR_VERIFY_FAILED')
+    return result

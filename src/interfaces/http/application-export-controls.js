@@ -8,9 +8,9 @@ export async function exportFromEditor({save,getVersions,isDirty,getCvRoleCode,i
  const name=/filename="([-A-Za-z0-9_]+-application\.zip)"/.exec(response.headers.get('content-disposition')||'')?.[1];
  if(!name)throw new Error('Invalid download receipt. Nothing downloaded.');await download(blob,name);
 }
-export const CV_CHOICES=[['none','No CV'],['saved','CV as saved'],['pdf','CV as PDF'],['docx','CV as DOCX'],['both','CV as PDF and DOCX']];
+export const CV_CHOICES=[['none','No CV'],['saved','CV as saved'],['pdf','CV as PDF'],['docx','CV as DOCX'],['both','CV as PDF and DOCX'],['tailored','Tailored CV (DOCX)']];
 export function packSummary(choice,cvCode){
- const cv=choice==='none'?'no CV':!cvCode?'no CV selected yet':`CV ${cvCode} ${{saved:'in its saved format',pdf:'as PDF',docx:'as DOCX',both:'as PDF and DOCX'}[choice]}`;
+ const cv=choice==='none'?'no CV':!cvCode?'no CV selected yet':`CV ${cvCode} ${{saved:'in its saved format',pdf:'as PDF',docx:'as DOCX',both:'as PDF and DOCX',tailored:'tailored for this job (DOCX)'}[choice]}`;
  return `Pack: career-portal cover letter (Word, plus PDF when the letter template is set up) and ${cv}.`;
 }
 export function attachApplicationExportControls({doc,bar,save,getVersions,isDirty,reviewId,fetchImpl}){

@@ -1,0 +1,80 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {once} from 'node:events';
+import {createCvTailoringService, wordPathFor} from '../../src/application/cv-tailoring.js';
+import {createCvTailoringStore} from '../../src/infrastructure/applications/sqlite-cv-tailoring-store.js';
+import {createCvTailoringHandler} from '../../src/interfaces/http/cv-tailoring-http.js';
+import {createLocalServer} from '../../src/interfaces/http/create-local-server.js';
+import {fakeWorker, reviewFixture, SHA} from '../fixtures/cv-tailoring-fixtures.js';
+
+const library = async () => [{role_code: 'PM', local_path: 'PM/PM_CV.pdf'}];
+
+test('word path is the DOCX next to the library PDF', () => {
+  assert.equal(wordPathFor('PM/PM_CV.pdf'), 'PM/PM_CV.docx');
+  assert.equal(wordPathFor('PM/PM_CV.DOCX'), 'PM/PM_CV.DOCX');
+  assert.equal(wordPathFor('PM/notes.txt'), '');
+});
+
+test('draft, check and build new versions without touching the base CV', async () => {
+  const calls = [], store = createCvTailoringStore({filePath: ':memory:'});
+  const service = createCvTailoringService({reviews: reviewFixture(), store, worker: fakeWorker(calls), cvFolder: 'C:/cv', cvLibrary: library});
+  const draft = await service.draft('r1');
+  assert.equal(draft.ready, true);
+  assert.equal(draft.roleCode, 'PM');
+  assert.equal(draft.achievements[0].text, 'Introduced risk reporting for the board.');
+  assert.deepEqual(calls[0], {root: 'C:/cv', action: 'sections', relativePath: 'PM/PM_CV.docx', expectedHash: null});
+
+  const request = {profile: ['Delivery leader for Agile programmes.'], achievements: ['Cut costs by 10% through vendor consolidation.'], expectedSha256: SHA, expectedRoleCode: 'PM'};
+  await assert.rejects(service.build('r1', {...request, achievements: ['Cut costs by 30%.']}), e => e.statusCode === 400 && /30%/.test(e.message));
+  await assert.rejects(service.build('r1', {...request, expectedSha256: 'b'.repeat(64)}), e => e.statusCode === 409);
+  await assert.rejects(service.build('r1', {...request, expectedRoleCode: 'DM'}), e => e.statusCode === 409);
+  const v1 = await service.build('r1', request);
+  const v2 = await service.build('r1', request);
+  assert.deepEqual([v1.version, v2.version], [1, 2]);
+  assert.equal(calls.filter(c => c.action === 'tailor').at(-1).expectedHash, SHA, 'build pins the checked file');
+  assert.equal(service.latest('r1').version, 2);
+  assert.match(service.file('r1', 1).bytes.toString(), /^PK/);
+  assert.ok(calls.every(c => ['sections', 'tailor'].includes(c.action)), 'no write action exists');
+});
+
+test('a CV without recognisable sections is reported, not built', async () => {
+  const service = createCvTailoringService({reviews: reviewFixture(), store: createCvTailoringStore({filePath: ':memory:'}), worker: fakeWorker([], {sections: {profile: null, achievements: null}}), cvFolder: 'C:/cv', cvLibrary: library});
+  const draft = await service.draft('r1');
+  assert.equal(draft.ready, false);
+  assert.match(draft.message, /Profile/);
+  await assert.rejects(service.build('r1', {profile: ['a'], achievements: ['b'], expectedSha256: SHA, expectedRoleCode: 'PM'}), e => e.statusCode === 409);
+});
+
+test('the store refuses an unrecognised database', () => {
+  assert.throws(() => createCvTailoringStore({}), /path required/);
+});
+
+test('HTTP routes draft, build and download through the local server', async t => {
+  const reviews = reviewFixture();
+  const service = createCvTailoringService({reviews, store: createCvTailoringStore({filePath: ':memory:'}), worker: fakeWorker(), cvFolder: 'C:/cv', cvLibrary: library});
+  const server = createLocalServer({applicationReviewStore: reviews, cvTailoringService: service, candidateDisplayName: 'Test Candidate',
+    recruiterContactStore: {async listAll() { return []; }, async listByReview() { return []; }}, outreachRepository: {list: () => [], listDraftOperations: () => [], listSendAttempts: () => [], listSentEmails: () => []}});
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const base = 'http://127.0.0.1:' + server.address().port;
+  const url = base + '/api/reviews/r1/tailored-cv';
+  const draft = await (await fetch(url)).json();
+  assert.equal(draft.ok, true);
+  const post = body => fetch(url, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)});
+  assert.equal((await post({profile: ['P.'], achievements: ['Saved £9M.'], expectedSha256: draft.baseSha256, expectedRoleCode: 'PM'})).status, 400);
+  const built = await (await post({profile: ['P.'], achievements: ['Led a 40-person Agile programme.'], expectedSha256: draft.baseSha256, expectedRoleCode: 'PM'})).json();
+  assert.equal(built.tailored.version, 1);
+  const file = await fetch(url + '/1.docx');
+  assert.equal(file.status, 200);
+  assert.match(file.headers.get('content-disposition'), /Test_Candidate_Delivery_Manager_CV\.docx/);
+  assert.equal((await fetch(url + '/9.docx')).status, 404);
+  assert.equal((await fetch(url, {headers: {origin: 'https://evil.test'}})).status, 403);
+  assert.match(await (await fetch(base + '/tailored-cv-controls.js')).text(), /attachTailoredCvControls/);
+});
+
+test('the handler reports a disabled feature clearly', async () => {
+  let sent;
+  const handler = createCvTailoringHandler({service: null, sendJson: (res, status, body) => { sent = {status, body}; }, sendText() {}});
+  assert.equal(await handler({method: 'GET', headers: {host: 'x'}}, {}, new URL('http://x/api/reviews/r1/tailored-cv')), true);
+  assert.equal(sent.status, 503);
+});
