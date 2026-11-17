@@ -174,6 +174,8 @@ class TailorTests(unittest.TestCase):
             self.assertEqual(stale, {'ok': False, 'code': 'CV_VERSION_CHANGED'})
             pdf = run({'action': 'sections', 'root': tmp, 'relativePath': 'DM/cv.pdf', 'expectedHash': None})
             self.assertEqual(pdf['code'], 'CV_DOCX_REQUIRED')
+            missing = run({'action': 'sections', 'root': tmp, 'relativePath': 'DM/other name.docx', 'expectedHash': None})
+            self.assertEqual(missing, {'ok': False, 'code': 'CV_FILE_NOT_FOUND'})
 
 
 if __name__ == '__main__':
