@@ -23,7 +23,7 @@ After drafting, **Polish wording (paid)…** asks a model to improve the wording
 
 1. **Estimate (free).** The page shows the polishing models with an estimated cost for this request. The default is this application's polishing model (the same choice cards as letter polishing, otherwise the catalogue default). Nothing is sent yet.
 2. **Confirm.** **Send to <model> (about $…)** sends one request. If you change the wording or the model after the estimate, the request is refused and you estimate again. There are no automatic retries; a failure changes nothing.
-3. **Review.** The polished wording replaces the text in the boxes only. Nothing is built. **Undo polish** brings back your previous wording.
+3. **Review.** The polished wording replaces the text in the boxes only. Nothing is built. Under the boxes, **Before and after** shows one table per section (Summary, each employer, Key achievements): your wording before the polish, the polished wording and the change (Unchanged, Reworded, Added or Removed), with the number of changed lines. For each section choose **Use previous wording** or **Use polished wording**, or edit the box. **Undo polish** brings back all your previous wording.
 4. **Build** as usual.
 
 What is sent: the wording in the boxes, the original lines of those sections from your CV, the achievements selected for this application, and the job title, organisation, keywords and the first 6,000 characters of the job description. No web search, no contact details, no other CV sections, no Gmail.

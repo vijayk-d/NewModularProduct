@@ -126,3 +126,10 @@ test('polish routes refuse cross-origin or missing-origin calls', async t => {
   assert.equal(done.ok, true);
   assert.equal(polisher.calls.length, 1);
 });
+
+test('before/after rows mark unchanged, reworded, added and removed lines', async () => {
+  const {compareLines, CHANGE_LABELS} = await import('../../src/interfaces/http/tailored-cv-controls.js');
+  assert.deepEqual(compareLines(['A', 'B', 'C'], ['A', 'B2']).map(r => r.status), ['unchanged', 'changed', 'removed']);
+  assert.deepEqual(compareLines(['A'], ['A', 'New']).map(r => [r.before, r.after, r.status]), [['A', 'A', 'unchanged'], ['', 'New', 'added']]);
+  assert.equal(CHANGE_LABELS.changed, 'Reworded');
+});

@@ -4,6 +4,17 @@ const SOURCE = {cv: 'From your CV', selected: 'Selected for this application'};
 export function parseProfile(value) { return String(value || '').split(/\n\s*\n/).map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean); }
 export function parseBullets(value) { return String(value || '').split('\n').map(s => s.replace(/^\s*[-•*]\s*/, '').replace(/\s+/g, ' ').trim()).filter(Boolean); }
 
+// Before/after rows for one box, line by line. Local only: used to show what a polish changed.
+export const CHANGE_LABELS = {unchanged: 'Unchanged', changed: 'Reworded', added: 'Added', removed: 'Removed'};
+export function compareLines(before = [], after = []) {
+  const rows = [];
+  for (let i = 0; i < Math.max(before.length, after.length); i++) {
+    const b = before[i], a = after[i];
+    rows.push({before: b ?? '', after: a ?? '', status: b === undefined ? 'added' : a === undefined ? 'removed' : a === b ? 'unchanged' : 'changed'});
+  }
+  return rows;
+}
+
 function el(doc, tag, props = {}, children = []) {
   const node = doc.createElement(tag);
   for (const [k, v] of Object.entries(props)) {
@@ -121,6 +132,33 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
         choice.hidden = false; status.textContent = 'Check the model and estimated cost, then send or cancel.';
       } catch (error) { choice.hidden = true; status.textContent = error.message; } finally { start.disabled = false; }
     }
+    // One table per box: your wording before the polish next to the polished wording, with a choice per box.
+    function comparison(before) {
+      const boxes = [{box: profile, old: before.profile, parse: parseProfile, join: '\n\n'}, ...(bullets ? [{box: bullets, old: before.bullets, parse: parseBullets, join: '\n'}] : []),
+        ...roleBoxes.map((box, i) => ({box, old: before.roles[i], parse: parseBullets, join: '\n'}))];
+      const wrap = el(doc, 'div', {class: 'tailored-polish-compare', 'data-tailored-polish-compare': ''});
+      wrap.append(el(doc, 'h4', {text: 'Before and after'}), el(doc, 'p', {class: 'tailored-cv-note', text: 'Each section shows your wording before the polish next to the polished wording. Choose which to keep for each section, or edit the boxes above. Build uses whatever is in the boxes.'}));
+      for (const {box, old, parse, join} of boxes) {
+        const polished = box.value, rows = compareLines(parse(old), parse(polished));
+        const name = (doc.querySelector(`label[for="${box.id}"]`)?.textContent || 'Section').replace(/\s*\([^)]*\)\s*$/, '');
+        const changed = rows.filter(r => r.status !== 'unchanged').length;
+        const part = el(doc, 'section', {'data-compare-section': name});
+        const table = el(doc, 'table', {class: 'tailored-compare-table'});
+        const head = el(doc, 'tr');
+        for (const h of ['Before', 'Polished', 'Change']) head.append(el(doc, 'th', {scope: 'col', text: h}));
+        const tbody = el(doc, 'tbody');
+        for (const r of rows) tbody.append(el(doc, 'tr', {'data-change': r.status}, [el(doc, 'td', {text: r.before}), el(doc, 'td', {text: r.after}), el(doc, 'td', {text: CHANGE_LABELS[r.status]})]));
+        table.append(el(doc, 'thead', {}, [head]), tbody);
+        const using = el(doc, 'span', {role: 'status', 'aria-live': 'polite', 'data-compare-using': '', text: 'Using the polished wording.'});
+        const usePrevious = el(doc, 'button', {type: 'button', text: 'Use previous wording'});
+        const usePolished = el(doc, 'button', {type: 'button', text: 'Use polished wording'});
+        usePrevious.addEventListener('click', () => { box.value = old; using.textContent = 'Using your previous wording.'; });
+        usePolished.addEventListener('click', () => { box.value = polished; using.textContent = 'Using the polished wording.'; });
+        part.append(el(doc, 'h5', {text: `${name}: ${changed ? `${changed} of ${rows.length} lines changed` : 'no change'}`}), table, el(doc, 'div', {class: 'actions'}, [usePrevious, usePolished, using]));
+        wrap.append(part);
+      }
+      return wrap;
+    }
     async function runPolish(send, select) {
       send.disabled = true; select.disabled = true; start.disabled = true; status.textContent = 'Polishing… (one paid request, no retries)';
       try {
@@ -134,6 +172,7 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
         status.textContent = `Polished wording is in the boxes above${cost != null ? ` (reported cost $${cost.toFixed(4)})` : ''}. Check every line, then Build.`;
         if (data.problems.length) { const list = el(doc, 'ul', {'data-tailored-polish-problems': ''}); for (const p of data.problems) list.append(el(doc, 'li', {text: p})); result.append(el(doc, 'p', {text: 'Fix these before building:'}), list); }
         if (data.notes) result.append(el(doc, 'p', {class: 'tailored-cv-note', text: 'Note from the polish: ' + data.notes}));
+        result.append(comparison(before));
         const undo = el(doc, 'button', {type: 'button', text: 'Undo polish'});
         undo.addEventListener('click', () => { restore(before); result.hidden = true; status.textContent = 'Your previous wording is back.'; });
         result.append(el(doc, 'div', {class: 'actions'}, [undo])); result.hidden = false;

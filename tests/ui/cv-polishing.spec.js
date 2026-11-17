@@ -48,6 +48,22 @@ test('estimate, choose a model, confirm, review, undo, polish again and build', 
   expect(app.calls).toHaveLength(1);
   expect(app.calls[0].model).not.toBe('anthropic/claude-haiku-5-5');
 
+  // Before and after, per section, with a choice per section.
+  const compare = section.locator('[data-tailored-polish-compare]');
+  const summary = compare.locator('[data-compare-section="Profile"]');
+  await expect(summary.getByRole('heading', {name: 'Profile: 1 of 1 lines changed'})).toBeVisible();
+  const row = summary.locator('tbody tr').first();
+  await expect(row).toHaveAttribute('data-change', 'changed');
+  await expect(row.locator('td').nth(0)).toHaveText('Delivery leader across programmes.');
+  await expect(row.locator('td').nth(1)).toHaveText('Polished delivery leader for Agile programmes.');
+  await expect(row.locator('td').nth(2)).toHaveText('Reworded');
+  await expect(compare.locator('[data-compare-section="Key Achievements"] tbody tr')).not.toHaveCount(0);
+  await summary.getByRole('button', {name: 'Use previous wording'}).click();
+  await expect(profile).toHaveValue('Delivery leader across programmes.');
+  await expect(summary.locator('[data-compare-using]')).toHaveText('Using your previous wording.');
+  await summary.getByRole('button', {name: 'Use polished wording'}).click();
+  await expect(profile).toHaveValue('Polished delivery leader for Agile programmes.');
+
   await section.getByRole('button', {name: 'Undo polish'}).click();
   await expect(profile).toHaveValue('Delivery leader across programmes.');
 
