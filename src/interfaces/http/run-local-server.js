@@ -10,6 +10,9 @@ import {createTailoredPdfFiles} from '../../infrastructure/applications/tailored
 import {createApplicationOutputFolder} from '../../infrastructure/applications/application-output-folder.js';
 import {createWorkflowAutomationStore} from '../../infrastructure/applications/sqlite-workflow-automation-store.js';
 import {createOrganisationResearchService} from '../../application/organisation-research-cache.js';
+import {providerTimeLimitMs} from '../../infrastructure/provider-time-limit.js';
+import {createJsonEmailDomainStore} from '../../infrastructure/applications/json-email-domain-store.js';
+import {installCrashHandlers,takePreviousCrash} from '../../infrastructure/crash-record.js';
 import {createTemplateCoverLetterDocuments} from '../../infrastructure/documents/template-cover-letter.js';
 import {createSqliteJobImportStore} from '../../infrastructure/applications/sqlite-job-import-store.js';
 import { gmailLoadedEnvironment } from '../../application/gmail-runtime-diagnostics.js';
@@ -52,6 +55,9 @@ import {createWordCvLocator} from '../../infrastructure/documents/word-cv-locato
 
 const DEFAULT_TEMPLATE_ID = 'standard-cover-letter';
 const deployment=deploymentRuntime({env:process.env,projectRoot:fileURLToPath(new URL('../../../',import.meta.url))});
+// An unexpected error stops the app with a clear [CRASH] line and a small record; the next start reports it once.
+installCrashHandlers({stateDirectory:deployment.state});
+{const previous=takePreviousCrash(deployment.state);if(previous)console.warn(`[STARTUP] The previous run stopped unexpectedly at ${previous.at||'an unknown time'} (${previous.kind}: ${previous.name}${previous.code?' '+previous.code:''}${previous.frames?.[0]?' at '+previous.frames[0]:''}). Check the log from that time.`);}
 
 const config = loadRuntimeConfig({
   env: process.env
@@ -83,6 +89,13 @@ const cvInventoryRepository = createJsonCvInventoryRepository({
 const companyResearchPort = config.features.enablePerplexityResearch
   ? createPerplexityCompanyResearchAdapter({
       apiKey: config.integrations.perplexity.apiKey
+    })
+  : null;
+// Automatic research runs while a new review page loads, so it gets a shorter limit (half, at most 45 s).
+const automaticResearchPort = config.features.enablePerplexityResearch
+  ? createPerplexityCompanyResearchAdapter({
+      apiKey: config.integrations.perplexity.apiKey,
+      timeoutMs: Math.min(45000, Math.round(providerTimeLimitMs() / 2))
     })
   : null;
 
@@ -159,9 +172,11 @@ const server = createLocalServer({
   applicationPackExporter:createApplicationPackExporter({cvFolder:config.storage.cvFolder,documents:createTemplateCoverLetterDocuments({stateDirectory:deployment.state}),cvInventory:cvInventoryRepository,candidateName:process.env.CANDIDATE_DISPLAY_NAME||'Vijay DAFAL',wordPathFor:cvTailoringService?(code,pdf)=>cvTailoringService.wordPathForExport(code,pdf):null,tailoredCv:cvTailoringStore?id=>{const l=cvTailoringStore.latest(id);return l?cvTailoringStore.get(id,l.version):null;}:null,recordExport:workflowAutomationStore?(id,link)=>workflowAutomationStore.recordPortalExport(id,link):null}),
   portalExports:workflowAutomationStore?()=>workflowAutomationStore.portalExports():null,
   // Automatic research is on when organisation research is enabled; ENABLE_AUTO_RESEARCH=false turns it off.
-  organisationResearchService:workflowAutomationStore?createOrganisationResearchService({store:workflowAutomationStore,research:companyResearchPort?request=>researchOrganization(request,{companyResearchPort}):null,enabled:String(process.env.ENABLE_AUTO_RESEARCH||'true').toLowerCase()!=='false',dailyCap:Math.max(0,Number.parseInt(process.env.AUTO_RESEARCH_DAILY_CAP||'10',10)||0)}):null,
+  organisationResearchService:workflowAutomationStore?createOrganisationResearchService({store:workflowAutomationStore,research:automaticResearchPort?request=>researchOrganization(request,{companyResearchPort:automaticResearchPort}):null,enabled:String(process.env.ENABLE_AUTO_RESEARCH||'true').toLowerCase()!=='false',dailyCap:Math.max(0,Number.parseInt(process.env.AUTO_RESEARCH_DAILY_CAP||'10',10)||0)}):null,
   cvEvidenceLoader,
   cvTailoringService,
+  // Email-domain lookups live in the state folder; the old file inside the source folder is read once if present.
+  emailDomainStore:createJsonEmailDomainStore({filePath:path.join(deployment.state,'email-domain-resolutions-v1.json'),legacyPath:fileURLToPath(new URL('../../../data/email-domain-resolutions.json',import.meta.url))}),
   candidateDisplayName,
   cvDocumentAdapter:createCvDocumentAdapter({cvFolder:config.storage.cvFolder}),
   cvInventoryRepository,

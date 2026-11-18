@@ -14,10 +14,14 @@ Evidence boundary: source on master at `99d33e6`, read for this review. No code 
 - **Risk:** in production each release runs from a new `releases\<commit>` folder, so previously resolved domains are left behind on every ship. The file is also outside the backed-up `shared\data`, and a crash mid-write can leave it unreadable.
 - **Fix:** a new file in the state folder, written atomically. Keep reading the old file once if present, so nothing is lost. No existing file is overwritten.
 
-### R3. A crash leaves no reason behind
+### R3. A crash is not flagged clearly
 - **Where:** no `unhandledRejection` or `uncaughtException` handler anywhere in `src` or `tools`.
-- **Risk:** an unexpected error in a background step (automatic research, Word PDF, a worker) can stop the server with nothing in the log saying why.
-- **Fix:** log the error type and stack, without personal data, to the existing log, then exit non-zero so the production supervisor restarts the app. Add a startup line saying the previous run ended with an error.
+- **Correction (while building the fix):** Node already prints the stack of an uncaught error, and in production the supervisor saves it to `shared\logs`. The supervisor deliberately does not restart, so the stop itself is visible. What was missing is a clear marker, and a notice on the next start that the previous run stopped unexpectedly.
+- **Fix:**
+  - one `[CRASH]` line in the log;
+  - a small `last-crash.json` in the state folder holding the time, error type and code locations, never the message text;
+  - exit code 1;
+  - on the next start, a one-time `[STARTUP]` notice, after which the record is moved aside (kept, not deleted).
 
 ## Medium: next few slices
 
@@ -71,6 +75,9 @@ Evidence boundary: source on master at `99d33e6`, read for this review. No code 
 - Tailored CV recognises headings, employer blocks and an untitled opening profile. A new CV layout can still be misread.
 - Mitigations already in place: "Check all CVs", chosen headings saved per CV, and the build verifies the result before saving.
 - Run the check whenever a CV is added. The System check (R5) should include it.
+
+## Status
+- **R1, R2 and R3:** built on branch `fix/robustness-pack-1` (18 November 2026), not yet merged.
 
 ## Suggested order
 1. R1, R2 and R3 together as one small "robustness pack", one branch.

@@ -1,3 +1,4 @@
+import {providerTimeLimitMs, timeLimitSignal, isTimeLimitError, timeLimitMessage} from '../provider-time-limit.js';
 function normalizeText(value = '') {
   return String(value ?? '').trim();
 }
@@ -182,6 +183,7 @@ export function createPerplexityCompanyResearchAdapter({
   apiKey,
   model = 'sonar',
   fetchImpl = fetch,
+  timeoutMs = providerTimeLimitMs(),
   now = () => new Date().toISOString()
 } = {}) {
   if (typeof apiKey !== 'string' || !apiKey.trim()) {
@@ -230,6 +232,7 @@ export function createPerplexityCompanyResearchAdapter({
               authorization: `Bearer ${apiKey}`,
               'content-type': 'application/json'
             },
+            signal: timeLimitSignal(timeoutMs),
             body: JSON.stringify({
               model,
               messages: [
@@ -248,7 +251,8 @@ export function createPerplexityCompanyResearchAdapter({
             })
           }
         );
-      } catch {
+      } catch (error) {
+        if (isTimeLimitError(error)) throw Object.assign(new Error(timeLimitMessage('Perplexity organisation research', timeoutMs)), {code: 'PROVIDER_TIMEOUT'});
         throw new Error('Perplexity organisation research is unavailable.');
       }
 
@@ -260,7 +264,8 @@ export function createPerplexityCompanyResearchAdapter({
 
       try {
         payload = await response.json();
-      } catch {
+      } catch (error) {
+        if (isTimeLimitError(error)) throw Object.assign(new Error(timeLimitMessage('Perplexity organisation research', timeoutMs)), {code: 'PROVIDER_TIMEOUT'});
         throw new Error(
           'Perplexity organisation research returned an invalid response.'
         );

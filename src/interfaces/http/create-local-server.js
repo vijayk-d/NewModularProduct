@@ -214,6 +214,7 @@ export function createLocalServer({
   researchOrganization = null,
   organisationResearchService = null,
   cvTailoringService = null,
+  emailDomainStore = null,
   candidateDisplayName = "Candidate",
   portalExports = null,
   coverLetterRefinementPort = null,
@@ -268,7 +269,8 @@ export function createLocalServer({
 
   const emailDomainResolutionService = createEmailDomainResolutionService({
     perplexityClient,
-    recruiterContactStore
+    recruiterContactStore,
+    ...(emailDomainStore ? {store: emailDomainStore} : {})
   });
   // A domain newly found by research replaces the saved one, so the page and the browser copy show the new domain.
   async function adoptFoundEmailDomain(reviewId) {
