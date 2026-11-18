@@ -1,5 +1,5 @@
 // New, separate store for tailored CVs. The base CV files are never written; each build is a new version.
-import {DatabaseSync} from 'node:sqlite';
+import {openSqlite} from '../sqlite-open.js';
 import {mkdirSync} from 'node:fs';
 import path from 'node:path';
 
@@ -9,7 +9,7 @@ const LIMIT = 20 * 1024 * 1024;
 export function createCvTailoringStore({filePath, clock = () => Date.now()} = {}) {
   if (typeof filePath !== 'string' || !filePath) fail('Explicit tailored CV store path required.');
   if (filePath !== ':memory:') mkdirSync(path.dirname(filePath), {recursive: true});
-  const db = new DatabaseSync(filePath);
+  const db = openSqlite(filePath);
   const names = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all().map(r => r.name);
   if (names.length && !names.includes('cv_tailoring_meta')) { db.close(); fail('Unrecognised tailored CV database; nothing overwritten.'); }
   if (names.includes('cv_tailoring_meta') && db.prepare("SELECT value FROM cv_tailoring_meta WHERE key='schema'").get()?.value !== '1') { db.close(); fail('Unsupported tailored CV schema.'); }

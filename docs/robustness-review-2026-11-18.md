@@ -54,6 +54,10 @@ Evidence boundary: source on master at `99d33e6`, read for this review. No code 
 - **Where:** locally, Node `default template generates linked rich opening and valid plain fallback` fails, and 4 `application-preparation` UI specs need a dev server on port 3000.
 - **Risk:** "the same failures as before" hides a new failure in the same file, and makes every change slower to verify.
 - **Fix:** make the 4 specs start their own fixture server, as newer specs do. Fix or quarantine the one Node test with a recorded reason. The goal is zero known failures locally.
+- **Correction (pack 2):**
+  - **The Node test** read the gitignored `templates/standard-cover-letter.md`, which exists only in the main checkout. It now falls back to the tracked copy in `tools/deploy/assets`, exactly as a release does, and passes everywhere.
+  - **The 4 `application-preparation` specs** are integration specs by design: they need the real app (`.env`, CV library, template). `npm run test:ui` starts it on port 3000, and `ship.cmd` runs them against a verification copy on port 3200. They only failed in runs that turn the web server off. They are kept as they are, because they are the only browser check of the whole real app.
+  - Use `npm run test:ui` in the main checkout, not a fixture-only config, when comparing UI results.
 
 ## Lower: maintainability and edge cases
 
@@ -77,7 +81,8 @@ Evidence boundary: source on master at `99d33e6`, read for this review. No code 
 - Run the check whenever a CV is added. The System check (R5) should include it.
 
 ## Status
-- **R1, R2 and R3:** built on branch `fix/robustness-pack-1` (18 November 2026), not yet merged.
+- **R1, R2 and R3:** merged (`b0a0eb7`).
+- **R4 and R8:** built on branch `fix/robustness-pack-2` (18 November 2026), not yet merged.
 
 ## Suggested order
 1. R1, R2 and R3 together as one small "robustness pack", one branch.

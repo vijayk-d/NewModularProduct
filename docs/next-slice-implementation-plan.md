@@ -33,7 +33,7 @@ Released and user-verified in production (PR #26): radio buttons with swatches; 
 ## Next slices (18 November 2026)
 Patch A is released. Tailored CV (CV rebuilding) and Save to folder are merged.
 
-### Robustness pack 1 (built on `fix/robustness-pack-1`, not yet merged)
+### Robustness pack 1 (merged, `b0a0eb7`)
 One branch; see [robustness-review-2026-11-18.md](robustness-review-2026-11-18.md).
 - **Time limit:** `PERPLEXITY_TIMEOUT_SECONDS` (10–600, default 90). Automatic research uses half of it, at most 45 s.
 - **Email-domain lookups:** new file `<state>/email-domain-resolutions-v1.json`.
@@ -46,9 +46,9 @@ One branch; see [robustness-review-2026-11-18.md](robustness-review-2026-11-18.m
   - no change to existing schemas;
   - per-test results match master.
 
-### Robustness pack 2
-- **R4:** `busy_timeout` on every SQLite store.
-- **R8:** the 4 `application-preparation` specs start their own fixture server; the known Node failure is fixed or recorded as quarantined.
+### Robustness pack 2 (built on `fix/robustness-pack-2`, not yet merged)
+- **R4:** every SQLite connection is opened through `src/infrastructure/sqlite-open.js` and waits up to 5 s for a lock (`busy_timeout`, a connection setting with no file or schema change). A test fails if a new store opens SQLite without it.
+- **R8:** the known Node failure is fixed (tracked template fallback). The 4 `application-preparation` specs are integration specs that run with `npm run test:ui` and in `ship.cmd`; they are kept.
 
 ### Then
 - System check page (R5 with R6 and R12).

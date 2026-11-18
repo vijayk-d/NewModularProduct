@@ -1,8 +1,8 @@
 import {matchVacancy} from '../../application/vacancy-identity.js';
-import {DatabaseSync} from 'node:sqlite';import {mkdirSync} from 'node:fs';import path from 'node:path';import {randomUUID,createHash} from 'node:crypto';
+import {openSqlite} from '../sqlite-open.js';import {mkdirSync} from 'node:fs';import path from 'node:path';import {randomUUID,createHash} from 'node:crypto';
 const fail=m=>{throw Object.assign(new Error(m),{code:'INTELLIGENCE_STORE',statusCode:503});};
 export function createApplicationIntelligenceStore({filePath,clock=()=>new Date().toISOString()}={}){
- if(typeof filePath!=='string'||!filePath)fail('Explicit intelligence store path required.');if(filePath!==':memory:')mkdirSync(path.dirname(filePath),{recursive:true});const db=new DatabaseSync(filePath);
+ if(typeof filePath!=='string'||!filePath)fail('Explicit intelligence store path required.');if(filePath!==':memory:')mkdirSync(path.dirname(filePath),{recursive:true});const db=openSqlite(filePath);
  try{const names=db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all().map(r=>r.name);if(names.length&&!names.includes('application_intelligence_meta'))fail('Unrecognised intelligence database; nothing overwritten.');if(names.includes('application_intelligence_meta')&&db.prepare("SELECT value FROM application_intelligence_meta WHERE key='schema'").get()?.value!=='1')fail('Unsupported intelligence schema.');
  db.exec(`CREATE TABLE IF NOT EXISTS application_intelligence_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);INSERT OR IGNORE INTO application_intelligence_meta VALUES('schema','1');CREATE TABLE IF NOT EXISTS application_activity(id TEXT PRIMARY KEY,request_id TEXT UNIQUE NOT NULL,request_hash TEXT NOT NULL,kind TEXT NOT NULL,parent_id TEXT UNIQUE,payload TEXT NOT NULL);CREATE TABLE IF NOT EXISTS cv_assessments(id TEXT PRIMARY KEY,capture_key TEXT UNIQUE NOT NULL,job_key TEXT NOT NULL,created_at TEXT NOT NULL,payload TEXT NOT NULL);CREATE INDEX IF NOT EXISTS cv_assessments_job ON cv_assessments(job_key,created_at);`);
  }catch(e){db.close();throw e;}
