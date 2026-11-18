@@ -31,6 +31,22 @@ export function validateAchievementSnapshot(snapshot,{text,roleCode,roleName=''}
  for(const item of snapshot.items){const actual=map.get(item.id);if(!actual||seen.has(item.id)||actual.text!==item.text||actual.quote!==item.quote||actual.start!==item.start||actual.end!==item.end)bad('Saved achievement does not match the selected CV source.',409);seen.add(item.id);}
  return snapshot;
 }
+// Re-anchors saved achievements to the CV as it is now. Allowed only when every saved statement is still present word for word,
+// so the letter still quotes the current CV verbatim. Otherwise explains which statements are missing and why.
+export function reanchorAchievementSnapshot(snapshot,{text,roleCode,roleName=''}={}){
+ try{return {snapshot:validateAchievementSnapshot(snapshot,{text,roleCode,roleName}),reanchored:false};}catch{}
+ const items=Array.isArray(snapshot?.items)?snapshot.items:[];
+ if(snapshot?.schemaVersion!==1||!items.length||items.length>12)bad('Saved achievement evidence is unreadable. Return to preparation and choose the achievements again.',409);
+ const catalogue=achievementCatalogue({text,roleCode,roleName}),byText=new Map(catalogue.candidates.map(x=>[x.text,x]));
+ const missing=items.filter(x=>!byText.has(x.text));
+ if(missing.length){
+  const why=snapshot.roleCode!==roleCode?`The achievements were chosen from the ${snapshot.roleCode} CV, but the selected CV is now ${roleCode}.`:`The ${roleCode} CV file has changed since the achievements were chosen.`;
+  const list=missing.slice(0,3).map(x=>'"'+(x.text.length>90?x.text.slice(0,87)+'...':x.text)+'"').join('; ');
+  bad(`${why} ${missing.length} of ${items.length} chosen achievement(s) are not in it word for word: ${list}${missing.length>3?' and more':''}. Select the original CV in CV selection, or return to preparation and choose achievements from the current CV.`,409);
+ }
+ const fresh=items.map(x=>{const {id,text,quote,start,end,signals,attribution}=byText.get(x.text);return {id,text,quote,start,end,signals,attribution};});
+ return {snapshot:{schemaVersion:1,roleCode,roleName:catalogue.roleName,sourceHash:catalogue.sourceHash,items:fresh},reanchored:true};
+}
 export function createAchievementEvidenceService({inventoryRepository,documentExtractor}={}){
  if(typeof inventoryRepository?.load!=='function'||typeof documentExtractor?.extract!=='function')throw new Error('Inventory and document ports are required.');
  async function cvs(){const inv=await inventoryRepository.load(),items=inv.cv_inventory?.cvs||inv.cvs;if(!Array.isArray(items))bad('CV inventory is unavailable.',503);const codes=items.map(x=>String(x.role_code||''));if(codes.some(x=>!/^[A-Za-z0-9][A-Za-z0-9._-]{0,59}$/.test(x))||new Set(codes).size!==codes.length)bad('CV role codes require review.',503);return items;}

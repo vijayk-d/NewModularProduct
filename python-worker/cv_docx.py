@@ -77,5 +77,6 @@ def write_word(text):
    ET.SubElement(r,'{'+W+'}t',{'{http://www.w3.org/XML/1998/namespace}space':'preserve'}).text=line
  types=ET.Element('{'+CT+'}Types');ET.SubElement(types,'{'+CT+'}Default',Extension='rels',ContentType='application/vnd.openxmlformats-package.relationships+xml');ET.SubElement(types,'{'+CT+'}Default',Extension='xml',ContentType='application/xml');ET.SubElement(types,'{'+CT+'}Override',PartName='/word/document.xml',ContentType=MAIN);rels=ET.Element('{'+REL+'}Relationships');ET.SubElement(rels,'{'+REL+'}Relationship',Id='rId1',Type='http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument',Target='word/document.xml');out=io.BytesIO()
  with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
-  for name,e in [('[Content_Types].xml',types),('_rels/.rels',rels),('word/document.xml',document)]:z.writestr(name,ET.tostring(e,encoding='utf-8',xml_declaration=True))
+  # Fixed entry date: the same text always gives the same bytes, so Save to folder can recognise an identical file.
+  for name,e in [('[Content_Types].xml',types),('_rels/.rels',rels),('word/document.xml',document)]:z.writestr(zipfile.ZipInfo(name,(1980,1,1,0,0,0)),ET.tostring(e,encoding='utf-8',xml_declaration=True),compress_type=zipfile.ZIP_DEFLATED)
  return out.getvalue()

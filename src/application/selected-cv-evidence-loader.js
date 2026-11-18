@@ -1,4 +1,4 @@
-import {validateAchievementSnapshot} from './achievement-evidence.js';
+import {reanchorAchievementSnapshot} from './achievement-evidence.js';
 export function createSelectedCvEvidenceLoader({ inventoryRepository, documentExtractor, linkedinRelativePath = '' }) {
   if (typeof inventoryRepository?.load !== 'function' || typeof documentExtractor?.extract !== 'function') {
     throw new Error('CV evidence requires inventory and document adapters.');
@@ -20,8 +20,9 @@ export function createSelectedCvEvidenceLoader({ inventoryRepository, documentEx
       if (!jobDescriptionText) throw fail();
       let achievementEvidence={};
       if(review.formData?.achievementMode){
-        if(review.formData.achievementSelection){try{validateAchievementSnapshot(review.formData.achievementSelection,{text,roleCode:code,roleName:cv.role_name});}catch{const e=fail();e.message='Achievement evidence changed or belongs to another CV. Return to preparation and review it again. No polishing request was sent.';e.safeAchievementError=true;throw e;}}
-        achievementEvidence={achievementSelectionExplicit:true,approvedAchievementEvidence:review.formData.achievementSelection||null};
+        let approved=review.formData.achievementSelection||null;
+        if(approved){try{approved=reanchorAchievementSnapshot(approved,{text,roleCode:code,roleName:cv.role_name}).snapshot;}catch(error){const e=fail();e.message=(error.statusCode===409?error.message:'Achievement evidence changed or belongs to another CV. Return to preparation and review it again.')+' No polishing request was sent.';e.safeAchievementError=true;throw e;}}
+        achievementEvidence={achievementSelectionExplicit:true,approvedAchievementEvidence:approved};
       }
       let profileEvidence = {};
       if (linkedinRelativePath) {

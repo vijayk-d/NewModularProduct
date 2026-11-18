@@ -48,4 +48,6 @@ class WordTests(unittest.TestCase):
  def test_word_unicode_and_controls(self):
   self.assertIn('£2M',d.extract(self.data))
   with self.assertRaises(d.DocumentError):d.write_word('bad'+chr(0))
+ def test_same_text_gives_identical_bytes(self):
+  import time;first=d.write_word('Same letter text.');time.sleep(2.1);self.assertEqual(first,d.write_word('Same letter text.'))
 if __name__=='__main__':unittest.main()

@@ -1086,7 +1086,7 @@ export function createLocalServer({
         const selectedResearchPoints = usesCandidateValues(review.formData)?[]:getSelectableCompanyValues(review.research).filter(point=>ids.includes(point.id));
         const scenarioState=resolveScenarioSelection(assignmentEvidenceStore,scenarioInput(formBody.values,review));
         const writingState=resolveWritingInput(formBody.values.get('writingReferenceSelections')||'[]');
-        const requestForEstimate = {...cvEvidence,...writingReferenceRequest(writingState),...approvedScenarioRequest(scenarioState),...(review.formData.achievementMode?{achievementSelectionExplicit:true,approvedAchievementEvidence:review.formData.achievementSelection}:{}),draftPlainText:review.currentDraftPlainText,
+        const requestForEstimate = {...cvEvidence,...writingReferenceRequest(writingState),...approvedScenarioRequest(scenarioState),...(review.formData.achievementMode?{achievementSelectionExplicit:true,approvedAchievementEvidence:cvEvidence.approvedAchievementEvidence??review.formData.achievementSelection}:{}),draftPlainText:review.currentDraftPlainText,
           applicationJobTitle:confirmedRole,jobDescriptionSummary:confirmedRole,jobDescriptionText:review.formData.jobDescriptionText,
           selectedCvHighlights:Array.isArray(review.formData.cvHighlights)?review.formData.cvHighlights.map(value=>String(value||'').trim()).filter(value=>value&&value.toLowerCase()!=='null'):[],
           companyValues:selectedResearchPoints.map(point=>point.text),selectedResearchPoints,
@@ -1253,7 +1253,7 @@ export function createLocalServer({
         ...approvedScenarioRequest(scenarioState),
         ...cvEvidence,
         ...writingReferenceRequest(writingState),
-        ...(review.formData.achievementMode?{achievementSelectionExplicit:true,approvedAchievementEvidence:review.formData.achievementSelection}:{}),
+        ...(review.formData.achievementMode?{achievementSelectionExplicit:true,approvedAchievementEvidence:cvEvidence.approvedAchievementEvidence??review.formData.achievementSelection}:{}),
         ...(formBody.values.has('polishingModel') || review.polishingModel !== DEFAULT_POLISHING_MODEL ? {polishingModel} : {}),
         letterTone,
         excludedEmployers: ['micro1'],
