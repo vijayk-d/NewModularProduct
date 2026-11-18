@@ -192,6 +192,12 @@ class TailorTests(unittest.TestCase):
             self.assertEqual(stale, {'ok': False, 'code': 'CV_VERSION_CHANGED'})
             pdf = run({'action': 'sections', 'root': tmp, 'relativePath': 'DM/cv.pdf', 'expectedHash': None})
             self.assertEqual(pdf['code'], 'CV_DOCX_REQUIRED')
+            probe = run({'action': 'probe', 'root': tmp, 'relativePaths': ['DM/cv.docx', 'DM/none.pdf']})
+            self.assertTrue(probe['ok'])
+            self.assertEqual([f['exists'] for f in probe['files']], [True, False])
+            self.assertEqual([f['cloudOnly'] for f in probe['files']], [False, False])
+            bad = run({'action': 'probe', 'root': tmp, 'relativePaths': ['../escape.pdf']})
+            self.assertEqual(bad, {'ok': False, 'code': 'CV_PATH_INVALID'})
             missing = run({'action': 'sections', 'root': tmp, 'relativePath': 'DM/other name.docx', 'expectedHash': None})
             self.assertEqual(missing, {'ok': False, 'code': 'CV_FILE_NOT_FOUND'})
 

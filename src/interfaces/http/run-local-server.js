@@ -13,6 +13,8 @@ import {createOrganisationResearchService} from '../../application/organisation-
 import {providerTimeLimitMs} from '../../infrastructure/provider-time-limit.js';
 import {createJsonEmailDomainStore} from '../../infrastructure/applications/json-email-domain-store.js';
 import {installCrashHandlers,takePreviousCrash} from '../../infrastructure/crash-record.js';
+import {createSystemCheckProbes} from '../../infrastructure/system-check-probes.js';
+import {runSystemCheck} from '../../application/system-check.js';
 import {createTemplateCoverLetterDocuments} from '../../infrastructure/documents/template-cover-letter.js';
 import {createSqliteJobImportStore} from '../../infrastructure/applications/sqlite-job-import-store.js';
 import { gmailLoadedEnvironment } from '../../application/gmail-runtime-diagnostics.js';
@@ -175,6 +177,10 @@ const server = createLocalServer({
   organisationResearchService:workflowAutomationStore?createOrganisationResearchService({store:workflowAutomationStore,research:automaticResearchPort?request=>researchOrganization(request,{companyResearchPort:automaticResearchPort}):null,enabled:String(process.env.ENABLE_AUTO_RESEARCH||'true').toLowerCase()!=='false',dailyCap:Math.max(0,Number.parseInt(process.env.AUTO_RESEARCH_DAILY_CAP||'10',10)||0)}):null,
   cvEvidenceLoader,
   cvTailoringService,
+  // Read-only System check page: data files, CV library and files, documents, services and this PC.
+  systemCheck:()=>runSystemCheck(createSystemCheckProbes({stateDirectory:deployment.state,cvFolder:config.storage.cvFolder||'',outputFolder:process.env.APPLICATION_OUTPUT_FOLDER||'',outputForbidden:[projectRoot,deployment.state,config.storage.cvFolder,'D:\\NewModularProduct-Production'],cvTailoringService,
+    cvLibrary:async()=>{const data=await cvInventoryRepository.load();return data?.cv_inventory?.cvs||data?.cvs||[];},locateWord:createWordCvLocator({cvFolder:config.storage.cvFolder}),
+    probeFiles:(root,relativePaths)=>documentWorker({action:'probe',root,relativePaths}),config})),
   // Email-domain lookups live in the state folder; the old file inside the source folder is read once if present.
   emailDomainStore:createJsonEmailDomainStore({filePath:path.join(deployment.state,'email-domain-resolutions-v1.json'),legacyPath:fileURLToPath(new URL('../../../data/email-domain-resolutions.json',import.meta.url))}),
   candidateDisplayName,

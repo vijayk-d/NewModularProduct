@@ -38,6 +38,7 @@ export const NAV_GROUPS = Object.freeze([
   { label: 'System', icon: I.tools, items: [
     { href: '/settings/features', label: 'Feature toggles', icon: I.toggle },
     { href: '/maintenance', label: 'Maintenance library', icon: I.tools },
+    { href: '/system-check', label: 'System check', icon: I.evidence },
     { href: '/healthz', label: 'Health check', icon: I.pulse },
   ] },
 ]);

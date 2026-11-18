@@ -46,12 +46,15 @@ One branch; see [robustness-review-2026-11-18.md](robustness-review-2026-11-18.m
   - no change to existing schemas;
   - per-test results match master.
 
-### Robustness pack 2 (built on `fix/robustness-pack-2`, not yet merged)
+### Robustness pack 2 (merged, `2433f66`)
 - **R4:** every SQLite connection is opened through `src/infrastructure/sqlite-open.js` and waits up to 5 s for a lock (`busy_timeout`, a connection setting with no file or schema change). A test fails if a new store opens SQLite without it.
 - **R8:** the known Node failure is fixed (tracked template fallback). The 4 `application-preparation` specs are integration specs that run with `npm run test:ui` and in `ship.cmd`; they are kept.
 
+### System check page (built on `feat/system-check`, not yet merged)
+- R5 with R6, R12 and the reporting half of R7. See [system-check.md](system-check.md).
+
 ### Then
-- System check page (R5 with R6 and R12).
+- R7 clean-up command (keep newest N, preview first), R10 (restart-interrupted steps say so) and R11 (close the Word instance after a PDF time-out).
 - Insights engine phase 1 (outcome capture), from [insights-and-job-sources-plan.md](insights-and-job-sources-plan.md).
 - Patch B (evidence-library quality), below.
 
