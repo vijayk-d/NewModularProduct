@@ -47,6 +47,7 @@ import { createPerplexityClient } from "../../infrastructure/perplexity-client.j
 import { createEmailDomainResolutionService } from "../../application/email-domain-resolution-service.js";
 import { normaliseBusinessDomain, adoptResearchedDomain } from "../../application/email-domain-policy.js";
 import { createCvTailoringHandler } from "./cv-tailoring-http.js";
+import { createSystemCheckHandler } from "./system-check-http.js";
 import { renderApplicationReview, renderRefinementPanel, renderOrganisationResearch, renderField, renderAdvertLink, getSelectableCompanyValues, renderResearchSource, renderOptionalDetail , renderApplicationForm, escapeHtml} from './rendering.js';
 import { readFormBody } from './form-body.js';
 import { sendText, sendHtml, sendJson } from './responses.js';
@@ -215,6 +216,7 @@ export function createLocalServer({
   organisationResearchService = null,
   cvTailoringService = null,
   emailDomainStore = null,
+  systemCheck = null,
   candidateDisplayName = "Candidate",
   portalExports = null,
   coverLetterRefinementPort = null,
@@ -425,6 +427,7 @@ export function createLocalServer({
   const handleOrganisationContacts=createOrganisationContactHandler({contactStore:recruiterContactStore,outreachRepository,getReview:id=>reviewStore.get(id),sendJson});
   const letterUpdates=outreachRepository?createUnsentLetterUpdateService({getReview:id=>reviewStore.get(id),repository:outreachRepository,draftUpdates:gmailDraftUpdatePort||createGmailDraftUpdatePort()}):null;
   const handleApplications=createApplicationReviewHandler({store:reviewStore,renderReview:renderCompleteReview,sendJson,sendHtml,sendText,applicationPackExporter,letterUpdates,outputFolder:applicationOutputFolder});
+  const handleSystemCheck=createSystemCheckHandler({runCheck:systemCheck,sendJson,sendHtml});
   const handleCvTailoring=createCvTailoringHandler({service:cvTailoringService,getReview:id=>reviewStore.get(id),sendJson,sendText,candidateName:candidateDisplayName,outputFolder:applicationOutputFolder});
   const handleCvDocument=createCvDocumentHandler({store:reviewStore,inventory:cvInventoryRepository,adapter:cvDocumentAdapter});
   const handleIntelligence=createApplicationIntelligenceHttp({service:applicationIntelligence});
@@ -457,6 +460,7 @@ export function createLocalServer({
     if(await handleAchievementPreparation(request,response,url))return;
     if (await handleJobs(request,response,url)) return;
     if (await handleSavedDelete(request,response,url)) return;
+    if (await handleSystemCheck(request,response,url)) return;
     if (await handleCvTailoring(request,response,url)) return;
     if (await handleApplications(request,response,url)) return;
     if (await handleOrganisationContacts(request,response,url)) return;

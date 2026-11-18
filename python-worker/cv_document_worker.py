@@ -9,6 +9,9 @@ try:
  elif action in ['sections','tailor'] and {'action','root','relativePath','expectedHash'}|({'profile'} if action=='tailor' else set())<=set(p)<={'action','root','relativePath','expectedHash','profileHeading','achievementsHeading'}|({'profile','achievements','roles'} if action=='tailor' else set()):
   need(str(p['relativePath']).lower().endswith('.docx'),'CV_DOCX_REQUIRED');doc=read_document(p['root'],p['relativePath'],p['expectedHash'],True);data=base64.b64decode(doc['data']);chosen=(p.get('profileHeading',''),p.get('achievementsHeading',''))
   result={'ok':True,'name':doc['name'],'sha256':doc['sha256'],'sections':describe(data,*chosen)} if action=='sections' else {'ok':True,'name':doc['name'],'sha256':doc['sha256'],'data':base64.b64encode(tailor(data,p['profile'],p.get('achievements'),*chosen,roles=p.get('roles'))).decode('ascii')}
+ elif action=='probe' and set(p)=={'action','root','relativePaths'}:
+  from system_probe import probe
+  result={'ok':True,**probe(p['root'],p['relativePaths'])}
  elif action=='word' and set(p)=={'action','text'}:result={'ok':True,'data':base64.b64encode(write_word(p['text'])).decode('ascii')}
  else:raise DocumentError('DOCUMENT_INPUT_INVALID')
 except DocumentError as e:result={'ok':False,'code':str(e)}

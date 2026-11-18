@@ -82,7 +82,10 @@ Evidence boundary: source on master at `99d33e6`, read for this review. No code 
 
 ## Status
 - **R1, R2 and R3:** merged (`b0a0eb7`).
-- **R4 and R8:** built on branch `fix/robustness-pack-2` (18 November 2026), not yet merged.
+- **R4 and R8:** merged (`2433f66`).
+- **R5:** System check page, built on branch `feat/system-check`, not yet merged. See [system-check.md](system-check.md).
+  - It also covers R6 (OneDrive online-only CV files are reported, read from file attributes only) and R12 (the CV library check).
+  - It also covers the reporting half of R7: release backup count and size, with no clean-up command yet.
 
 ## Suggested order
 1. R1, R2 and R3 together as one small "robustness pack", one branch.
