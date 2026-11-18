@@ -1,5 +1,5 @@
 // New, separate store for workflow automation. It never opens or changes existing databases.
-import {DatabaseSync} from 'node:sqlite';
+import {openSqlite} from '../sqlite-open.js';
 import {mkdirSync} from 'node:fs';
 import path from 'node:path';
 
@@ -8,7 +8,7 @@ const fail = message => { throw Object.assign(new Error(message), {code: 'WORKFL
 export function createWorkflowAutomationStore({filePath, clock = () => Date.now()} = {}) {
   if (typeof filePath !== 'string' || !filePath) fail('Explicit workflow automation store path required.');
   if (filePath !== ':memory:') mkdirSync(path.dirname(filePath), {recursive: true});
-  const db = new DatabaseSync(filePath);
+  const db = openSqlite(filePath);
   const names = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all().map(r => r.name);
   if (names.length && !names.includes('workflow_automation_meta')) { db.close(); fail('Unrecognised workflow automation database; nothing overwritten.'); }
   if (names.includes('workflow_automation_meta') && db.prepare("SELECT value FROM workflow_automation_meta WHERE key='schema'").get()?.value !== '1') { db.close(); fail('Unsupported workflow automation schema.'); }

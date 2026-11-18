@@ -3,7 +3,7 @@ import {createSendLedger} from '../../application/gmail-send-ledger.js';
 import { messageEditVersion } from '../../application/queue-message-editor.js';
 import { createDraftAttemptLedger, draftSnapshotFingerprint } from '../../application/gmail-draft-state-ledger.js';
 import { sanitizeSnapshotHtml } from '../../application/outreach-message-snapshot.js';
-import { DatabaseSync } from 'node:sqlite';
+import { openSqlite } from '../sqlite-open.js';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -13,7 +13,7 @@ export function createOutreachRepository({ filePath }) {
     throw new Error('An explicit outreach database path is required.');
   }
   if (filePath !== ':memory:') mkdirSync(path.dirname(filePath), { recursive: true });
-  const db = new DatabaseSync(filePath);
+  const db = openSqlite(filePath);
   db.exec(`
     CREATE TABLE IF NOT EXISTS outreach_queue (
       id TEXT PRIMARY KEY,
