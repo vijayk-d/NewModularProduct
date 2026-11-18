@@ -328,3 +328,39 @@ See [docs/robustness-review-2026-11-18.md](docs/robustness-review-2026-11-18.md)
 7. Gmail readiness display: needs the owner's drafts-only versus drafts-and-sending decision.
 8. Patch B, evidence-library quality.
 9. Larger, each needing its own design: interview tracking, CV indexing cache (area 11), sources beyond LinkedIn.
+
+## Release — 18 November 2026 (`5ad5108`)
+
+This section supersedes the release status in the 17 and 18 November sections. Production serves `5ad5108`, as reported by the owner after `ship.cmd`.
+
+### Released to production
+Everything merged to master up to `5ad5108`:
+- **Tailored CV, parts 1 and 2:**
+  - Summary and employer bullets, robust Word file lookup, Check all CVs;
+  - optional paid Polish with before/after view;
+  - ATS recheck;
+  - Word-made PDF and email choice;
+  - saved names that match the built version.
+- **Save to folder** for the tailored CV and the Export pack.
+- **Shared ATS engine**, evidence ticks of the best 12 statements, and Polish feedback beside the button.
+- **Company People links** search UK staff only.
+- **Robustness pack 1:** paid-call time limits, email-domain store in the state folder, crash record.
+- **Robustness pack 2:** SQLite busy timeout; clean local Node suite.
+- **System check page.**
+- **Robustness pack 3:** backup clean-up command, restart-interrupted steps, Word closed after a PDF time-out.
+- **LinkedIn contact bridge 0.6.1:** sends without a dialog. The owner updates it in Tampermonkey.
+- **Release packaging fix** (`5ad5108`). `tools/documents` is now shipped, so Word PDFs of tailored CVs work in production for the first time. A delivery test now fails if a script the app loads would be left out.
+
+### Owner production checks (pending)
+1. System check shows no "Fix" rows.
+2. A tailored CV builds, makes a PDF and saves to folder.
+3. The bridge, at 0.6.1, sends without a dialog.
+4. A Gmail draft carries the tailored PDF (no sending).
+
+### Next candidates, in recommended order
+1. Insights engine, phase 1: outcome capture (see [docs/insights-and-job-sources-plan.md](docs/insights-and-job-sources-plan.md)).
+2. Application questions helper: portal answers with exact word or character limits, evidence-led.
+3. Gmail readiness display: needs the owner's drafts-only versus drafts-and-sending decision.
+4. Patch B, evidence-library quality.
+5. R9, splitting `rendering.js` and `create-local-server.js`, one area at a time alongside feature work.
+6. Larger, each needing its own design: interview tracking, CV indexing cache (area 11), sources beyond LinkedIn.
