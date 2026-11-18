@@ -1,3 +1,4 @@
+import {providerTimeLimitMs, timeLimitSignal, isTimeLimitError, timeLimitMessage} from '../provider-time-limit.js';
 // Paid, optional Polish step for a tailored CV (part 2). One request per confirmed click: no web search, no retries.
 // Only the CV wording on the page, the CV's own lines and the achievements selected for this application are sent.
 import {TAILORED_LIMITS} from '../../domain/cv/cv-tailoring-policy.js';
@@ -66,7 +67,7 @@ function structuredOutput(payload) {
 }
 
 // enabled follows the letter-polishing setting; without it only cost estimates work and nothing is sent.
-export function createCvPolisher({apiKey = '', enabled = false, fetchImpl = fetch} = {}) {
+export function createCvPolisher({apiKey = '', enabled = false, fetchImpl = fetch, timeoutMs = providerTimeLimitMs()} = {}) {
   const ready = Boolean(enabled && typeof apiKey === 'string' && apiKey.trim());
   return {
     buildRequest: buildCvPolishApiRequest,
@@ -76,13 +77,14 @@ export function createCvPolisher({apiKey = '', enabled = false, fetchImpl = fetc
       const startedAt = Date.now();
       let response;
       try {
-        response = await fetchImpl(ENDPOINT, {method: 'POST', headers: {authorization: `Bearer ${apiKey}`, 'content-type': 'application/json'}, body: JSON.stringify(buildCvPolishApiRequest(request, model))});
-      } catch {
+        response = await fetchImpl(ENDPOINT, {method: 'POST', signal: timeLimitSignal(timeoutMs), headers: {authorization: `Bearer ${apiKey}`, 'content-type': 'application/json'}, body: JSON.stringify(buildCvPolishApiRequest(request, model))});
+      } catch (error) {
+        if (isTimeLimitError(error)) throw Object.assign(new Error(timeLimitMessage('The polishing service', timeoutMs)), {code: 'CV_POLISH_TIMEOUT'});
         throw Object.assign(new Error('The polishing service could not be reached.'), {code: 'CV_POLISH_NETWORK_FAILED'});
       }
       if (!response.ok) throw Object.assign(new Error(`The polishing service refused the request (HTTP ${response.status}).`), {code: 'CV_POLISH_PROVIDER_FAILED', httpStatus: response.status});
       let payload;
-      try { payload = await response.json(); } catch { throw Object.assign(new Error('The polishing service returned an unreadable response.'), {code: 'CV_POLISH_INVALID_RESPONSE'}); }
+      try { payload = await response.json(); } catch (error) { if (isTimeLimitError(error)) throw Object.assign(new Error(timeLimitMessage('The polishing service', timeoutMs)), {code: 'CV_POLISH_TIMEOUT'}); throw Object.assign(new Error('The polishing service returned an unreadable response.'), {code: 'CV_POLISH_INVALID_RESPONSE'}); }
       if (payload?.status && payload.status !== 'completed') throw Object.assign(new Error(`The polishing service did not finish (${String(payload.status).slice(0, 40)}).`), {code: 'CV_POLISH_INCOMPLETE'});
       return {result: structuredOutput(payload), response: payload, durationMs: Date.now() - startedAt};
     }

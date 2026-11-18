@@ -26,9 +26,9 @@ function generateCandidates(contacts, domain) {
 
 export function createEmailDomainResolutionService({
   perplexityClient,
-  recruiterContactStore
+  recruiterContactStore,
+  store = createEmailDomainStore()
 }) {
-  const store = createEmailDomainStore();
   const jobs = new Map();
 
   async function startResolution({ reviewId, organisation }) {

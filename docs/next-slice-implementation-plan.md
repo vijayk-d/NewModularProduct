@@ -33,11 +33,14 @@ Released and user-verified in production (PR #26): radio buttons with swatches; 
 ## Next slices (18 November 2026)
 Patch A is released. Tailored CV (CV rebuilding) and Save to folder are merged.
 
-### Robustness pack 1, recommended next
+### Robustness pack 1 (built on `fix/robustness-pack-1`, not yet merged)
 One branch; see [robustness-review-2026-11-18.md](robustness-review-2026-11-18.md).
+- **Time limit:** `PERPLEXITY_TIMEOUT_SECONDS` (10–600, default 90). Automatic research uses half of it, at most 45 s.
+- **Email-domain lookups:** new file `<state>/email-domain-resolutions-v1.json`.
+- **Crash record:** `<state>/last-crash.json`.
 - **R1:** a configurable time limit on every Perplexity call, with no retry. The message says a charge may still have been made. The automatic research call gets a shorter limit.
 - **R2:** move email-domain lookups to a new state-folder file, written atomically, reading the old file once if present.
-- **R3:** log unhandled errors (type and stack, no personal data), then exit so the supervisor restarts the app.
+- **R3:** a `[CRASH]` log line and a small crash record (no message text), then exit code 1. The supervisor's existing no-restart policy is unchanged, and the next start reports the previous crash once.
 - **Acceptance:**
   - node:test coverage with fake adapters for a timeout, interrupted writes and a migration from the old file;
   - no change to existing schemas;

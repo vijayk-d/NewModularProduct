@@ -15,6 +15,7 @@ import { LETTER_TONES, letterToneInstruction, normalizeLetterTone, normalizeExcl
 import { composeOutreachLetter } from '../../application/compose-outreach-letter.js';
 
 import { refinementError, describeRefinementFailure } from '../../application/refinement-error-details.js';
+import {providerTimeLimitMs, timeLimitSignal, isTimeLimitError, timeLimitMessage} from '../provider-time-limit.js';
 import { normalizePolishingModel, buildPolishingAttempt, POLISHING_OUTPUT_TOKEN_BUDGET } from '../../application/polishing-model-catalog.js';
 
 function normalizeText(value = '') {
@@ -286,7 +287,8 @@ function validateProposal(result, request) {
 export function createPerplexityCoverLetterRefinementAdapter({
   apiKey,
   model = 'perplexity/glm-5.3-flash',
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  timeoutMs = providerTimeLimitMs()
 } = {}) {
   if (typeof apiKey !== 'string' || !apiKey.trim()) {
     throw new Error('A Perplexity API key is required.');
@@ -314,9 +316,11 @@ export function createPerplexityCoverLetterRefinementAdapter({
             authorization: `Bearer ${apiKey}`,
             'content-type': 'application/json'
           },
-          body: JSON.stringify(apiRequest)
+          body: JSON.stringify(apiRequest),
+          signal: timeLimitSignal(timeoutMs)
         });
       } catch (cause) {
+        if (isTimeLimitError(cause)) throw refinementError('REFINEMENT_TIMEOUT', timeLimitMessage('Perplexity cover-letter polishing', timeoutMs), {elapsedMs: Date.now() - providerStartedAt});
         throw refinementError('REFINEMENT_NETWORK_FAILED', 'Perplexity cover-letter refinement is unavailable.', {
           networkName: cause?.name, networkCode: cause?.cause?.code || cause?.code,
           elapsedMs: Date.now() - providerStartedAt
@@ -341,7 +345,8 @@ export function createPerplexityCoverLetterRefinementAdapter({
       try {
         payload = await response.json();
         attemptPayload = payload;
-      } catch {
+      } catch (cause) {
+        if (isTimeLimitError(cause)) throw refinementError('REFINEMENT_TIMEOUT', timeLimitMessage('Perplexity cover-letter polishing', timeoutMs), {elapsedMs: Date.now() - providerStartedAt});
         throw new Error(
           'Perplexity cover-letter refinement returned an invalid response.'
         );

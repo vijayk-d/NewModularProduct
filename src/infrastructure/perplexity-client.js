@@ -1,3 +1,4 @@
+import {providerTimeLimitMs, timeLimitSignal, isTimeLimitError, timeLimitMessage} from './provider-time-limit.js';
 const PERPLEXITY_API_URL =
   "https://api.perplexity.ai/chat/completions";
 
@@ -34,7 +35,7 @@ function isValidDomain(value) {
   return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(value);
 }
 
-export function createPerplexityClient({ apiKey }) {
+export function createPerplexityClient({ apiKey, fetchImpl = fetch, timeoutMs = providerTimeLimitMs() }) {
   return {
     async resolveEmailDomain({
       organisationName,
@@ -71,8 +72,11 @@ Rules:
 - Do not invent a domain.
 `.trim();
 
-      const response = await fetch(PERPLEXITY_API_URL, {
+      let response;
+      try {
+      response = await fetchImpl(PERPLEXITY_API_URL, {
         method: "POST",
+        signal: timeLimitSignal(timeoutMs),
         headers: {
           authorization: `Bearer ${apiKey}`,
           "content-type": "application/json"
@@ -92,6 +96,10 @@ Rules:
           ]
         })
       });
+      } catch (error) {
+        if (isTimeLimitError(error)) throw Object.assign(new Error(timeLimitMessage('Perplexity email-domain lookup', timeoutMs)), {code: 'PROVIDER_TIMEOUT'});
+        throw new Error('Perplexity email-domain lookup is unavailable.');
+      }
 
       if (!response.ok) {
         throw new Error(
@@ -99,7 +107,13 @@ Rules:
         );
       }
 
-      const payload = await response.json();
+      let payload;
+      try {
+        payload = await response.json();
+      } catch (error) {
+        if (isTimeLimitError(error)) throw Object.assign(new Error(timeLimitMessage('Perplexity email-domain lookup', timeoutMs)), {code: 'PROVIDER_TIMEOUT'});
+        throw new Error('Perplexity returned an unreadable response.');
+      }
       const content = payload?.choices?.[0]?.message?.content;
 
       if (!content) {
