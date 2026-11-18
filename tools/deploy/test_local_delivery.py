@@ -16,9 +16,19 @@ class Tests(unittest.TestCase):
  def args(self,**kw):return type('Args',(),{'production_root':str(self.prod),**kw})()
  def prodsetup(self):
   self.gitinit();(self.prod/'shared/config').mkdir(parents=True);(self.prod/'shared/config/production.env').write_text('');(self.prod/'shared/data').mkdir();(self.prod/'shared/logs').mkdir();(self.prod/'releases').mkdir()
+ def test_every_script_the_app_loads_is_shipped(self):
+  # Files the running app opens by relative path (Python workers, PowerShell scripts) must be in every release.
+  import re
+  repo=Path(__file__).resolve().parents[2];missing=[]
+  for f in (repo/'src').rglob('*.js'):
+   for rel in re.findall(r"new URL\('((?:\.\./)+(?:python-worker|tools)/[^']+)'",f.read_text(encoding='utf-8')):
+    name=(f.parent/rel).resolve().relative_to(repo).as_posix()
+    if not d.safe_source(name):missing.append(name)
+  self.assertEqual(sorted(set(missing)),[])
  def test_allowlist_excludes_private_generated_and_root_artifacts(self):
   for n in ['.env','data/cv.pdf','output/outreach.db','tools/patches/a/install.py','tests/worker/__pycache__/a.pyc','tools/maintenance/x-source.json','tools/maintenance/local-production-audit-1.json','unknown.json','../escape.js']:self.assertFalse(d.safe_source(n),n)
-  for n in ['src/app.js','package-lock.json','tools/deploy/local_delivery.py','tools/deploy/assets/standard-cover-letter.md']:self.assertTrue(d.safe_source(n),n)
+  for n in ['src/app.js','package-lock.json','tools/deploy/local_delivery.py','tools/deploy/assets/standard-cover-letter.md','tools/documents/Convert-DocxToPdf.ps1']:self.assertTrue(d.safe_source(n),n)
+  for n in ['tools/documents/sample.docx','tools/documents/out.pdf','tools/documents/nested/x.ps1','tools/documents/settings.json']:self.assertFalse(d.safe_source(n),n)
  def test_secret_scan_does_not_echo_the_secret(self):
   with self.assertRaises(RuntimeError) as e:d.scan('src/a.js',b'-----BEGIN '+b'PRIVATE KEY-----')
   self.assertNotIn('BEGIN PRIVATE KEY',str(e.exception))
