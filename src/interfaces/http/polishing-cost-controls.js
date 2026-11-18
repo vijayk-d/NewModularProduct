@@ -12,6 +12,8 @@ export function attachPolishingCostControls(doc=document, fetchImpl=fetch, confi
   let summary=form.querySelector('[data-polishing-run-summary]');
   if(!summary&&button.insertAdjacentElement){summary=doc.createElement('p');summary.setAttribute('data-polishing-run-summary','');summary.setAttribute('role','status');summary.setAttribute('aria-live','polite');summary.className='polishing-run-summary';button.insertAdjacentElement('afterend',summary);}
   const showSummary=message=>{if(summary)summary.textContent=message;return true;};
+  // Progress and any problem show beside the button, so a click never looks like nothing happened.
+  const beside=(message,busy=false)=>{if(!summary)return;summary.textContent=message;summary.classList?.toggle('is-busy',busy);};
   if(!confirmImpl)confirmImpl=showSummary;
   function polishSummary(result,model){const relationship=form.querySelector('[name="advertiserRelationship"]:checked')?.value;return `Clicking Polish cover letter uses ${model.label} (${model.provider}).\nAdvertiser relationship: ${relationship||'saved selection'}.\nLetter length: ${result.letterLengthMode||'standard'}; complete-letter maximum ${result.fullLetterMaximumWords||400} words.\nApproximate input: ${result.estimatedInputTokens} tokens. Output-token budget: ${result.outputTokenBudget}.\nToken subtotal at that budget: $${model.estimatedTokenCostUsd.toFixed(6)} USD.\n${result.webSearchAllowed?'Additional fast-search charges and result tokens are excluded.':'Web search disabled.'}\nThis is not a guaranteed final charge. ${form.dataset.scenarioCount||0} approved scenario(s), ${form.dataset.scenarioBytes||0} scenario-input bytes, are included. ${result.writingReferenceCount||0} selected writing-example excerpt(s), ${result.writingReferenceCharacters||0} characters, are included in this estimate and request. Your CV evidence, selected approved scenarios and these excerpts go to the selected provider through Perplexity. No automatic paid retries.`;}
   const personalInstructions=()=>String(form.querySelector('[name="instructions"]')?.value||'').replace(/\r\n?/g,'\n').trim();
@@ -59,7 +61,7 @@ export function attachPolishingCostControls(doc=document, fetchImpl=fetch, confi
   form.querySelector('[data-polishing-estimate]')?.addEventListener('click',showEstimate);
   form.addEventListener('submit',async event=>{
     if(bypass)return;
-    event.preventDefault();if(pending)return;clearTimeout(scenarioTimer);refreshQueued=false;pending=true;button.disabled=true;
+    event.preventDefault();if(pending){beside('Still checking the cost estimate. Please wait.',true);return;}clearTimeout(scenarioTimer);refreshQueued=false;pending=true;button.disabled=true;beside('Checking the cost estimate before polishing…',true);
     try {
       const instructions=personalInstructions();
       const scenarios=scenarioInput();
@@ -76,7 +78,7 @@ export function attachPolishingCostControls(doc=document, fetchImpl=fetch, confi
       if(scenarios!==scenarioInput())throw new Error('Scenario selection changed; review the estimate again.');
       assertWritingReady();if(writingRefs!==writingInput())throw new Error('Writing examples changed; review the estimate again.');
       
-      if(!approved){status.textContent+=' Cancelled. No polishing call made.';return;}
+      if(!approved){status.textContent+=' Cancelled. No polishing call made.';beside('Cancelled. No polishing call made.');return;}
       let confirmation=form.querySelector('[name="polishingCostConfirmed"]');
       if(!confirmation){confirmation=doc.createElement('input');confirmation.type='hidden';confirmation.name='polishingCostConfirmed';form.appendChild(confirmation);}
       confirmation.value='true';
@@ -89,8 +91,8 @@ export function attachPolishingCostControls(doc=document, fetchImpl=fetch, confi
       confirmedModel.value=model.id;
       let confirmedLength=form.querySelector('[name="polishingConfirmedLengthMode"]');if(!confirmedLength){confirmedLength=doc.createElement('input');confirmedLength.type='hidden';confirmedLength.name='polishingConfirmedLengthMode';form.appendChild(confirmedLength);}confirmedLength.value=result.letterLengthMode||'standard';
       if(relationship){let field=form.querySelector('[name="polishingConfirmedRelationship"]');if(!field){field=doc.createElement('input');field.type='hidden';field.name='polishingConfirmedRelationship';form.appendChild(field);}field.value=relationship;}
-      button.disabled=false;bypass=true;form.requestSubmit(button);bypass=false;
-    }catch(error){status.textContent=error.message+' No polishing call was made.';}
+      beside('Polishing with '+model.label+'. This can take up to a minute; please do not click again.',true);button.disabled=false;bypass=true;form.requestSubmit(button);bypass=false;
+    }catch(error){status.textContent=error.message+' No polishing call was made.';beside(error.message+' No polishing call was made.');summary?.setAttribute('role','alert');}
     finally{pending=false;button.disabled=false;if(refreshQueued){refreshQueued=false;showEstimate();}}
   });
   showEstimate();
