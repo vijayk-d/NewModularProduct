@@ -1125,6 +1125,10 @@ export function renderApplicationReview({
                       Array.isArray(ats.missingKeywords)
                         ? ats.missingKeywords.length
                         : 0
+                    }${
+                      Number.isFinite(ats.keywordScore)
+                        ? ` | Job keyword match ${escapeHtml(ats.keywordScore)}%${ats.basis === 'cv-profile' ? ' (CV profile and tags)' : ''}`
+                        : ''
                     }
                   </span>
                 </p>
@@ -1149,6 +1153,13 @@ export function renderApplicationReview({
                       )}
                     </div>
                   </div>
+                  ${
+                    Array.isArray(ats.eligibility) && ats.eligibility.length
+                      ? `<h3>Eligibility to confirm (not keywords)</h3>${renderSuggestions(
+                          ats.eligibility.map(item => item.label + (Array.isArray(item.inCv) && item.inCv.length ? ' - shown in CV: ' + item.inCv.join(', ') : ''))
+                        )}`
+                      : ''
+                  }
                   ${
                     Array.isArray(ats.suggestions) && ats.suggestions.length
                       ? `<h3>ATS suggestions</h3>${renderSuggestions(

@@ -11,12 +11,17 @@ test('the service scores the whole CV before and after, using the wording on the
   const base = fakeWorker([]);
   const worker = async payload => { const r = await base(payload); return payload.action === 'sections' ? {...r, sections: {...r.sections, lines}} : r; };
   const service = createCvTailoringService({reviews: reviewFixture(), store: createCvTailoringStore({filePath: ':memory:'}), worker, cvFolder: 'C:/cv', cvLibrary: async () => [{role_code: 'PM', local_path: 'PM/PM_CV.pdf'}]});
-  const body = {profile: ['Delivery leader across programmes.'], achievements: ['Introduced risk reporting for the board.', 'Cut costs by 10% through vendor consolidation.'], expectedSha256: SHA, expectedRoleCode: 'PM'};
+  // Job terms for 'Agile delivery and risk management.' are the phrases 'agile delivery' and 'risk management'.
+  const body = {profile: ['Agile delivery leader across programmes.'], achievements: ['Introduced risk management for the board.', 'Cut costs by 10% through vendor consolidation.'], expectedSha256: SHA, expectedRoleCode: 'PM'};
   const r = await service.atsMatch('r1', body);
   assert.equal(r.wholeCv, true);
-  assert.deepEqual(r.gained, ['risk']);
-  assert.deepEqual(r.lost, ['agile']);
-  assert.ok(r.workIn.includes('agile'));
+  assert.deepEqual(r.gained, ['agile delivery', 'risk management']);
+  assert.deepEqual(r.lost, []);
+  assert.equal(r.after.score, 100);
+  assert.ok(r.before.score < r.after.score);
+  const back = await service.atsMatch('r1', {...body, profile: ['Delivery leader across programmes.'], achievements: ['Cut costs by 10% through vendor consolidation.']});
+  assert.deepEqual(back.workIn, [], 'agile and delivery appear apart in the CV, so the phrase is not claimed');
+  assert.ok(back.noEvidence.includes('risk management'));
   await assert.rejects(service.atsMatch('r1', {...body, expectedSha256: 'b'.repeat(64)}), e => e.statusCode === 409);
 });
 
@@ -37,9 +42,10 @@ test('the ATS route is local-only and makes no paid call', async t => {
 
 test('a build returns the ATS match of exactly what was built', async () => {
   const service = createCvTailoringService({reviews: reviewFixture(), store: createCvTailoringStore({filePath: ':memory:'}), worker: fakeWorker([]), cvFolder: 'C:/cv', cvLibrary: async () => [{role_code: 'PM', local_path: 'PM/PM_CV.pdf'}]});
-  const built = await service.build('r1', {profile: ['Delivery leader across programmes.'], achievements: ['Introduced risk reporting for the board.', 'Led a 40-person Agile programme.'], expectedSha256: SHA, expectedRoleCode: 'PM'});
+  const built = await service.build('r1', {profile: ['Delivery leader across programmes.'], achievements: ['Introduced risk management for the board.', 'Led Agile delivery for a 40-person programme.'], expectedSha256: SHA, expectedRoleCode: 'PM'});
   assert.equal(built.version, 1);
   assert.deepEqual(built.ats.after, {score: 100, matched: 2});
-  assert.deepEqual(built.ats.before, {score: 50, matched: 1});
+  assert.ok(built.ats.before.score < 100);
+  assert.ok(Array.isArray(built.ats.eligibility));
 });
 

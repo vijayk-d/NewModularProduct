@@ -34,7 +34,22 @@ Each build is saved as a new version. You can download it as a DOCX, save it to 
 
 Step 4, **ATS keyword match**, shows how many of this job's keywords your whole CV contains, before tailoring and with the wording in the boxes, for example "Base CV 50% → tailored CV 80% (8 of 10 job keywords, +30 points)". It runs after **Draft tailored CV** and after each **Polish**, and again whenever you click **Check ATS match (free)** after editing. Each **Build** also shows the ATS match of exactly that version next to its download link.
 
-- **Keywords** are the ones the app already extracts from the job description (up to 40). A keyword counts when it appears anywhere in the CV text, ignoring case: the same rule as the keyword part of the CV ranking score.
+- **Job terms** come from the shared ATS engine (`src/domain/ats/ats-engine.js`), the same one CV selection uses, so both show the same match for the same CV text:
+  - **What is left out of the advert:** company text, benefits, diversity statements, "apply now" lines, location and contract lines (for example "Westhill, Aberdeen" or "Permanent, Hybrid"), and filler words such as "need", "able" or "strong".
+  - **What counts as a term:**
+    - known skill phrases, such as "change control", "lessons learned" and "design for manufacture";
+    - 2–3 word phrases ending in a skill word, such as "risk assessments";
+    - acronyms, such as NPD or SLT, except those that are the employer's own initials;
+    - content words.
+  - **Weighting:**
+    - by section: requirements count 3, duties 2, introduction 1.5, company text 0;
+    - by cue words: "essential" or "must" count ×1.5, and "ideally" ×0.6;
+    - by repeats, capped;
+    - phrases count ×2 and acronyms ×1.5.
+  - The 40 highest-weighted terms are used.
+- **Matching** is on whole words with simple word forms: manage, managing and management all match, but "hold" no longer matches "stakeholder". A phrase whose words all appear in the CV, but not together, gets half credit. The score is the weighted share of terms found.
+- **Eligibility** (security clearance, right to work, named qualifications such as APM or PRINCE2, driving licence, travel) is listed separately as "Eligibility to confirm". It is never counted as a keyword to add. Qualifications already shown in your CV are noted.
+- **CV selection** shows "Job keyword match N%". It says "(CV profile and tags)" when it could read only the CV's profile and tags rather than its text. The overall score there still includes use cases, role match and priority.
 - **Whole CV.** Skills, education and every other section count too. Only the tailored sections are swapped for your new wording.
 - **Lists:**
   - **Now covered**: keywords your tailoring added.

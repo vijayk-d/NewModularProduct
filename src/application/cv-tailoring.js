@@ -3,6 +3,7 @@
 import {createHash} from 'node:crypto';
 import {draftTailoredCv, checkTailoredCv} from '../domain/cv/cv-tailoring-policy.js';
 import {extractJobKeywords} from '../domain/job-description/extract-job-keywords.js';
+import {extractAtsTerms, eligibilityChecks} from '../domain/ats/ats-engine.js';
 import {MATCH_LABELS} from '../domain/cv/word-cv-match.js';
 import {DEFAULT_POLISHING_MODEL, normalizePolishingModel, buildPolishingAttempt} from './polishing-model-catalog.js';
 import {estimatePolishingApiRequest} from './polishing-cost-estimator.js';
@@ -34,7 +35,20 @@ function selectedEvidence(review) {
   return list.map(v => String(v || '').trim()).filter(v => v && v.toLowerCase() !== 'null');
 }
 
+// Weighted job terms from the shared ATS engine, read from the job description text so CV selection and this check agree.
+function atsTerms(review) {
+  const form = review?.formData || {};
+  return extractAtsTerms(String(form.jobDescriptionText || review?.prepared?.jobDescription?.rawText || ''), {organisationName: String(form.organisationName || '')});
+}
+function atsResult(review, args) {
+  const form = review?.formData || {};
+  const eligibility = eligibilityChecks(String(form.jobDescriptionText || review?.prepared?.jobDescription?.rawText || ''), args.baseLines.join('\n'));
+  return {...compareTailoredAts({terms: atsTerms(review), ...args}), eligibility};
+}
 function jobKeywords(review) {
+  const terms = atsTerms(review);
+  // Phrases first, then their words, so a bullet that mentions "agile" still ranks for "agile delivery".
+  if (terms.length) return [...new Set([...terms.map(t => t.term), ...terms.flatMap(t => t.term.split(' ')).filter(w => w.length >= 4)])];
   const parsed = review?.prepared?.jobDescription?.keywords;
   if (Array.isArray(parsed) && parsed.length) return parsed;
   return extractJobKeywords(String(review?.formData?.jobDescriptionText || ''));
@@ -208,7 +222,7 @@ export function createCvTailoringService({reviews, cvLibrary, worker, cvFolder, 
       const original = [...w.use.profile.paragraphs, ...(w.achievements ? w.use.achievements.paragraphs : []), ...(w.roles.length ? w.roleSources.flatMap(r => r.bullets) : [])];
       const tailored = [...w.profile, ...(w.achievements || []), ...w.roles.flatMap(r => r.bullets)];
       const baseLines = Array.isArray(w.found.sections?.lines) && w.found.sections.lines.length ? w.found.sections.lines : original;
-      return {wholeCv: baseLines !== original, ...compareTailoredAts({keywords: jobKeywords(w.found.review).slice(0, 40), baseLines, originalLines: original, tailoredLines: tailored, evidence: selectedEvidence(w.found.review)})};
+      return {wholeCv: baseLines !== original, ...atsResult(w.found.review, {baseLines, originalLines: original, tailoredLines: tailored, evidence: selectedEvidence(w.found.review)})};
     },
 
     // Cost estimate only: nothing is sent anywhere.
@@ -303,7 +317,7 @@ export function createCvTailoringService({reviews, cvLibrary, worker, cvFolder, 
       // PDF for emailing, made by Word straight away. A failure never blocks the build; Make PDF tries once more on request.
       let pdf = null, pdfError = '';
       if (pdfConverter && pdfFiles) { try { pdf = await makePdf(reviewId, saved.version); } catch (error) { pdfError = error.statusCode ? error.message : 'Word could not make the PDF. Click Make PDF to try again.'; } }
-      return {...saved, pdf, pdfError, ats: compareTailoredAts({keywords: jobKeywords(found.review).slice(0, 40), baseLines: lines, originalLines: original,
+      return {...saved, pdf, pdfError, ats: atsResult(found.review, {baseLines: lines, originalLines: original,
         tailoredLines: [...check.profile, ...(check.achievements || []), ...(check.roles || []).flat()], evidence: selectedEvidence(found.review)})};
     },
 

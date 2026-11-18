@@ -181,7 +181,7 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
         if (!response.ok || !data.ok) throw new Error(data.error || 'The ATS match could not run.');
         const change = data.after.score - data.before.score;
         status.textContent = data.total
-          ? `Base CV ${data.before.score}% → tailored CV ${data.after.score}% (${data.after.matched} of ${data.total} job keywords${change ? `, ${change > 0 ? '+' : ''}${change} points` : ', no change'}).`
+          ? `Base CV ${data.before.score}% → tailored CV ${data.after.score}% (${data.after.matched} of the ${data.total} most important job terms, weighted by importance${change ? `, ${change > 0 ? '+' : ''}${change} points` : ', no change'}).`
           : 'No job keywords were found in this advert.';
         details.textContent = '';
         details.append(
@@ -189,6 +189,7 @@ export function attachTailoredCvControls(doc = document, fetchImpl = fetch) {
           ...list('Lost by your tailoring (put back if relevant):', data.lost, 'data-ats-lost'),
           ...list('Missing, but in your CV lines or selected achievements (work these in):', data.workIn, 'data-ats-work-in'),
           ...list('Missing with no evidence (leave out; do not claim):', data.noEvidence, 'data-ats-no-evidence'),
+          ...list('Eligibility to confirm (not keywords; answer these in the application):', (data.eligibility || []).map(e => e.label + (e.inCv?.length ? ' - shown in CV: ' + e.inCv.join(', ') : '')), 'data-ats-eligibility'),
           ...(data.wholeCv ? [] : [el(doc, 'p', {class: 'tailored-cv-note', text: 'Only the tailored sections could be read, so the score covers those sections.'})]));
       } catch (error) { status.textContent = error.message; }
       finally { check.disabled = false; status.classList.remove('is-busy'); }

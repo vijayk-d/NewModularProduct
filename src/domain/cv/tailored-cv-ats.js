@@ -1,13 +1,17 @@
 // ATS keyword match for a tailored CV: the same keyword-overlap rule as the CV ranking, applied to the CV text
 // before and after tailoring. Pure: no I/O. It never suggests adding a keyword that has no evidence.
-import {normalize, overlap, unique} from '../shared/text-normalization.js';
+import {normalize, unique} from '../shared/text-normalization.js';
+import {matchAtsTerms, termsFoundIn, stem} from '../ats/ats-engine.js';
+
+// Plain keyword strings (older callers) become equally weighted terms.
+export function termsFromKeywords(keywords = []) {
+  return unique(keywords.map(normalize).filter(Boolean)).map(term => ({term, stems: term.split(/[^a-z0-9+&]+/).filter(Boolean).map(stem), weight: 1}));
+}
 
 const clean = value => String(value ?? '').replace(/\s+/g, ' ').trim();
 
 export function keywordMatch(keywords = [], text = '') {
-  const terms = unique(keywords.map(normalize).filter(Boolean));
-  const matched = overlap(terms, text);
-  return {total: terms.length, matched, missing: terms.filter(t => !matched.includes(t)), score: terms.length ? Math.round((matched.length / terms.length) * 100) : 0};
+  return matchAtsTerms(termsFromKeywords(keywords), text);
 }
 
 // Swaps the original section lines for the tailored ones; every other line of the CV stays.
@@ -22,10 +26,12 @@ export function tailoredCvText(baseLines = [], originalLines = [], tailoredLines
   return [...kept, ...tailoredLines.map(clean).filter(Boolean)].join('\n');
 }
 
-export function compareTailoredAts({keywords = [], baseLines = [], originalLines = [], tailoredLines = [], evidence = []} = {}) {
-  const before = keywordMatch(keywords, baseLines.join('\n'));
-  const after = keywordMatch(keywords, tailoredCvText(baseLines, originalLines, tailoredLines));
-  const evidenced = overlap(after.missing, [...evidence, ...originalLines].join('\n'));
+// terms: weighted ATS terms (preferred); keywords: plain strings from older callers.
+export function compareTailoredAts({terms = null, keywords = [], baseLines = [], originalLines = [], tailoredLines = [], evidence = []} = {}) {
+  const list = Array.isArray(terms) ? terms : termsFromKeywords(keywords);
+  const before = matchAtsTerms(list, baseLines.join('\n'));
+  const after = matchAtsTerms(list, tailoredCvText(baseLines, originalLines, tailoredLines));
+  const evidenced = termsFoundIn(list.filter(t => after.missing.includes(t.term)), [...evidence, ...originalLines].join('\n'));
   return {
     total: after.total,
     before: {score: before.score, matched: before.matched.length},
