@@ -1,6 +1,8 @@
 # Converts one tailored CV (DOCX) to PDF with Microsoft Word on this PC, exactly as Word would print it.
 # Called by the app after each tailored CV build. Opens the file read-only, never saves the DOCX, always quits Word.
 # Output: one JSON line on stdout: {"ok":true,"wordVersion":"16.0"} or {"ok":false,"code":"..."}.
+# Before that, {"wordPid":1234} for the Word process this script started (never one that was already running),
+# so the app can close it if the conversion runs out of time and this script is stopped before its clean-up.
 [CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)][string]$Docx,
@@ -18,7 +20,10 @@ if (-not (Test-Path -LiteralPath 'Registry::HKEY_CLASSES_ROOT\Word.Application\C
 $word = $null; $document = $null; $code = 'WORD_CONVERSION_FAILED'
 try {
   $code = 'WORD_START_FAILED'
+  $before = @(Get-Process -Name WINWORD -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
   $word = New-Object -ComObject Word.Application
+  $started = @(Get-Process -Name WINWORD -ErrorAction SilentlyContinue | Where-Object { $before -notcontains $_.Id } | ForEach-Object { $_.Id })
+  if ($started.Count -eq 1) { Write-Result @{ wordPid = $started[0] }; [Console]::Out.Flush() }
   $word.Visible = $false
   $word.DisplayAlerts = 0
   $word.AutomationSecurity = 3

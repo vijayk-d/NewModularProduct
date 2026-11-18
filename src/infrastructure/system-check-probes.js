@@ -146,7 +146,7 @@ export function createSystemCheckProbes({stateDirectory, cvFolder = '', outputFo
       const items = (await readdir(folder, {withFileTypes: true})).filter(d => d.isDirectory());
       const size = await folderSize(folder);
       return {status: items.length > 30 || size > 20 * GB ? 'warn' : 'pass', detail: `${items.length} backup${items.length === 1 ? '' : 's'}, ${gb(size)} in total.`,
-        fix: items.length > 30 || size > 20 * GB ? 'Consider moving older backups to another drive. Keep at least the newest few.' : ''};
+        fix: items.length > 30 || size > 20 * GB ? 'Preview a clean-up with: python tools\\deploy\\release_backups.py --production-root <production folder> --keep 10 (nothing changes without --apply).' : ''};
     }}
   ];
 }

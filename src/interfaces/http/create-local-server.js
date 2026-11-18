@@ -1641,7 +1641,8 @@ export function createLocalServer({
       if (!job) {
         sendJson(response, 404, {
           ok: false,
-          error: "Email-domain resolution job not found."
+          code: "EMAIL_DOMAIN_JOB_INTERRUPTED",
+          error: "This email-domain lookup was interrupted, usually because the app restarted. Click Find email domain to start it again."
         });
         return;
       }

@@ -81,7 +81,7 @@ export function createConfirmedGmailDraftService({repository,mailboxPort,env=pro
     return {ticket,expiresAt,sendingAccount:status.configuredMailbox,draft:value.draft,created:false,sent:false};
   },async create({ticket,confirmed=false}={}){
     const status=gate();if(confirmed!==true)fail('Confirm this exact draft preview before creation.','GMAIL_DRAFT_CONFIRMATION',400);
-    const approved=tickets.get(ticket);if(!approved)fail('Preview is missing, consumed or expired. Review the queue item again.','GMAIL_DRAFT_TICKET');
+    const approved=tickets.get(ticket);if(!approved)fail('Preview is missing, consumed or expired. An app restart also clears it. Review the queue item again.','GMAIL_DRAFT_TICKET');
     tickets.delete(ticket);
     if(approved.expiresAt<clock()||approved.account.toLowerCase()!==status.configuredMailbox.toLowerCase())fail('Preview expired or sender changed. Review again.','GMAIL_DRAFT_TICKET');
     const value=await prepared(approved.queueId,approved.retryFailed);

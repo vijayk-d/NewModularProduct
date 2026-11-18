@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         New Modular Product - Clean LinkedIn Contact Bridge
 // @namespace    local.new-modular-product
-// @version      0.6.0
-// @description  Review clean LinkedIn People contacts and import to production (3100), development (3000), or both.
+// @version      0.6.1
+// @description  Review clean LinkedIn People contacts and import to production (3100), development (3000), or both. Sends straight from the review panel, without a dialog.
 // @match        https://www.linkedin.com/company/*/people/*
 // @match        https://www.linkedin.com/search/results/people/*
 // @match        http://127.0.0.1:3000/*
@@ -222,7 +222,8 @@
       if(!targets.length){render();return;}
       const uncertain=targets.some(target=>transaction.results.get(target.id)?.kind==="unconfirmed");
       const warning=uncertain?"\nAn earlier request has an unknown outcome. A retry may merge existing contacts and refresh import timestamps. Check that server first if unsure.":"";
-      if(!window.confirm(`Import ${transaction.contactCount} reviewed contact(s) using ${transaction.emailDomain} into:\n${targets.map(target=>target.label+" — "+target.origin).join("\n")}\n\nPreviously confirmed destinations will not be resent. No application linking, research, draft creation or email sending is requested.${warning}`))return;
+      // No dialog: the review panel is the check. Say what is being sent, then send straight away.
+      status.textContent=`Sending ${transaction.contactCount} reviewed contact(s) using ${transaction.emailDomain} to:\n${targets.map(target=>target.label+" — "+target.origin).join("\n")}\nPreviously confirmed destinations are not resent. No application linking, research, draft creation or email sending is requested.${warning}`;
       importing=true;destination.disabled=true;buttons.forEach(button=>button.disabled=true);
       const main=document.getElementById(BUTTON_ID);if(main){main.disabled=true;main.textContent="Importing to selected servers…";}
       try{await deliverContacts(transaction,targets,render);}finally{

@@ -13,12 +13,14 @@ const MESSAGES = {
   WORD_START_FAILED: 'Microsoft Word could not be started. Make sure you are signed in to Windows and Word opens normally, then click Make PDF.',
   WORD_OPEN_FAILED: 'Word could not open the tailored CV. Click Make PDF to try again.',
   WORD_EXPORT_FAILED: 'Word could not save the PDF. Close any Word dialog that is open, then click Make PDF.',
-  WORD_TIMEOUT: 'Word took too long to make the PDF. Close any Word dialog that is open, then click Make PDF.',
+  WORD_TIMEOUT: 'Word took too long to make the PDF. If Word is still running in Task Manager with no window, end it, then click Make PDF.',
+  WORD_TIMEOUT_CLOSED: 'Word took too long to make the PDF, so the background Word it started was closed. Click Make PDF to try again.',
   WORD_UNAVAILABLE: 'PDF conversion with Word only works on Windows.'
 };
 const failure = code => Object.assign(new Error(MESSAGES[code] || 'Word could not make the PDF. Click Make PDF to try again.'), {code: MESSAGES[code] ? code : 'WORD_CONVERSION_FAILED', statusCode: 503});
 
-export function createWordPdfConverter({spawnImpl = spawn, platform = process.platform, timeoutMs = 120000, script = SCRIPT, env = process.env} = {}) {
+// killImpl closes the Word instance the script started, only when the conversion ran out of time.
+export function createWordPdfConverter({spawnImpl = spawn, platform = process.platform, timeoutMs = 120000, script = SCRIPT, env = process.env, killImpl = pid => process.kill(pid)} = {}) {
   return {
     available: platform === 'win32',
     async convert(docxBytes) {
@@ -29,15 +31,16 @@ export function createWordPdfConverter({spawnImpl = spawn, platform = process.pl
       try {
         await writeFile(docx, docxBytes, {flag: 'wx'});
         const out = await new Promise((resolve, reject) => {
-          let child, text = '', done = false;
+          let child, text = '', done = false, wordPid = 0;
           const finish = (error, value) => { if (done) return; done = true; clearTimeout(timer); if (error) { try { child?.kill(); } catch {} reject(error); } else resolve(value); };
-          const timer = setTimeout(() => finish(failure('WORD_TIMEOUT')), timeoutMs);
+          // Stopping PowerShell skips its clean-up, so the Word it started is closed here; Word windows you opened are never touched.
+          const timer = setTimeout(() => { let closed = false; if (wordPid) { try { killImpl(wordPid); closed = true; } catch {} } finish(failure(closed ? 'WORD_TIMEOUT_CLOSED' : 'WORD_TIMEOUT')); }, timeoutMs);
           try {
             child = spawnImpl('powershell.exe', ['-NoProfile', '-NonInteractive', '-STA', '-ExecutionPolicy', 'Bypass', '-File', script, '-Docx', docx, '-Pdf', pdf], {stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, env});
           } catch { finish(failure('WORD_START_FAILED')); return; }
           child.on('error', () => finish(failure('WORD_START_FAILED')));
           child.stdout.setEncoding('utf8');
-          child.stdout.on('data', s => { text += s; if (text.length > 10000) finish(failure('WORD_CONVERSION_FAILED')); });
+          child.stdout.on('data', s => { text += s; if (!wordPid) { const m = /\{"wordPid":(\d{1,7})\}/.exec(text); if (m) wordPid = Number(m[1]); } if (text.length > 10000) finish(failure('WORD_CONVERSION_FAILED')); });
           child.stderr.on('data', () => {});
           child.on('close', () => {
             let result = null;

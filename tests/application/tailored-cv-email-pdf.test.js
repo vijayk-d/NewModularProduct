@@ -35,6 +35,35 @@ function fakeSpawn({result = {ok: true, wordVersion: '16.0'}, pdf = Buffer.from(
   };
 }
 
+test('a Word conversion that runs out of time closes only the Word instance the script started', async () => {
+  const killed = [];
+  const hanging = (cmd, args) => {
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter(); child.stdout.setEncoding = () => {};
+    child.stderr = new EventEmitter();
+    child.kill = () => { child.killed = true; };
+    setImmediate(() => child.stdout.emit('data', '{"wordPid":4321}\r\n'));
+    return child;
+  };
+  await assert.rejects(createWordPdfConverter({platform: 'win32', timeoutMs: 30, spawnImpl: hanging, killImpl: pid => killed.push(pid)}).convert(Buffer.from('PK')),
+    e => e.code === 'WORD_TIMEOUT_CLOSED' && /was closed/.test(e.message));
+  assert.deepEqual(killed, [4321]);
+  const none = [];
+  await assert.rejects(createWordPdfConverter({platform: 'win32', timeoutMs: 20, spawnImpl: fakeSpawn({hang: true}), killImpl: pid => none.push(pid)}).convert(Buffer.from('PK')),
+    e => e.code === 'WORD_TIMEOUT' && /Task Manager/.test(e.message));
+  assert.deepEqual(none, [], 'nothing is closed when the script did not report a Word it started');
+  const ok = await createWordPdfConverter({platform: 'win32', spawnImpl: fakeSpawn({result: {ok: true, wordVersion: '16.0'}}), killImpl: pid => none.push(pid)}).convert(Buffer.from('PK'));
+  assert.equal(ok.wordVersion, '16.0');
+  assert.deepEqual(none, [], 'a successful conversion never closes anything');
+});
+
+test('the PowerShell script reports only a Word process it started', async () => {
+  const script = await readFile(new URL('../../tools/documents/Convert-DocxToPdf.ps1', import.meta.url), 'utf8');
+  assert.match(script, /\$before = @\(Get-Process -Name WINWORD/);
+  assert.match(script, /Where-Object \{ \$before -notcontains \$_\.Id \}/);
+  assert.match(script, /if \(\$started\.Count -eq 1\) \{ Write-Result @\{ wordPid = \$started\[0\] \}/);
+});
+
 test('the Word converter returns the PDF, maps failures to clear messages and never retries', async () => {
   const calls = [];
   const ok = await createWordPdfConverter({platform: 'win32', spawnImpl: fakeSpawn({calls})}).convert(Buffer.from('PK docx'));

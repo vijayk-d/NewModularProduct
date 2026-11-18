@@ -52,6 +52,10 @@ function attachEmailDomainListener() {
         );
 
         var jobData = await jobResponse.json();
+        // A job the server no longer knows (for example after a restart) ends the wait with a clear message.
+        if (!jobResponse.ok || !jobData.ok || !jobData.job) {
+          throw new Error(jobData.error || "This email-domain lookup was interrupted. Click Find email domain to start it again.");
+        }
         var job = jobData.job;
 
         if (job.status === "completed") {
