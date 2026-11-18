@@ -57,7 +57,10 @@ One branch; see [robustness-review-2026-11-18.md](robustness-review-2026-11-18.m
 - R7 backup clean-up command, R10 restart-interrupted steps, R11 closing the Word instance after a PDF time-out. See the review's Status section.
 - LinkedIn contact bridge 0.6.1: **Send / retry selected destinations** sends straight away. There is no confirmation dialog; the review panel is the check, and it shows what is being sent and any earlier unknown outcome.
 
+### Insights engine phase 1 (built on `feat/insights-outcomes`, not yet merged)
+- Outcome capture in a new `application-insights-v1.db`; see [insights-and-job-sources-plan.md](insights-and-job-sources-plan.md).
+
 ### Then
-- Insights engine phase 1 (outcome capture), from [insights-and-job-sources-plan.md](insights-and-job-sources-plan.md).
+- Insights engine phase 2 (feature snapshot), from [insights-and-job-sources-plan.md](insights-and-job-sources-plan.md).
 - Patch B (evidence-library quality), below.
 

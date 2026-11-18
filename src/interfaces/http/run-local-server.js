@@ -15,6 +15,7 @@ import {createJsonEmailDomainStore} from '../../infrastructure/applications/json
 import {installCrashHandlers,takePreviousCrash} from '../../infrastructure/crash-record.js';
 import {createSystemCheckProbes} from '../../infrastructure/system-check-probes.js';
 import {runSystemCheck} from '../../application/system-check.js';
+import {createApplicationInsightsStore} from '../../infrastructure/applications/sqlite-application-insights-store.js';
 import {createTemplateCoverLetterDocuments} from '../../infrastructure/documents/template-cover-letter.js';
 import {createSqliteJobImportStore} from '../../infrastructure/applications/sqlite-job-import-store.js';
 import { gmailLoadedEnvironment } from '../../application/gmail-runtime-diagnostics.js';
@@ -155,6 +156,10 @@ const candidateDisplayName=process.env.CANDIDATE_DISPLAY_NAME||'Vijay DAFAL';
 let cvTailoringStore=null,cvTailoringService=null;
 try{cvTailoringStore=createCvTailoringStore({filePath:path.join(deployment.state,'cv-tailoring-v1.db')});cvTailoringService=createCvTailoringService({pdfConverter:createWordPdfConverter(),pdfFiles:createTailoredPdfFiles({folder:process.env.TAILORED_CV_FOLDER}),polisher:createCvPolisher({apiKey:config.integrations.perplexity.apiKey,enabled:config.features.enableCoverLetterRefinement}),reviews:applicationReviewStore,store:cvTailoringStore,worker:payload=>documentWorker(payload),cvFolder:config.storage.cvFolder,locateWord:createWordCvLocator({cvFolder:config.storage.cvFolder}),cvLibrary:async()=>{const data=await cvInventoryRepository.load();return data?.cv_inventory?.cvs||data?.cvs||[];}});}catch{cvTailoringStore?.close();cvTailoringStore=null;console.warn('[CV_TAILORING] LOCAL_STORE_UNAVAILABLE');}
 
+// Application outcomes (insights phase 1) keep their own new database; if it cannot open, recording is simply off.
+let insightsStore=null;
+try{insightsStore=createApplicationInsightsStore({filePath:path.join(deployment.state,'application-insights-v1.db')});}catch{console.warn('[INSIGHTS] LOCAL_STORE_UNAVAILABLE');}
+
 let assignmentEvidenceStore=null;
 try{
  const filePath=resolveEvidenceLibraryPath({env:process.env,mode:deployment.mode,state:deployment.state});
@@ -177,6 +182,7 @@ const server = createLocalServer({
   organisationResearchService:workflowAutomationStore?createOrganisationResearchService({store:workflowAutomationStore,research:automaticResearchPort?request=>researchOrganization(request,{companyResearchPort:automaticResearchPort}):null,enabled:String(process.env.ENABLE_AUTO_RESEARCH||'true').toLowerCase()!=='false',dailyCap:Math.max(0,Number.parseInt(process.env.AUTO_RESEARCH_DAILY_CAP||'10',10)||0)}):null,
   cvEvidenceLoader,
   cvTailoringService,
+  insightsStore,
   // Read-only System check page: data files, CV library and files, documents, services and this PC.
   systemCheck:()=>runSystemCheck(createSystemCheckProbes({stateDirectory:deployment.state,cvFolder:config.storage.cvFolder||'',outputFolder:process.env.APPLICATION_OUTPUT_FOLDER||'',outputForbidden:[projectRoot,deployment.state,config.storage.cvFolder,'D:\\NewModularProduct-Production'],cvTailoringService,
     cvLibrary:async()=>{const data=await cvInventoryRepository.load();return data?.cv_inventory?.cvs||data?.cvs||[];},locateWord:createWordCvLocator({cvFolder:config.storage.cvFolder}),

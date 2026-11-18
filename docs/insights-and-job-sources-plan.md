@@ -23,7 +23,11 @@ Without outcomes the engine can only describe activity, not learn. So the first 
 - **Optional, later:** a read-only Gmail check that suggests "reply received" for you to confirm. It never sends anything.
 
 ### Phases
-1. **Outcome capture** (small).
+1. **Outcome capture** (small). **Built on branch `feat/insights-outcomes` (18 November 2026).**
+   - An **Outcome** section on each application page: No reply, Recruiter replied, Interview, Rejected, Offer or Withdrawn, each with a date (not in the future) and an optional plain note of up to 300 characters.
+   - Every entry is kept. The current outcome is the latest by date. An entry recorded by mistake can be removed with two clicks, and there is no browser dialog.
+   - The latest outcome shows on the dashboard (counts per outcome, plus an Outcome column) and on Saved applications. Follow-ups due leave out applications with a response.
+   - Notes stay on the application page and never reach the dashboard.
    - Store outcomes in a new file, `application-insights-v1.db`. No existing schema changes.
    - Show the outcome on the dashboard.
 2. **Feature snapshot** (small–medium).

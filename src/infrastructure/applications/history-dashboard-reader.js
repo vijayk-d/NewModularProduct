@@ -3,7 +3,7 @@ const MAX_ROWS=50000;const FIELDS=['jobTitle','organisationName','organisationUr
 const j=p=>"json_extract(payload,'"+p+"')";
 const object=entries=>'json_object('+entries.flatMap(([k,v])=>["'"+k+"'",v]).join(',')+')';
 const application=object(FIELDS.map(k=>[k,'COALESCE('+j('$.application.'+k)+','+j('$.snapshot.application.'+k)+')']));
-const projection=object([...['id','reviewId','applicationKey','email','recipientKey','sendingAccount','messageId','draftId','sendAttemptId','draftOperationId','status','sentAt','occurredOn','updatedAt','recordedAt','createdAt'].map(k=>[k,j('$.'+k)]),['application',application],['formData',object(FIELDS.map(k=>[k,j('$.formData.'+k)]))]]);
+const projection=object([...['id','reviewId','applicationKey','email','recipientKey','sendingAccount','messageId','draftId','sendAttemptId','draftOperationId','status','sentAt','occurredOn','updatedAt','recordedAt','createdAt','outcome'].map(k=>[k,j('$.'+k)]),['application',application],['formData',object(FIELDS.map(k=>[k,j('$.formData.'+k)]))]]);
 export async function readHistorySnapshot(stateDirectory,source='development'){
  const result={source,capturedAt:new Date().toISOString(),reviews:[],sent:[],queue:[],sendAttempts:[],draftOperations:[],submissions:[],coverage:{},issues:[],databaseBytes:null};
  if(typeof stateDirectory!=='string'||!path.isAbsolute(stateDirectory))throw Error('Explicit absolute state directory required.');
@@ -13,5 +13,7 @@ export async function readHistorySnapshot(stateDirectory,source='development'){
  readDb('application-reviews-v1.db','reviews',[['application_reviews',['review_id']]],t=>{result.reviews=t.application_reviews.map(r=>({...r.data,id:r.review_id}));});
  readDb('outreach.db','outreach',[['outreach_sent_emails',['sending_account','message_id']],['outreach_queue',[]],['outreach_gmail_send_attempts',[]],['outreach_gmail_draft_operations',[]]],t=>{result.sent=t.outreach_sent_emails.map(r=>{if(r.data.sendingAccount&&r.data.sendingAccount.toLowerCase()!==r.sending_account.toLowerCase()||r.data.messageId&&r.data.messageId!==r.message_id)result.issues.push({kind:'receipt_key_payload_mismatch'});return {...r.data,sendingAccount:r.sending_account,messageId:r.message_id};});result.queue=t.outreach_queue.map(r=>r.data);result.sendAttempts=t.outreach_gmail_send_attempts.map(r=>r.data);result.draftOperations=t.outreach_gmail_draft_operations.map(r=>r.data);});
  readDb('application-intelligence-v1.db','intelligence',[['application_activity',['id','kind','parent_id']]],t=>{const voided=new Set(t.application_activity.filter(r=>r.kind==='submission_voided').map(r=>r.parent_id));result.submissions=t.application_activity.filter(r=>r.kind==='submitted_external'&&!voided.has(r.id)).map(r=>({...r.data,id:r.id}));});
+ // Owner-recorded outcomes (insights phase 1); missing until the first outcome is recorded.
+ readDb('application-insights-v1.db','outcomes',[['outcome_events',['id','review_id']]],t=>{result.outcomes=t.outcome_events.map(r=>({...r.data,id:r.id}));});
  return result;
 }
