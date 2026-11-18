@@ -4,7 +4,7 @@ from pathlib import Path
 from html.parser import HTMLParser
 from urllib.parse import urlsplit
 from xml.etree import ElementTree as E
-from zipfile import ZipFile,ZIP_DEFLATED
+from zipfile import ZipFile,ZipInfo,ZIP_DEFLATED
 W='http://schemas.openxmlformats.org/wordprocessingml/2006/main';R='http://schemas.openxmlformats.org/officeDocument/2006/relationships';P='http://schemas.openxmlformats.org/package/2006/relationships';C='http://schemas.openxmlformats.org/package/2006/content-types'
 E.register_namespace('w',W);E.register_namespace('r',R)
 def fail(code):raise ValueError(code)
@@ -172,7 +172,8 @@ def render(template,html,digest):
  parts['word/_rels/document.xml.rels']=E.tostring(rels,encoding='utf-8',xml_declaration=True);parts['[Content_Types].xml']=E.tostring(types,encoding='utf-8',xml_declaration=True)
  out=io.BytesIO()
  with ZipFile(out,'w',ZIP_DEFLATED) as z:
-  for n,b in parts.items():z.writestr(n,b)
+  # Fixed entry date: the same letter always gives the same bytes, so Save to folder can recognise an identical file.
+  for n,b in parts.items():z.writestr(ZipInfo(n,(1980,1,1,0,0,0)),b,compress_type=ZIP_DEFLATED)
  return out.getvalue()
 def main():
  try:
