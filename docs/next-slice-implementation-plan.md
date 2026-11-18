@@ -29,3 +29,26 @@ Record planned, in progress, tested in isolation, user-verified and released sep
 
 ## Patch A status (17 November 2026)
 Released and user-verified in production (PR #26): radio buttons with swatches; `/api/cv-preview` inline PDF with hash, review and same-origin checks; download unchanged. Patch B not started.
+
+## Next slices (18 November 2026)
+Patch A is released. Tailored CV (CV rebuilding) and Save to folder are merged.
+
+### Robustness pack 1, recommended next
+One branch; see [robustness-review-2026-11-18.md](robustness-review-2026-11-18.md).
+- **R1:** a configurable time limit on every Perplexity call, with no retry. The message says a charge may still have been made. The automatic research call gets a shorter limit.
+- **R2:** move email-domain lookups to a new state-folder file, written atomically, reading the old file once if present.
+- **R3:** log unhandled errors (type and stack, no personal data), then exit so the supervisor restarts the app.
+- **Acceptance:**
+  - node:test coverage with fake adapters for a timeout, interrupted writes and a migration from the old file;
+  - no change to existing schemas;
+  - per-test results match master.
+
+### Robustness pack 2
+- **R4:** `busy_timeout` on every SQLite store.
+- **R8:** the 4 `application-preparation` specs start their own fixture server; the known Node failure is fixed or recorded as quarantined.
+
+### Then
+- System check page (R5 with R6 and R12).
+- Insights engine phase 1 (outcome capture), from [insights-and-job-sources-plan.md](insights-and-job-sources-plan.md).
+- Patch B (evidence-library quality), below.
+
