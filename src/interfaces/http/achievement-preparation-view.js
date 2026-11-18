@@ -1,7 +1,7 @@
 const esc=x=>String(x??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
 export function renderAchievementPreparation(values={}){
  return `<section id="achievement-preparation" class="achievement-preparation"><h2>Evidence-backed achievements</h2>
- <p>Load a CV locally and check only the source statements you want included. No AI request runs here. The evidence CV becomes the selected CV for this application.</p>
+ <p>Choosing a CV reads it locally and ticks all its source statements (up to twelve); untick any you do not want included. No AI request runs here. The evidence CV becomes the selected CV for this application.</p>
  <input type="hidden" name="achievementMode" value="selected"><input type="hidden" name="achievementCvRoleCode" value="${esc(values.achievementCvRoleCode||'')}"><input type="hidden" name="achievementSourceHash" value="${esc(values.achievementSourceHash||'')}">
  <div id="achievement-id-fields" data-saved-ids="${esc(JSON.stringify(values.achievementIds||[]))}"></div>
  <div class="achievement-load-row"><label>CV for evidence and attachment<select id="achievement-cv"><option value="">No evidence CV selected</option></select></label><button type="button" id="load-cv-achievements" disabled>Load achievements from this CV</button></div>
