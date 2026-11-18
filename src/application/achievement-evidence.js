@@ -1,10 +1,12 @@
 import {createHash} from 'node:crypto';
 const sha=s=>createHash('sha256').update(s).digest('hex');
 export const canonicalCvText=text=>String(text??'').replace(/\r\n?/g,'\n').trim();
+// Common words that say nothing about fit; they would otherwise inflate the job-description match.
+const FILLER=new Set('with that this from have will your their they them into across within over more also about such other which what when where would should could able ability strong skills using through been were being ensure including work working role experience well very must make made than only each both these those there here some most many much just like based high level good great part time year years'.split(' '));
 function bad(message,statusCode=400){throw Object.assign(new Error(message),{statusCode,code:'ACHIEVEMENT_EVIDENCE_INVALID'});}
 export function achievementCatalogue({text,roleCode,roleName='',jobDescriptionText=''}={}){
  const source=canonicalCvText(text);if(!source||source.length>120000)bad('CV text is empty or exceeds the evidence limit.',422);
- const sourceHash=sha(source),items=[],seen=new Set(),terms=new Set(String(jobDescriptionText).toLowerCase().match(/[a-z][a-z-]{3,}/g)||[]);
+ const sourceHash=sha(source),items=[],seen=new Set(),terms=new Set((String(jobDescriptionText).toLowerCase().match(/[a-z][a-z-]{3,}/g)||[]).filter(t=>!FILLER.has(t)));
  const result=/\b(?:achieved|delivered|reduced|increased|improved|saved|generated|accelerated|cut|grew|enabled|launched|implemented|transformed|established|streamlined|secured|eliminated|decreased|raised|boosted)\b/i;
  // Never join separate paragraphs/bullets or infer employer, date or contribution ownership.
  for(const m of source.matchAll(/[^\n]+(?:\n(?!\s*(?:\n|[•●▪*-]\s))[^\n]+)*/g)){
