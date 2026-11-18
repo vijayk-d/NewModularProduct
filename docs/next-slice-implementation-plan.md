@@ -53,7 +53,7 @@ One branch; see [robustness-review-2026-11-18.md](robustness-review-2026-11-18.m
 ### System check page (merged, `fc6518b`)
 - R5 with R6, R12 and the reporting half of R7. See [system-check.md](system-check.md).
 
-### Robustness pack 3 (built on `fix/robustness-pack-3`, not yet merged)
+### Robustness pack 3 (released in `5ad5108`)
 - R7 backup clean-up command, R10 restart-interrupted steps, R11 closing the Word instance after a PDF time-out. See the review's Status section.
 - LinkedIn contact bridge 0.6.1: **Send / retry selected destinations** sends straight away. There is no confirmation dialog; the review panel is the check, and it shows what is being sent and any earlier unknown outcome.
 

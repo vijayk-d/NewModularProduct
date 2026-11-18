@@ -81,6 +81,7 @@ Evidence boundary: source on master at `99d33e6`, read for this review. No code 
 - Run the check whenever a CV is added. The System check (R5) should include it.
 
 ## Status
+- **Released to production in `5ad5108`** (18 November 2026): R1–R8, R10–R12. R9 continues alongside feature work.
 - **R1, R2 and R3:** merged (`b0a0eb7`).
 - **R4 and R8:** merged (`2433f66`).
 - **R5:** System check page, merged (`fc6518b`). See [system-check.md](system-check.md).
