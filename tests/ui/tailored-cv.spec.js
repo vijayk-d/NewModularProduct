@@ -51,7 +51,7 @@ test('draft, edit and build a tailored CV, then download it', async ({page, app}
   await expect(section.locator('[data-tailored-build-status]')).toContainText('version 1 built');
   const link = section.locator('[data-tailored-download]');
   await expect(link).toHaveText('Download tailored CV (version 1, DOCX)');
-  await expect(section.locator('[data-tailored-latest]')).toContainText('ATS match of this version: 50% (base CV 50%)');
+  await expect(section.locator('[data-tailored-latest]')).toContainText('ATS match of this version: 25% (base CV 25%)');
   await expect(section.getByRole('heading', {name: '6. Use your tailored CV'})).toBeVisible();
   await expect(section.getByRole('list', {name: 'Tailored CV steps'}).getByRole('link')).toHaveCount(6);
   await expect(page.getByRole('navigation', {name: 'Application sections'}).getByRole('link', {name: 'Tailored CV'})).toHaveCount(1);
@@ -130,17 +130,22 @@ test.describe('Word files that are not named like the PDF', () => {
   });
 });
 
-test('ATS keyword match runs after drafting, flags a lost keyword and is free', async ({page, app}) => {
+// Job terms for 'Agile delivery and risk management.' are the phrases 'agile delivery' and 'risk management'.
+// The base CV has 'Agile' and 'Delivery' only in separate lines, so 'agile delivery' gets half credit: 25%.
+test('ATS keyword match runs after drafting, credits real phrases and is free', async ({page, app}) => {
   await page.goto(app.url + '/applications/r1');
   const section = page.locator('#tailored-cv');
   await section.getByRole('button', {name: 'Draft tailored CV'}).click();
   const status = section.locator('[data-tailored-ats-status]');
-  await expect(status).toContainText('Base CV 50% → tailored CV 100% (2 of 2 job keywords, +50 points)');
-  await expect(section.locator('[data-ats-gained]')).toContainText('risk');
-  await section.getByLabel(/^Key Achievements \(one bullet/).fill('Cut costs by 10% through vendor consolidation.');
+  await expect(status).toContainText('Base CV 25% → tailored CV 25%');
+  const achievements = section.getByLabel(/^Key Achievements \(one bullet/);
+  await achievements.fill('Introduced risk management for the board.\nLed Agile delivery for a 40-person programme.');
   await section.getByRole('button', {name: 'Check ATS match (free)'}).click();
-  await expect(status).toContainText('Base CV 50% → tailored CV 0%');
-  await expect(section.locator('[data-ats-lost]')).toContainText('agile');
-  await expect(section.locator('[data-ats-work-in]')).toContainText('agile');
+  await expect(status).toContainText('Base CV 25% → tailored CV 100% (2 of the 2 most important job terms');
+  await expect(section.locator('[data-ats-gained]')).toContainText('risk management');
+  await achievements.fill('Cut costs by 10% through vendor consolidation.');
+  await section.getByRole('button', {name: 'Check ATS match (free)'}).click();
+  await expect(status).toContainText('Base CV 25% → tailored CV 0%');
+  await expect(section.locator('[data-ats-no-evidence]')).toContainText('risk management');
   expect(app.calls.filter(c => c.action === 'tailor')).toHaveLength(0);
 });

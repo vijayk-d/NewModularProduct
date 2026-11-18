@@ -1,5 +1,6 @@
 import { normalize, unique } from '../shared/text-normalization.js';
 import { extractJobKeywords } from './extract-job-keywords.js';
+import { extractAtsTerms, eligibilityChecks, ATS_ENGINE_VERSION } from '../ats/ats-engine.js';
 
 const methodologies = [
   'scrum',
@@ -96,6 +97,10 @@ export function parseJobDescription(text = '', provided = {}) {
     domain: findTerms(normalizedText, domainTerms),
     methodologies: findTerms(normalizedText, methodologies),
     keywords: extractJobKeywords(rawText),
+    // Weighted ATS terms and eligibility (see src/domain/ats/ats-engine.js); keywords above stay for letter wording.
+    atsTerms: extractAtsTerms(rawText, {organisationName: provided.organisationName || ''}),
+    atsVersion: ATS_ENGINE_VERSION,
+    eligibility: eligibilityChecks(rawText),
     location: suppliedLocation.length
       ? suppliedLocation
       : findTerms(normalizedText, locationTerms),

@@ -1,4 +1,5 @@
-import { normalize, overlap, unique } from '../shared/text-normalization.js';
+import { normalize, overlap } from '../shared/text-normalization.js';
+import { extractAtsTerms, matchAtsTerms, termsFoundIn, eligibilityChecks } from '../ats/ats-engine.js';
 
 const priorityScore = {
   'very-high': 10,
@@ -23,7 +24,7 @@ function suggestionsFor({ score, missingKeywords, scClearanceRequired }) {
   }
 
   return [
-    `Add evidence for: ${
+    `Where truthful, show evidence for: ${
       missingKeywords.slice(0, 5).join(', ') ||
       'the highest-priority JD requirements'
     }.`,
@@ -36,26 +37,22 @@ function suggestionsFor({ score, missingKeywords, scClearanceRequired }) {
 
 export function scoreCvAgainstJd(jobDescription, cv) {
   const cvText = cvCorpus(cv);
-  const matchedKeywords = overlap(jobDescription.keywords, cvText);
+  // Weighted job terms from the shared ATS engine; older saved job descriptions are re-read from their text.
+  const terms = Array.isArray(jobDescription.atsTerms)
+    ? jobDescription.atsTerms
+    : extractAtsTerms(jobDescription.rawText || (jobDescription.keywords || []).join('\n'));
+  const match = matchAtsTerms(terms, cvText);
+  const matchedKeywords = match.matched;
+  const missingKeywords = match.missing.slice(0, 20);
 
-  const missingKeywords = unique(
-    jobDescription.keywords
-      .filter((keyword) => !matchedKeywords.includes(normalize(keyword)))
-  ).slice(0, 20);
+  const keywordComponent = (match.score / 100) * 40;
 
-  const keywordComponent = jobDescription.keywords.length
-    ? (matchedKeywords.length / jobDescription.keywords.length) * 40
-    : 0;
+  const useCaseMatches = termsFoundIn(terms, (cv.use_cases || []).join('\n'));
 
-  const useCaseMatches = overlap(
-    jobDescription.keywords,
-    (cv.use_cases || []).join(' ')
-  );
-
-  const useCaseComponent = jobDescription.keywords.length
+  const useCaseComponent = terms.length
     ? (
       useCaseMatches.length /
-      Math.max(1, Math.min(jobDescription.keywords.length, 5))
+      Math.max(1, Math.min(terms.length, 5))
     ) * 30
     : 0;
 
@@ -82,8 +79,12 @@ export function scoreCvAgainstJd(jobDescription, cv) {
 
   return {
     score,
+    // keywordScore: weighted share of job terms found. basis says whether the CV text or only its profile was read.
+    keywordScore: match.score,
+    basis: cv.text ? 'cv-text' : 'cv-profile',
     matchedKeywords,
     missingKeywords,
+    eligibility: Array.isArray(jobDescription.eligibility) ? jobDescription.eligibility : eligibilityChecks(jobDescription.rawText || '', cvText),
     suggestions: suggestionsFor({
       score,
       missingKeywords,

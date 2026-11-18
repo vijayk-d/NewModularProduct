@@ -555,6 +555,7 @@ export function createLocalServer({
         jobDescriptionText: formData.jobDescriptionText,
         jobDescriptionOverrides: {
           role: formData.jobTitle,
+          ...(formData.organisationName?{organisationName:formData.organisationName}:{}),
           ...(formData.jobLocation?{location:formData.jobLocation}:{})
         },
         recruiterName: formData.recruiterName||(/^(?:https?:\/\/|www\.|linkedin\.com)/i.test(formData.stakeholderSource)?'':formData.stakeholderSource),

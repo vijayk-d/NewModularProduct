@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {compareTailoredAts, keywordMatch, tailoredCvText} from '../../src/domain/cv/tailored-cv-ats.js';
 
 test('keyword match counts each job keyword once, case-insensitively', () => {
-  assert.deepEqual(keywordMatch(['Agile', 'agile', 'Risk', 'Budget'], 'Led AGILE teams and risk reviews.'), {total: 3, matched: ['agile', 'risk'], missing: ['budget'], score: 67});
+  assert.deepEqual(keywordMatch(['Agile', 'agile', 'Risk', 'Budget'], 'Led AGILE teams and risk reviews.'), {total: 3, matched: ['agile', 'risk'], missing: ['budget'], partial: [], score: 67});
   assert.equal(keywordMatch([], 'x').score, 0);
 });
 
