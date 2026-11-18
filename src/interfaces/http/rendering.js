@@ -665,14 +665,15 @@ export function renderOrganisationResearch(research, organisationUrl = '') {
   `;
 }
 
-// Two LinkedIn routes: global people search (organisation, location, role) and the company People tab (role keyword).
+// Two LinkedIn routes: global people search (organisation, location, role) and the company People tab (role keyword, United Kingdom only).
+const UK_GEO_REGION='101165590';
 export function linkedInCompanySlug(...urls){for(const u of urls){const m=/^https?:\/\/(?:[\w-]+\.)?linkedin\.com\/company\/([^/?#]+)/i.exec(String(u||'').trim());if(m){try{return decodeURIComponent(m[1]).trim();}catch{return m[1];}}}return '';}
 export function stakeholderSearchLinks(formData={},location=''){
   const name=String(formData.organisationName||'').trim();if(!name)return {global:[],company:[],slug:'',slugGuessed:false};
   const global=[['Directors','Director'],['Heads of function','Head'],['Talent and recruitment','Talent, Recruiter']].map(([label,keywords])=>{const query=[name,formData.jobLocation||location,keywords].flatMap(v=>String(v||'').split(',').map(x=>x.trim()).filter(Boolean)).join(', ');return {label,url:'https://www.linkedin.com/search/results/people/?keywords='+encodeURIComponent(query)+'&origin=GLOBAL_SEARCH_HEADER'};});
   let slug=linkedInCompanySlug(formData.organisationUrl,formData.stakeholderSource),slugGuessed=false;
   if(!slug){slug=name.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/&/g,' and ').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');slugGuessed=true;}
-  const company=slug?[['Directors','director'],['Heads of function','head'],['Talent','talent'],['Recruiters','recruiter']].map(([label,k])=>({label,url:'https://www.linkedin.com/company/'+encodeURIComponent(slug)+'/people/?keywords='+encodeURIComponent(k)})):[];
+  const company=slug?[['Directors','director'],['Heads of function','head'],['Talent','talent'],['Recruiters','recruiter']].map(([label,k])=>({label,url:'https://www.linkedin.com/company/'+encodeURIComponent(slug)+'/people/?facetGeoRegion='+UK_GEO_REGION+'&keywords='+encodeURIComponent(k)})):[];
   return {global,company,slug,slugGuessed};
 }
 function renderStakeholderSearchLinks(formData,prepared){
