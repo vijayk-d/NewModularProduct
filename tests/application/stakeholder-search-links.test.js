@@ -4,7 +4,8 @@ import {stakeholderSearchLinks,linkedInCompanySlug} from '../../src/interfaces/h
 test('both LinkedIn routes are produced',()=>{
  const r=stakeholderSearchLinks({organisationName:'Mott MacDonald',jobLocation:'Reading, England, United Kingdom',organisationUrl:'https://www.linkedin.com/company/mott-macdonald/'});
  assert.equal(r.global[0].url,'https://www.linkedin.com/search/results/people/?keywords=Mott%20MacDonald%2C%20Reading%2C%20England%2C%20United%20Kingdom%2C%20Director&origin=GLOBAL_SEARCH_HEADER');
- assert.equal(r.company[0].url,'https://www.linkedin.com/company/mott-macdonald/people/?keywords=director');
+ assert.equal(r.company[0].url,'https://www.linkedin.com/company/mott-macdonald/people/?facetGeoRegion=101165590&keywords=director');
+ assert.ok(r.company.every(c=>c.url.includes('/people/?facetGeoRegion=101165590&keywords=')));
  assert.equal(r.company.length,4);assert.equal(r.slugGuessed,false);
 });
 test('slug from stakeholder source, else guessed from name',()=>{
