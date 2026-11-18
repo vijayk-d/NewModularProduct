@@ -62,6 +62,16 @@ Failed release directories are retained with candidate.json and a log reference 
 
 Memory: verification needs free memory (Windows commit charge). It stops before starting, before the tests and before the browser tests when less than 3 GB is free (`NMP_MIN_FREE_MEMORY_GB` changes the threshold), and a crash that looks like low memory says so. Node tests run two files at a time and the browser tests use one worker. If it stops, close browsers and other large apps or restart Windows, then ship again; production is unchanged.
 
+## Release backups
+
+Each delivery copies `shared\data` to `shared\backups\before-<commit>-<time>`, and nothing removes them automatically. The System check page shows their count and size. To clean up, run this preview from the project root (it changes nothing):
+
+```powershell
+python tools\deploy\release_backups.py --production-root D:\NewModularProduct-Production --keep 10
+```
+
+It lists every backup, newest first, and prints a confirmation code for the plan. To go ahead, run it again with the same `--keep`, plus `--move-to <folder outside production>` (or `--delete` to remove permanently), `--apply` and `--confirm <code>`. It always keeps at least the newest 3, and touches only `before-<commit>-<time>` folders.
+
 ## Dependencies, testing and limits
 Node 24+ with SQLite support is required. npm ci uses package-lock.json. A separate Python venv is created in each release; worker dependencies are pinned from the currently installed working closure. Node executable checksum and Python version are verified at production launch. The Python base runtime still belongs to this machine: this is not an OS/container image. Runtime updates require re-verification. Browser/dependency downloads require registry access and the full gates can take several minutes. Failing tests block commits/promotion rather than being bypassed.
 

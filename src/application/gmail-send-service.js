@@ -67,7 +67,7 @@ export function createGmailSendService({repository,mailboxPort,env=process.env,r
  async reserveScheduled({ticket,confirmed=false,repeatApproved=false}={}){
   const account=gate();if(String(env.ENABLE_CLOUD_SCHEDULING||'')!=='true'||env.NMP_ENV!=='development'||env.NMP_ALLOW_DEVELOPMENT_INTEGRATIONS!=='true')fail('Development scheduling is disabled.','SCHEDULE_DISABLED',403);
   if(confirmed!==true)fail('Confirm the exact scheduled send.','SEND_CONFIRMATION',400);
-  const a=tickets.get(ticket);if(!a)fail('Confirmation missing, consumed or expired.');tickets.delete(ticket);
+  const a=tickets.get(ticket);if(!a)fail('Confirmation missing, consumed or expired. An app restart also clears it. Review the message again.');tickets.delete(ticket);
   if(a.expiresAt<=clock()||a.account.toLowerCase()!==account.toLowerCase())fail('Confirmation expired or sender changed.');
   if(a.mode==='repeat'&&repeatApproved!==true)fail('Explicit Send again approval is required.','SEND_CONFIRMATION',400);
   if(typeof a.raw!=='string'||a.raw.length>4*1024*1024||!/^[A-Za-z0-9_-]+={0,2}$/.test(a.raw)||hash(Buffer.from(a.raw,'base64url'))!==a.summary.contentHash)fail('Frozen MIME invalid or exceeds scheduling size limit.');
@@ -80,7 +80,7 @@ export function createGmailSendService({repository,mailboxPort,env=process.env,r
  },
  async commit({ticket,confirmed=false,repeatApproved=false}={}){
   const account=gate();if(confirmed!==true)fail('Confirm the exact prepared send.','SEND_CONFIRMATION',400);
-  const a=tickets.get(ticket);if(!a)fail('Confirmation missing, consumed or expired.');tickets.delete(ticket);
+  const a=tickets.get(ticket);if(!a)fail('Confirmation missing, consumed or expired. An app restart also clears it. Review the message again.');tickets.delete(ticket);
   if(a.expiresAt<=clock()||a.account.toLowerCase()!==account.toLowerCase())fail('Confirmation expired or sender changed.');
   if(a.mode==='repeat'&&repeatApproved!==true)fail('Explicit Send again approval is required.','SEND_CONFIRMATION',400);
   const item=repository.getById(a.queueId);if(!item||messageEditVersion(item)!==a.version)fail('Queue changed after confirmation.');

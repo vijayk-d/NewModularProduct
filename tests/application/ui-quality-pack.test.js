@@ -17,6 +17,14 @@ test('bridge reuses the stored domain and remembers destination',async()=>{
  const s=await readFile(new URL('../../tampermonkey/Clean-LinkedIn-Contact-Bridge-v0.6.0-dual-port.user.js',import.meta.url),'utf8');
  for(const x of ['@grant        GM_getValue','@grant        GM_setValue','@match        http://127.0.0.1:3100/*','nmp.lastSavedEmailDomain','GM_getValue("destination","both")','beginImport(true)'])assert.ok(s.includes(x),x);
 });
+test('bridge sends selected destinations straight from the review panel, without a dialog',async()=>{
+ const s=await readFile(new URL('../../tampermonkey/Clean-LinkedIn-Contact-Bridge-v0.6.0-dual-port.user.js',import.meta.url),'utf8');
+ assert.ok(!s.includes('window.confirm'),'no confirmation dialog before sending');
+ const send=s.slice(s.indexOf('action("Send / retry selected destinations"'),s.indexOf('action("New extraction / domain"'));
+ assert.ok(send.includes('await deliverContacts(transaction,targets,render)'));
+ assert.ok(send.includes('status.textContent=`Sending ${transaction.contactCount}'),'what is being sent is shown in the panel');
+ assert.match(s,/@version\s+0\.6\.1/);
+});
 test('polish approval is shown beside the button, not a browser dialog',async()=>{
  const s=await readFile(new URL('../../src/interfaces/http/polishing-cost-controls.js',import.meta.url),'utf8');
  assert.ok(!s.includes('window.confirm'));assert.ok(s.includes('data-polishing-run-summary'));

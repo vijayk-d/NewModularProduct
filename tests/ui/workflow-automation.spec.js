@@ -60,3 +60,12 @@ test('a newly found email domain replaces the old one on the page, the applicati
   await page.reload();
   await expect(page.locator('#email-domain-input')).toHaveValue('new-domain.com');
 });
+
+test('an email-domain lookup interrupted by a restart says so instead of breaking the page', async ({page, app}) => {
+  // The start request is answered with a job id the server never created, as after a restart; the poll reaches the real server.
+  await page.route('**/resolve-email-domain', route => route.fulfill({status: 202, contentType: 'application/json', body: JSON.stringify({ok: true, job: {jobId: 'lost-in-restart', status: 'queued'}})}));
+  await page.goto(app.url + '/applications/saved');
+  await page.getByRole('button', {name: 'Find email domain'}).click();
+  await expect(page.locator('#email-domain-status')).toContainText('interrupted, usually because the app restarted');
+  await expect(page.getByRole('button', {name: 'Find email domain'})).toBeEnabled();
+});

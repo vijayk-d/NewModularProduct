@@ -18,7 +18,7 @@
 | Services | Gmail: which parts are on | On but OAuth client not configured |
 | This PC | Free disk space on the data drive | Below 5 GB (warning), below 1 GB (problem) |
 | This PC | Free Windows commit charge for shipping | Below `NMP_MIN_FREE_MEMORY_GB` (default 3 GB) |
-| This PC | Release backups (production only): count and size | More than 30 backups or 20 GB |
+| This PC | Release backups (production only): count and size | More than 30 backups or 20 GB (preview a clean-up with `tools\deploy\release_backups.py`) |
 
 **OneDrive files:** the CV file check reads Windows file attributes only. It never opens a CV, so an online-only file is reported without starting a download.
 

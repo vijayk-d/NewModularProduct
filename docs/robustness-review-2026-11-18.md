@@ -83,9 +83,13 @@ Evidence boundary: source on master at `99d33e6`, read for this review. No code 
 ## Status
 - **R1, R2 and R3:** merged (`b0a0eb7`).
 - **R4 and R8:** merged (`2433f66`).
-- **R5:** System check page, built on branch `feat/system-check`, not yet merged. See [system-check.md](system-check.md).
+- **R5:** System check page, merged (`fc6518b`). See [system-check.md](system-check.md).
   - It also covers R6 (OneDrive online-only CV files are reported, read from file attributes only) and R12 (the CV library check).
-  - It also covers the reporting half of R7: release backup count and size, with no clean-up command yet.
+  - It also covers the reporting half of R7: release backup count and size.
+- **R7 (clean-up command), R10 and R11:** built on branch `fix/robustness-pack-3`, not yet merged.
+  - **R7:** `tools/deploy/release_backups.py`. It previews by default and changes something only with `--apply` and the code printed for the same plan. It moves backups (`--move-to`) or deletes them (`--delete`), always keeps at least 3, and touches only `before-<commit>-<time>` folders.
+  - **R10:** an email-domain lookup lost to a restart now says so and re-enables the button. The in-memory Gmail draft and send confirmations, and the unsent-letter update approvals, now say that an app restart clears them.
+  - **R11:** the PDF script reports the Word process it started (never one already running). On a time-out the app closes exactly that process and says so.
 
 ## Suggested order
 1. R1, R2 and R3 together as one small "robustness pack", one branch.
