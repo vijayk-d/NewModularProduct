@@ -287,3 +287,44 @@ This section supersedes the earlier 17 November "Next candidates" list. Evidence
 5. Patch B, evidence-library quality: audit one assignment and fill scenario gaps without inventing figures.
 6. Investigate the two known local test failures in their own small slice.
 7. Larger, each needing its own design: interview tracking, CV indexing cache (area 11).
+
+## Current reconciliation — 18 November 2026
+
+This section supersedes the 17 November "Next candidates" list. Evidence boundary: Git history on master up to `99d33e6`. Production release of the items below has not been confirmed in this document. Record it once `ship.cmd` succeeds and you have checked production.
+
+### Merged to master since the 17 November update
+- **Ship memory guard** (`7f17e88`): release verification stops with plain advice when Windows commit charge is below 3 GB (`NMP_MIN_FREE_MEMORY_GB`), runs Node tests two files at a time, and adds a low-memory hint to crash failures.
+- **Evidence selection** (`4b597b0`): choosing an evidence CV ticks the twelve statements that best match the job description. Each card shows its match count.
+- **Polish cover letter feedback** (`b74e8e4`): progress and problems now show beside the Polish button.
+- **Polishing keeps chosen achievements** (`102a204`): saved achievements are re-anchored when the CV still contains them word for word; otherwise the missing statements are named. Generated Word files use a fixed ZIP date, so an identical pack is recognised as already saved.
+- **Shared ATS engine** (`39f658c`): one local engine for CV selection and the tailored CV check.
+  - It weights job terms by section, cue words and repeats, and matches whole words and word forms.
+  - It lists eligibility items (clearance, right to work, qualifications, licence, travel) separately for you to confirm.
+- **Company People links** (`99d33e6`): searches UK staff only.
+- **Plan, not built:** [docs/insights-and-job-sources-plan.md](docs/insights-and-job-sources-plan.md). Outcome capture and an insights engine (local only), plus job sources beyond LinkedIn.
+
+### Area status (Full Migration Plan numbering)
+- Area 12, CV rebuilding: delivered (tailored CV parts 1 and 2, ATS recheck, Word-made PDF, Save to folder).
+- Area 27, persistent application output: delivered (Export pack, Save to folder, upload-friendly names).
+- Area 11, CV indexing cache: still open.
+- Areas 18–19, recruiter discovery and ranking: still open.
+- Areas 22–25, Gmail at volume: limited live validation only.
+- Area 26, retention policy: still open.
+- Areas 28–30, privacy, security and recovery review: still open.
+
+### Robustness review
+See [docs/robustness-review-2026-11-18.md](docs/robustness-review-2026-11-18.md). The highest-risk gaps:
+- no time limit on paid AI calls;
+- email-domain lookups are saved inside the release folder, so each release leaves them behind;
+- no crash logging.
+
+### Next candidates, in recommended order
+1. Ship master and verify in production. Owner checks: Check all CVs (12 of 12), tailored CV with Polish and ATS recheck, Save to folder, and a Gmail **draft** with the tailored PDF (no sending).
+2. **Robustness pack 1:** R1 (paid-call time limits), R2 (email-domain store in the state folder, atomic) and R3 (crash logging).
+3. **Robustness pack 2:** R4 (SQLite busy timeout) and R8 (zero known local test failures).
+4. **System check page** (R5, with R6 and R12).
+5. Insights engine, phase 1: outcome capture (see the plan).
+6. Application questions helper: portal answers with exact word or character limits, evidence-led.
+7. Gmail readiness display: needs the owner's drafts-only versus drafts-and-sending decision.
+8. Patch B, evidence-library quality.
+9. Larger, each needing its own design: interview tracking, CV indexing cache (area 11), sources beyond LinkedIn.

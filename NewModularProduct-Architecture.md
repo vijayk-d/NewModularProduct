@@ -890,3 +890,59 @@ the reviewed letter as TXT/HTML, optionally with the selected existing CV, using
 filenames. No CV rewriting, paid request or Gmail action is part of that export.
 Interview/follow-up tracking is optional enhancement, not a new mandatory migration
 prerequisite. Do not reopen broad cleanup or speculative refactoring to block usage.
+
+## Current architecture — 18 November 2026
+
+This dated section supersedes the architecture summaries above where they differ. Evidence: source on master at `99d33e6`. Earlier sections remain as the record of the original design.
+
+### Layers (unchanged rule)
+- `src/domain`: pure rules. Domain modules added since October:
+  - `domain/ats/ats-engine.js` (shared ATS engine);
+  - `domain/cv/cv-tailoring-policy.js` (tailored-CV draft and evidence checks);
+  - `domain/cv/word-cv-match.js` (which Word file belongs to a library CV);
+  - `domain/cv/tailored-cv-ats.js`;
+  - `domain/cover-letter/letter-quality-policy.js` (letter length modes, including custom);
+  - `domain/cover-letter/portal-letter.js`.
+- `src/application`: use cases. Added:
+  - `cv-tailoring.js` (inspect, draft, build, polish and check every CV);
+  - `organisation-research-cache.js` (research once per organisation);
+  - `advert-workflow-status.js` and `history-dashboard.js` (status housekeeping, follow-ups due);
+  - `email-domain-policy.js`;
+  - `export-application-pack.js`.
+- `src/infrastructure`: adapters. Added:
+  - SQLite stores `sqlite-cv-tailoring-store.js` and `sqlite-workflow-automation-store.js`;
+  - `documents/word-cv-locator.js` and `documents/word-pdf-converter.js` (Word via PowerShell, with a time limit);
+  - `applications/application-output-folder.js` and `applications/tailored-cv-pdf-files.js`;
+  - `refinement/perplexity-cv-polishing-adapter.js`.
+- `src/interfaces/http`: one handler per feature where possible (`cv-tailoring-http.js`, `application-review-http.js`, `job-import-http.js`, …). `create-local-server.js` wires them together.
+- `python-worker`:
+  - `cv_tailor.py` copies a Word CV and replaces only the Summary, employer bullets and an optional Key achievements section. Unchanged paragraphs are reused, and the result is re-read and verified before it is returned.
+  - `cv_docx.py` reads Word and PDF files safely, by hash.
+
+### Local data (each port has its own state folder; production: `shared\data`)
+| File | Holds | Since |
+|---|---|---|
+| `application-reviews-v1.db` | Applications, letters, versions | Oct |
+| `job-imports-v1.db` | Imported adverts | Oct |
+| `outreach.db` and Gmail ledgers | Queue, drafts, sends | Oct |
+| `application-intelligence-v1.db` | CV assessments (development only) | Nov |
+| `workflow-automation-v1.db` | Organisation research cache, automatic-call count, portal exports | 16 Nov |
+| `cv-tailoring-v1.db` | Tailored CV versions; `cv_preferences` per CV (Word file, headings) | 17 Nov |
+| `tailored-cv-pdfs\` | Word-made PDFs of tailored CVs | 17 Nov |
+| `cover-letter-export\` | Private Word letter template | 16 Nov |
+
+The shared CV catalogue (`D:\NewModularProduct-Shared\cv-library\catalogue.json`) is used by both ports. Original CV files stay in `CV_FOLDER` and are never written. Files you ask to keep go to `APPLICATION_OUTPUT_FOLDER`.
+
+### External effects and their guards
+- **Perplexity:** organisation research (automatic once per organisation, capped per day), letter polish and CV polish. Each call follows an explicit request or a documented automatic rule, with no automatic retry. Time limits are missing (robustness item R1).
+- **Gmail:** drafts and sends only on explicit, confirmed actions, with exact-content and version checks.
+- **Word:** PDF creation on request, with a 120 s limit.
+- **Files:** writes only to the state folder and `APPLICATION_OUTPUT_FOLDER`. They are never overwritten: an identical file is reported as already saved, and a changed file gets `_copy2`.
+
+### Release
+`tools\deploy\ship.cmd` → `local_delivery.py`:
+- copies source to `releases\<commit>` and verifies it (memory guard; Node, Python and Playwright);
+- backs up `shared\data`, then smoke-tests against a copy;
+- promotes the release.
+
+A failed, unpromoted release folder is moved aside on the next ship.
