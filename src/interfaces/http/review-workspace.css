@@ -261,3 +261,10 @@ html.review-workspace #polishing-model[data-workspace-choice-carrier],html.revie
 .application-questions details{margin:.4rem 0;padding:.4rem .6rem;border:1px solid #e2e8f0;border-radius:.4rem}
 .application-questions .saved-answer{white-space:pre-wrap}
 .visually-hidden{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.application-questions .questions-panel>summary{display:flex;align-items:baseline;gap:.75rem;cursor:pointer;list-style:none}
+.application-questions .questions-panel>summary::-webkit-details-marker{display:none}
+.application-questions .questions-panel>summary::before{content:'\25B8';color:#475569;transition:transform .15s}
+.application-questions .questions-panel[open]>summary::before{transform:rotate(90deg)}
+.application-questions .questions-panel>summary h2{display:inline;margin:0}
+.application-questions .questions-saved-count{color:#475569;font-size:.9em}
+

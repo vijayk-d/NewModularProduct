@@ -36,7 +36,14 @@ export function attachQuestionControls(doc = document, fetchImpl = fetch, clipbo
   const save = el(doc, 'button', {type: 'button', text: 'Save answer'});
   const status = el(doc, 'p', {role: 'status', 'aria-live': 'polite', 'data-questions-status': ''});
   const savedList = el(doc, 'div', {'data-questions-saved': ''});
-  section.append(el(doc, 'h2', {id: 'application-questions-title', text: 'Application questions'}), intro,
+  // Collapsible: starts closed; this browser remembers whether you left it open.
+  const savedCount = el(doc, 'span', {class: 'questions-saved-count', 'data-questions-saved-count': ''});
+  const panel = el(doc, 'details', {class: 'questions-panel'});
+  const OPEN_KEY = 'jobapp.questionsOpen';
+  try { panel.open = doc.defaultView?.localStorage?.getItem(OPEN_KEY) === 'true'; } catch {}
+  panel.addEventListener('toggle', () => { try { doc.defaultView?.localStorage?.setItem(OPEN_KEY, String(panel.open)); } catch {} });
+  section.append(panel);
+  panel.append(el(doc, 'summary', {}, [el(doc, 'h2', {id: 'application-questions-title', text: 'Application questions'}), savedCount]), intro,
     el(doc, 'label', {for: question.id, text: 'Question from the form'}), question,
     el(doc, 'div', {class: 'questions-limit'}, [el(doc, 'label', {for: limit.id, text: 'Limit'}), limit, el(doc, 'label', {for: unit.id, class: 'visually-hidden', text: 'Limit unit'}), unit]),
     el(doc, 'div', {class: 'actions'}, [draftButton, estimateButton]), aiLine,
@@ -108,6 +115,7 @@ export function attachQuestionControls(doc = document, fetchImpl = fetch, clipbo
   });
 
   function renderSaved(saved) {
+    savedCount.textContent = saved.length ? `${saved.length} saved answer${saved.length === 1 ? '' : 's'}` : '';
     savedList.replaceChildren();
     if (!saved.length) return;
     savedList.append(el(doc, 'h3', {text: 'Saved answers'}));

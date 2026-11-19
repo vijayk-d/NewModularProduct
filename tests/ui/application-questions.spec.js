@@ -19,6 +19,9 @@ test('draft an answer from evidence, keep it within the limit, then save and cop
   await page.addInitScript(() => { window.__copied = ''; Object.defineProperty(navigator, 'clipboard', {value: {writeText: async t => { window.__copied = t; }}}); });
   await page.goto(app.url + '/applications/r1');
   const section = page.locator('#application-questions');
+  await expect(section.locator('details.questions-panel')).not.toHaveAttribute('open', '');
+  await expect(section.getByLabel('Question from the form')).toBeHidden();
+  await section.getByRole('heading', {name: 'Application questions'}).click();
   await expect(section.locator('[data-questions-evidence]')).toContainText('3 lines from Selected achievement');
   await expect(section.getByRole('button', {name: 'Estimate: write with AI'})).toBeHidden();
   await section.getByLabel('Question from the form').fill('Describe how you introduced Agile PI planning and OKR capability.');
@@ -36,4 +39,11 @@ test('draft an answer from evidence, keep it within the limit, then save and cop
   await expect(section.locator('[data-saved-answer]')).toHaveCount(1);
   await section.getByRole('button', {name: 'Copy answer'}).click();
   expect(await page.evaluate(() => window.__copied)).toMatch(/PI planning/);
+  await expect(section.locator('[data-questions-saved-count]')).toHaveText('1 saved answer');
+  await page.reload();
+  await expect(page.locator('#application-questions details.questions-panel')).toHaveAttribute('open', '');
+  await page.locator('#application-questions').getByRole('heading', {name: 'Application questions'}).click();
+  await page.reload();
+  await expect(page.locator('#application-questions details.questions-panel')).not.toHaveAttribute('open', '');
+  await expect(page.locator('#application-questions [data-questions-saved-count]')).toHaveText('1 saved answer');
 });
