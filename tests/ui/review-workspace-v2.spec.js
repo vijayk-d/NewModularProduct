@@ -63,3 +63,30 @@ test('section rail links land on each section\'s main control, not just its head
  await expect.poll(()=>page.evaluate(()=>document.activeElement?.id)).toBe('cover-letter-draft');
  expect(new URL(page.url()).hash).toMatch(/^#/);
 });
+test('rail sub-sections show under the current section and land on their own controls',async({page,workspaceApp})=>{
+ await page.setViewportSize({width:1440,height:900});const id=await workspaceApp.create();await page.goto(workspaceApp.url+'/applications/'+id);
+ const rail=page.getByRole('navigation',{name:'Application sections'});
+ await rail.getByRole('link',{name:'Polishing',exact:true}).click();
+ await expect(page.locator('.workspace-subsections[data-parent="polishing"]')).toHaveAttribute('data-current','true');
+ await rail.hover();
+ const tone=rail.getByRole('link',{name:'Polishing: Tone',exact:true});
+ await expect(tone).toBeVisible();
+ await expect(rail.getByRole('link',{name:'Polishing: Model',exact:true})).toBeVisible();
+ await expect(page.locator('.workspace-subsections[data-parent="letter"]')).toBeHidden();
+ await tone.click();
+ await expect.poll(()=>page.evaluate(()=>Boolean(document.activeElement?.closest('[data-choice-kind="tone"]')))).toBe(true);
+ await rail.getByRole('link',{name:'Current letter',exact:true}).click();
+ await rail.hover();
+ await rail.getByRole('link',{name:'Current letter: Subject',exact:true}).click();
+ await expect.poll(()=>page.evaluate(()=>document.activeElement?.id)).toBe('current-cover-letter-subject');
+});
+test('rail links for Application questions and Outcome open and focus those sections',async({page,workspaceApp})=>{
+ await page.setViewportSize({width:1440,height:900});const id=await workspaceApp.create();await page.goto(workspaceApp.url+'/applications/'+id);
+ const rail=page.getByRole('navigation',{name:'Application sections'});
+ await expect(rail.getByRole('link',{name:'Application questions',exact:true})).toHaveCount(1);
+ await rail.getByRole('link',{name:'Application questions',exact:true}).click();
+ await expect(page.locator('#application-questions details.questions-panel')).toHaveAttribute('open','');
+ await expect.poll(()=>page.evaluate(()=>document.activeElement?.id)).toBe('question-text');
+ await rail.getByRole('link',{name:'Outcome',exact:true}).click();
+ await expect.poll(()=>page.evaluate(()=>document.activeElement?.id)).toBe('outcome-choice');
+});
