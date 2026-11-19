@@ -16,6 +16,8 @@ import {installCrashHandlers,takePreviousCrash} from '../../infrastructure/crash
 import {createSystemCheckProbes} from '../../infrastructure/system-check-probes.js';
 import {runSystemCheck} from '../../application/system-check.js';
 import {createApplicationInsightsStore} from '../../infrastructure/applications/sqlite-application-insights-store.js';
+import {createApplicationAnswersStore} from '../../infrastructure/applications/sqlite-application-answers-store.js';
+import {createQuestionAnswerWriter} from '../../infrastructure/refinement/perplexity-question-answer-adapter.js';
 import {createTemplateCoverLetterDocuments} from '../../infrastructure/documents/template-cover-letter.js';
 import {createSqliteJobImportStore} from '../../infrastructure/applications/sqlite-job-import-store.js';
 import { gmailLoadedEnvironment } from '../../application/gmail-runtime-diagnostics.js';
@@ -160,6 +162,10 @@ try{cvTailoringStore=createCvTailoringStore({filePath:path.join(deployment.state
 let insightsStore=null;
 try{insightsStore=createApplicationInsightsStore({filePath:path.join(deployment.state,'application-insights-v1.db')});}catch{console.warn('[INSIGHTS] LOCAL_STORE_UNAVAILABLE');}
 
+// Saved portal answers keep their own new database; if it cannot open, the questions helper is simply off.
+let answersStore=null;
+try{answersStore=createApplicationAnswersStore({filePath:path.join(deployment.state,'application-answers-v1.db')});}catch{console.warn('[QUESTIONS] LOCAL_STORE_UNAVAILABLE');}
+
 let assignmentEvidenceStore=null;
 try{
  const filePath=resolveEvidenceLibraryPath({env:process.env,mode:deployment.mode,state:deployment.state});
@@ -183,6 +189,9 @@ const server = createLocalServer({
   cvEvidenceLoader,
   cvTailoringService,
   insightsStore,
+  answersStore,
+  questionWriter:createQuestionAnswerWriter({apiKey:config.integrations.perplexity.apiKey,enabled:config.features.enableCoverLetterRefinement}),
+  tailoredCvLatest:cvTailoringStore?id=>cvTailoringStore.latest(id):null,
   relationshipMemory:workflowAutomationStore?{get:key=>workflowAutomationStore.relationshipChoice(key),record:(key,name,relationship)=>workflowAutomationStore.recordRelationshipChoice(key,name,relationship)}:null,
   // Read-only System check page: data files, CV library and files, documents, services and this PC.
   systemCheck:()=>runSystemCheck(createSystemCheckProbes({stateDirectory:deployment.state,cvFolder:config.storage.cvFolder||'',outputFolder:process.env.APPLICATION_OUTPUT_FOLDER||'',outputForbidden:[projectRoot,deployment.state,config.storage.cvFolder,'D:\\NewModularProduct-Production'],cvTailoringService,

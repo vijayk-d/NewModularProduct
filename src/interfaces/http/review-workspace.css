@@ -246,3 +246,18 @@ html.review-workspace #polishing-model[data-workspace-choice-carrier],html.revie
 .relationship-evidence{margin:.6rem 0;padding:.5rem .75rem;border-left:3px solid #94a3b8;background:#f8fafc;font-size:.94em}
 .relationship-evidence p{margin:.2rem 0}
 .relationship-evidence ul{margin:.3rem 0;padding-left:1.1rem}
+
+/* Application questions */
+.application-questions textarea{display:block;width:100%;box-sizing:border-box;margin:.35rem 0;padding:.6rem;font:inherit;line-height:1.45;border:1px solid #94a3b8;border-radius:.4rem}
+.application-questions label{display:block;margin-top:.7rem;font-weight:600}
+.application-questions .questions-limit{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem}
+.application-questions .questions-limit label{margin:0}
+.application-questions .questions-limit input{width:6.5rem;font:inherit;padding:.4rem}
+.application-questions .questions-limit select{font:inherit;padding:.4rem}
+.application-questions .questions-note{color:#475569;font-size:.92em}
+.application-questions [data-answer-count]{font-size:.92em;color:#334155}
+.application-questions [data-answer-count][data-over="true"]{color:#991b1b;font-weight:600}
+.application-questions .questions-ai{margin:.4rem 0;padding:.5rem .7rem;background:#fff7ed;border:1px solid #fdba74;border-radius:.4rem}
+.application-questions details{margin:.4rem 0;padding:.4rem .6rem;border:1px solid #e2e8f0;border-radius:.4rem}
+.application-questions .saved-answer{white-space:pre-wrap}
+.visually-hidden{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}

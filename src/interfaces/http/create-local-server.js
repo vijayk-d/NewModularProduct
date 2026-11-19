@@ -49,6 +49,8 @@ import { normaliseBusinessDomain, adoptResearchedDomain } from "../../applicatio
 import { createCvTailoringHandler } from "./cv-tailoring-http.js";
 import { createSystemCheckHandler } from "./system-check-http.js";
 import { createApplicationOutcomesHandler } from "./application-outcomes-http.js";
+import { createApplicationQuestionsHandler } from "./application-questions-http.js";
+import { createApplicationQuestionsService } from "../../application/application-questions.js";
 import { currentOutcome, outcomeLabel } from "../../domain/insights/application-outcome.js";
 import { suggestAdvertiserRelationship, advertiserKey } from "../../domain/cover-letter/advertiser-relationship-evidence.js";
 import { renderApplicationReview, renderRefinementPanel, renderOrganisationResearch, renderField, renderAdvertLink, getSelectableCompanyValues, renderResearchSource, renderOptionalDetail , renderApplicationForm, escapeHtml} from './rendering.js';
@@ -222,6 +224,9 @@ export function createLocalServer({
   systemCheck = null,
   insightsStore = null,
   relationshipMemory = null,
+  answersStore = null,
+  questionWriter = null,
+  tailoredCvLatest = null,
   candidateDisplayName = "Candidate",
   portalExports = null,
   coverLetterRefinementPort = null,
@@ -450,6 +455,11 @@ export function createLocalServer({
   const letterUpdates=outreachRepository?createUnsentLetterUpdateService({getReview:id=>reviewStore.get(id),repository:outreachRepository,draftUpdates:gmailDraftUpdatePort||createGmailDraftUpdatePort()}):null;
   const handleApplications=createApplicationReviewHandler({outcomeFor:insightsStore?id=>{const o=currentOutcome(insightsStore.history(id));return o?{label:outcomeLabel(o.outcome),occurredOn:o.occurredOn}:null;}:null,store:reviewStore,renderReview:renderCompleteReview,sendJson,sendHtml,sendText,applicationPackExporter,letterUpdates,outputFolder:applicationOutputFolder});
   const handleSystemCheck=createSystemCheckHandler({runCheck:systemCheck,sendJson,sendHtml});
+  // Application questions: evidence is this application's selected achievements, its latest tailored CV and its approved polishing scenarios.
+  const questionsService=answersStore?createApplicationQuestionsService({reviews:reviewStore,store:answersStore,writer:questionWriter,
+    tailoredLatest:id=>typeof tailoredCvLatest==='function'?tailoredCvLatest(id):null,
+    scenarioEvidence:review=>{try{const refs=review.polishingScenarios?.references||[];if(!refs.length||!assignmentEvidenceStore)return [];const ev=approvedScenarioRequest(resolveScenarioSelection(assignmentEvidenceStore,JSON.stringify(refs))).approvedScenarioEvidence||[];return ev.map(s=>({text:s.approvedWording,source:'Approved scenario'+(s.organisation?' ('+s.organisation+')':'')}));}catch{return [];}}}):null;
+  const handleQuestions=createApplicationQuestionsHandler({service:questionsService,sendJson,sendText});
   const handleOutcomes=createApplicationOutcomesHandler({store:insightsStore,getReview:id=>reviewStore.get(id),sendJson,sendText});
   const handleCvTailoring=createCvTailoringHandler({service:cvTailoringService,getReview:id=>reviewStore.get(id),sendJson,sendText,candidateName:candidateDisplayName,outputFolder:applicationOutputFolder});
   const handleCvDocument=createCvDocumentHandler({store:reviewStore,inventory:cvInventoryRepository,adapter:cvDocumentAdapter});
@@ -485,6 +495,7 @@ export function createLocalServer({
     if (await handleSavedDelete(request,response,url)) return;
     if (await handleSystemCheck(request,response,url)) return;
     if (await handleOutcomes(request,response,url)) return;
+    if (await handleQuestions(request,response,url)) return;
     if (await handleCvTailoring(request,response,url)) return;
     if (await handleApplications(request,response,url)) return;
     if (await handleOrganisationContacts(request,response,url)) return;
