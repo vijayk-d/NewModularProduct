@@ -51,6 +51,7 @@ import { createSystemCheckHandler } from "./system-check-http.js";
 import { createApplicationOutcomesHandler } from "./application-outcomes-http.js";
 import { createApplicationQuestionsHandler } from "./application-questions-http.js";
 import { createApplicationQuestionsService } from "../../application/application-questions.js";
+import { createInsightsHandler } from "./insights-http.js";
 import { currentOutcome, outcomeLabel } from "../../domain/insights/application-outcome.js";
 import { suggestAdvertiserRelationship, advertiserKey } from "../../domain/cover-letter/advertiser-relationship-evidence.js";
 import { renderApplicationReview, renderRefinementPanel, renderOrganisationResearch, renderField, renderAdvertLink, getSelectableCompanyValues, renderResearchSource, renderOptionalDetail , renderApplicationForm, escapeHtml} from './rendering.js';
@@ -227,6 +228,7 @@ export function createLocalServer({
   answersStore = null,
   questionWriter = null,
   tailoredCvLatest = null,
+  insightsSnapshot = null,
   candidateDisplayName = "Candidate",
   portalExports = null,
   coverLetterRefinementPort = null,
@@ -460,7 +462,8 @@ export function createLocalServer({
     tailoredLatest:id=>typeof tailoredCvLatest==='function'?tailoredCvLatest(id):null,
     scenarioEvidence:review=>{try{const refs=review.polishingScenarios?.references||[];if(!refs.length||!assignmentEvidenceStore)return [];const ev=approvedScenarioRequest(resolveScenarioSelection(assignmentEvidenceStore,JSON.stringify(refs))).approvedScenarioEvidence||[];return ev.map(s=>({text:s.approvedWording,source:'Approved scenario'+(s.organisation?' ('+s.organisation+')':'')}));}catch{return [];}}}):null;
   const handleQuestions=createApplicationQuestionsHandler({service:questionsService,sendJson,sendText});
-  const handleOutcomes=createApplicationOutcomesHandler({store:insightsStore,getReview:id=>reviewStore.get(id),sendJson,sendText});
+  const handleInsights=createInsightsHandler({snapshot:insightsSnapshot,sendJson,sendHtml});
+  const handleOutcomes=createApplicationOutcomesHandler({store:insightsStore,getReview:id=>reviewStore.get(id),sendJson,sendText,onChange:()=>insightsSnapshot?.schedule()});
   const handleCvTailoring=createCvTailoringHandler({service:cvTailoringService,getReview:id=>reviewStore.get(id),sendJson,sendText,candidateName:candidateDisplayName,outputFolder:applicationOutputFolder});
   const handleCvDocument=createCvDocumentHandler({store:reviewStore,inventory:cvInventoryRepository,adapter:cvDocumentAdapter});
   const handleIntelligence=createApplicationIntelligenceHttp({service:applicationIntelligence});
@@ -496,6 +499,7 @@ export function createLocalServer({
     if (await handleSystemCheck(request,response,url)) return;
     if (await handleOutcomes(request,response,url)) return;
     if (await handleQuestions(request,response,url)) return;
+    if (await handleInsights(request,response,url)) return;
     if (await handleCvTailoring(request,response,url)) return;
     if (await handleApplications(request,response,url)) return;
     if (await handleOrganisationContacts(request,response,url)) return;

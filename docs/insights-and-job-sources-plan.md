@@ -30,7 +30,16 @@ Without outcomes the engine can only describe activity, not learn. So the first 
    - Notes stay on the application page and never reach the dashboard.
    - Store outcomes in a new file, `application-insights-v1.db`. No existing schema changes.
    - Show the outcome on the dashboard.
-2. **Feature snapshot** (small–medium).
+2. **Feature snapshot** (small–medium). **Built on branch `feat/insights-features` (19 November 2026).**
+   - One row per saved application in a new `application_features` table in `application-insights-v1.db`. The row holds:
+     - role family and level (from the job title), advert source and days from advert to application;
+     - advertiser relationship, CV code, ATS score, and whether the CV was tailored (with its version count);
+     - letter tone, length mode and polishing model, whether the letter was edited, and its word count;
+     - counts of selected achievements and scenarios, and how the organisation was researched;
+     - channel (email, portal, both or none), application date, and the latest outcome (response or not, days to outcome).
+   - No letter, CV or note text is copied into the row.
+   - It is rebuilt in full from local data at start-up, every 15 minutes, a few seconds after an outcome is recorded, and with **Rebuild now** on the new **Insights data** page (Applications menu, `/insights/data`, JSON at `/api/insights/features`). An application that cannot be read is skipped and counted; it does not stop the rest.
+   - Not yet included: sector and organisation size (no reliable source), and the cost of paid calls (not stored per application).
    - A local job runs at start-up and after each save. It builds one row per application, using fields that already exist:
      - role family and seniority; sector and organisation size;
      - channel: portal, email or both;

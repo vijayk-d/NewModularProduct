@@ -18,6 +18,7 @@ import {runSystemCheck} from '../../application/system-check.js';
 import {createApplicationInsightsStore} from '../../infrastructure/applications/sqlite-application-insights-store.js';
 import {createApplicationAnswersStore} from '../../infrastructure/applications/sqlite-application-answers-store.js';
 import {createQuestionAnswerWriter} from '../../infrastructure/refinement/perplexity-question-answer-adapter.js';
+import {createInsightsSnapshot} from '../../application/insights-snapshot.js';
 import {createTemplateCoverLetterDocuments} from '../../infrastructure/documents/template-cover-letter.js';
 import {createSqliteJobImportStore} from '../../infrastructure/applications/sqlite-job-import-store.js';
 import { gmailLoadedEnvironment } from '../../application/gmail-runtime-diagnostics.js';
@@ -166,6 +167,11 @@ try{insightsStore=createApplicationInsightsStore({filePath:path.join(deployment.
 let answersStore=null;
 try{answersStore=createApplicationAnswersStore({filePath:path.join(deployment.state,'application-answers-v1.db')});}catch{console.warn('[QUESTIONS] LOCAL_STORE_UNAVAILABLE');}
 
+// Insights phase 2: the feature snapshot, rebuilt in the background from local data only.
+const insightsSnapshot=insightsStore?createInsightsSnapshot({reviews:applicationReviewStore,store:insightsStore,jobImports:jobImportService,
+  portalExports:()=>workflowAutomationStore?workflowAutomationStore.portalExports():[],sentEmails:()=>outreachRepository.listSentEmails(),tailoredLatest:id=>cvTailoringStore?cvTailoringStore.latest(id):null}):null;
+insightsSnapshot?.start();
+
 let assignmentEvidenceStore=null;
 try{
  const filePath=resolveEvidenceLibraryPath({env:process.env,mode:deployment.mode,state:deployment.state});
@@ -189,6 +195,7 @@ const server = createLocalServer({
   cvEvidenceLoader,
   cvTailoringService,
   insightsStore,
+  insightsSnapshot,
   answersStore,
   questionWriter:createQuestionAnswerWriter({apiKey:config.integrations.perplexity.apiKey,enabled:config.features.enableCoverLetterRefinement}),
   tailoredCvLatest:cvTailoringStore?id=>cvTailoringStore.latest(id):null,
