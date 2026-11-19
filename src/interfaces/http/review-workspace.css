@@ -232,3 +232,12 @@ html.review-workspace #polishing-model[data-workspace-choice-carrier],html.revie
 .tailored-email fieldset>div{display:flex;align-items:center;gap:.4rem;margin:.3rem 0;flex-wrap:wrap}
 .tailored-email select{max-width:100%}
 
+/* Application outcome */
+.application-outcome .outcome-form{display:flex;flex-wrap:wrap;align-items:flex-end;gap:.4rem .8rem;margin:.5rem 0}
+.application-outcome .outcome-form label{font-weight:600}
+.application-outcome .outcome-form select,.application-outcome .outcome-form input{font:inherit;padding:.4rem;border:1px solid #94a3b8;border-radius:.4rem}
+.application-outcome .outcome-form input[type=text]{min-width:min(100%,22rem)}
+.application-outcome .outcome-note{color:#475569;font-size:.92em;margin:.25rem 0}
+.application-outcome [data-outcome-history]{padding-left:1.1rem}
+.application-outcome .outcome-remove{margin-left:.4rem;font-size:.85em;padding:.1rem .5rem}
+

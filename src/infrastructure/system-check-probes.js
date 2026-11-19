@@ -11,7 +11,7 @@ import {providerTimeLimitMs} from './provider-time-limit.js';
 const GB = 2 ** 30;
 const gb = bytes => (bytes / GB).toFixed(1) + ' GB';
 const CORE_DATABASES = ['application-reviews-v1.db', 'job-imports-v1.db', 'outreach.db'];
-const OPTIONAL_DATABASES = ['workflow-automation-v1.db', 'cv-tailoring-v1.db', 'application-intelligence-v1.db'];
+const OPTIONAL_DATABASES = ['workflow-automation-v1.db', 'cv-tailoring-v1.db', 'application-insights-v1.db', 'application-intelligence-v1.db'];
 const WORD_PATHS = ['C:/Program Files/Microsoft Office/root/Office16/WINWORD.EXE', 'C:/Program Files (x86)/Microsoft Office/root/Office16/WINWORD.EXE',
   'C:/Program Files/Microsoft Office/Office16/WINWORD.EXE', 'C:/Program Files (x86)/Microsoft Office/Office16/WINWORD.EXE'];
 const on = value => String(value ?? '').trim().toLowerCase() === 'true';
