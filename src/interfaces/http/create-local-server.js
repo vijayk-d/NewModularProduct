@@ -20,7 +20,7 @@ function polishingReviewWithRelationship(review,values){
  if(!values.has('advertiserRelationship'))return review;
  const value=String(values.get('advertiserRelationship')||'').trim();
  if(!['direct-employer','recruitment-intermediary','unknown'].includes(value))throw Object.assign(new Error('Choose a valid advertiser relationship.'),{statusCode:400});
- return {...review,formData:{...review.formData,advertiserRelationship:value}};
+ return {...review,formData:{...review.formData,advertiserRelationship:value,advertiserRelationshipChosen:true}};
 }
 import {createApplicationIntelligenceHttp} from './application-intelligence-http.js';
 import {createCvDocumentHandler} from './cv-document-http.js';
@@ -49,7 +49,10 @@ import { normaliseBusinessDomain, adoptResearchedDomain } from "../../applicatio
 import { createCvTailoringHandler } from "./cv-tailoring-http.js";
 import { createSystemCheckHandler } from "./system-check-http.js";
 import { createApplicationOutcomesHandler } from "./application-outcomes-http.js";
+import { createApplicationQuestionsHandler } from "./application-questions-http.js";
+import { createApplicationQuestionsService } from "../../application/application-questions.js";
 import { currentOutcome, outcomeLabel } from "../../domain/insights/application-outcome.js";
+import { suggestAdvertiserRelationship, advertiserKey } from "../../domain/cover-letter/advertiser-relationship-evidence.js";
 import { renderApplicationReview, renderRefinementPanel, renderOrganisationResearch, renderField, renderAdvertLink, getSelectableCompanyValues, renderResearchSource, renderOptionalDetail , renderApplicationForm, escapeHtml} from './rendering.js';
 import { readFormBody } from './form-body.js';
 import { sendText, sendHtml, sendJson } from './responses.js';
@@ -220,6 +223,10 @@ export function createLocalServer({
   emailDomainStore = null,
   systemCheck = null,
   insightsStore = null,
+  relationshipMemory = null,
+  answersStore = null,
+  questionWriter = null,
+  tailoredCvLatest = null,
   candidateDisplayName = "Candidate",
   portalExports = null,
   coverLetterRefinementPort = null,
@@ -327,6 +334,22 @@ export function createLocalServer({
     .length;
 
 
+  // Evidence for the advertiser relationship: the advert text, who posted it, research, and earlier choices.
+  function advertiserOf(review) {
+    const form = review?.formData || {};
+    let imported = null;
+    try { imported = form.jobImportId ? jobImportService?.get?.(form.jobImportId, form.jobImportRevision) : null; } catch { imported = null; }
+    return {imported, name: String(imported?.advertiser?.name || form.organisationName || '').trim()};
+  }
+  function relationshipSuggestionFor(review) {
+    if (!review?.formData) return null;
+    const form = review.formData, {imported, name} = advertiserOf(review);
+    let pastChoice = null;
+    try { pastChoice = name && relationshipMemory ? relationshipMemory.get(advertiserKey(name)) : null; } catch { pastChoice = null; }
+    return suggestAdvertiserRelationship({organisationName: form.organisationName, advertiserName: imported?.advertiser?.name || '', jobDescriptionText: form.jobDescriptionText,
+      posters: (imported?.jobPosters || []).map(p => ({name: p.fullName, headline: p.headline})), researchSummary: review.research?.summary || '', pastChoice});
+  }
+
   async function renderCompleteReview(options) {
     const stored = reviewStore.get(options.reviewId);
     const roleState=stored?.formData?.jobTitle?inspectApplicationRole(stored.formData):null;
@@ -354,7 +377,8 @@ export function createLocalServer({
       refinementLastAttempt: stored.refinementLastAttempt || null,
       refinementProposal: stored.refinementProposal,
       selectedCvRoleCode: stored.selectedCvRoleCode,
-      cvSelectionMessage: stored.cvSelectionMessage
+      cvSelectionMessage: stored.cvSelectionMessage,
+      relationshipSuggestion: relationshipSuggestionFor(stored)
     } : {};
 
     return renderApplicationReview({
@@ -431,6 +455,11 @@ export function createLocalServer({
   const letterUpdates=outreachRepository?createUnsentLetterUpdateService({getReview:id=>reviewStore.get(id),repository:outreachRepository,draftUpdates:gmailDraftUpdatePort||createGmailDraftUpdatePort()}):null;
   const handleApplications=createApplicationReviewHandler({outcomeFor:insightsStore?id=>{const o=currentOutcome(insightsStore.history(id));return o?{label:outcomeLabel(o.outcome),occurredOn:o.occurredOn}:null;}:null,store:reviewStore,renderReview:renderCompleteReview,sendJson,sendHtml,sendText,applicationPackExporter,letterUpdates,outputFolder:applicationOutputFolder});
   const handleSystemCheck=createSystemCheckHandler({runCheck:systemCheck,sendJson,sendHtml});
+  // Application questions: evidence is this application's selected achievements, its latest tailored CV and its approved polishing scenarios.
+  const questionsService=answersStore?createApplicationQuestionsService({reviews:reviewStore,store:answersStore,writer:questionWriter,
+    tailoredLatest:id=>typeof tailoredCvLatest==='function'?tailoredCvLatest(id):null,
+    scenarioEvidence:review=>{try{const refs=review.polishingScenarios?.references||[];if(!refs.length||!assignmentEvidenceStore)return [];const ev=approvedScenarioRequest(resolveScenarioSelection(assignmentEvidenceStore,JSON.stringify(refs))).approvedScenarioEvidence||[];return ev.map(s=>({text:s.approvedWording,source:'Approved scenario'+(s.organisation?' ('+s.organisation+')':'')}));}catch{return [];}}}):null;
+  const handleQuestions=createApplicationQuestionsHandler({service:questionsService,sendJson,sendText});
   const handleOutcomes=createApplicationOutcomesHandler({store:insightsStore,getReview:id=>reviewStore.get(id),sendJson,sendText});
   const handleCvTailoring=createCvTailoringHandler({service:cvTailoringService,getReview:id=>reviewStore.get(id),sendJson,sendText,candidateName:candidateDisplayName,outputFolder:applicationOutputFolder});
   const handleCvDocument=createCvDocumentHandler({store:reviewStore,inventory:cvInventoryRepository,adapter:cvDocumentAdapter});
@@ -466,6 +495,7 @@ export function createLocalServer({
     if (await handleSavedDelete(request,response,url)) return;
     if (await handleSystemCheck(request,response,url)) return;
     if (await handleOutcomes(request,response,url)) return;
+    if (await handleQuestions(request,response,url)) return;
     if (await handleCvTailoring(request,response,url)) return;
     if (await handleApplications(request,response,url)) return;
     if (await handleOrganisationContacts(request,response,url)) return;
@@ -1225,7 +1255,7 @@ export function createLocalServer({
       }
 
       if(formBody.values.has('scenarioSelections')||review.polishingScenarios){reviewStore.set(reviewId,{...reviewStore.get(reviewId),polishingScenarios:scenarioState});review={...reviewStore.get(reviewId),formData:review.formData};}
-      if(formBody.values.has('advertiserRelationship'))reviewStore.set(reviewId,review);
+      if(formBody.values.has('advertiserRelationship')){reviewStore.set(reviewId,review);try{const {name}=advertiserOf(review);if(name&&relationshipMemory)relationshipMemory.record(advertiserKey(name),name,review.formData.advertiserRelationship);}catch{console.warn('[RELATIONSHIP] CHOICE_NOT_REMEMBERED');}}
 
       const selectedIds = formBody.values
         .getAll('selectedResearchPointIds')

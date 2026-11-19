@@ -60,6 +60,11 @@ One branch; see [robustness-review-2026-11-18.md](robustness-review-2026-11-18.m
 ### Insights engine phase 1 (built on `feat/insights-outcomes`, not yet merged)
 - Outcome capture in a new `application-insights-v1.db`; see [insights-and-job-sources-plan.md](insights-and-job-sources-plan.md).
 
+### Application questions helper and advertiser relationship (built on `feat/application-questions`, not yet merged)
+- See [application-questions.md](application-questions.md).
+- Questions helper: a free evidence draft within an exact word or character limit; optional paid AI writing (estimate first); figure check; saved answers in a new `application-answers-v1.db`.
+- Advertiser relationship: suggested from advert wording, the LinkedIn advertiser and posters, research and earlier choices. An explicit choice always wins.
+
 ### Then
 - Insights engine phase 2 (feature snapshot), from [insights-and-job-sources-plan.md](insights-and-job-sources-plan.md).
 - Patch B (evidence-library quality), below.

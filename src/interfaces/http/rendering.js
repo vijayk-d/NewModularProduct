@@ -3,6 +3,7 @@ import {roleConsistencyWarnings} from '../../application/contextual-highlights.j
 import {assessLetterQuality,lengthPolicy,CUSTOM_WORDS,customLengthMode} from '../../domain/cover-letter/letter-quality-policy.js';
 import {renderAchievementPreparation,renderAchievementSummary} from './achievement-preparation-view.js';
 import {usesCandidateValues,contextMode} from '../../domain/cover-letter/advertiser-context.js';
+import {effectiveRelationship,relationshipLabel} from '../../domain/cover-letter/advertiser-relationship-evidence.js';
 import {sanitizeSnapshotHtml} from '../../application/outreach-message-snapshot.js';
 import { LETTER_TONES, normalizeLetterTone } from '../../application/cover-letter-controls.js';
 import crypto from 'node:crypto';
@@ -717,6 +718,18 @@ function qualityMarkup(text,editor,{mode='standard',maxWords=500,advertUrl=''}={
  return `<p data-letter-quality-for="${escapeHtml(editor)}" data-quality-mode="${escapeHtml(q.mode)}" data-quality-cap="${escapeHtml(String(maxWords))}" data-advert-url="${escapeHtml(advertUrl)}" role="status" aria-live="polite">${q.wordCount} words · ${q.label} target ${q.targetMinimum}–${q.maximumWords} · ${q.narrativeParagraphs} narrative paragraphs. ${escapeHtml(q.warnings.join(' '))} Page fit not checked. Subject and Gmail signature excluded.</p>`;
 }
 
+// What the app found about the advertiser, shown under the relationship choice. It never decides for you.
+function relationshipEvidenceMarkup(suggestion, source, selected) {
+  if (!suggestion) return '';
+  const lead = source === 'suggested' ? `Preselected from the evidence: <strong>${escapeHtml(relationshipLabel(selected))}</strong> (${escapeHtml(suggestion.confidence)} confidence). Change it if you know better.`
+    : source === 'chosen' || source === 'saved' ? (suggestion.relationship !== 'unknown' && suggestion.relationship !== selected && suggestion.confidence !== 'low'
+      ? `You chose <strong>${escapeHtml(relationshipLabel(selected))}</strong>; the evidence points to <strong>${escapeHtml(suggestion.label)}</strong> (${escapeHtml(suggestion.confidence)} confidence). Check before polishing.`
+      : `Your choice: <strong>${escapeHtml(relationshipLabel(selected))}</strong>.`)
+    : suggestion.reasons.length ? 'The evidence is not clear enough to preselect; Unknown keeps the wording neutral.' : 'No evidence about the advertiser was found; Unknown keeps the wording neutral.';
+  const list = suggestion.reasons.length ? `<ul>${suggestion.reasons.map(r => `<li>${escapeHtml(r.side === 'agency' ? 'Agency: ' : 'Employer: ')}${escapeHtml(r.text)}</li>`).join('')}</ul>` : '';
+  return `<div class="relationship-evidence" data-relationship-suggestion="${escapeHtml(suggestion.relationship)}" data-relationship-source="${escapeHtml(source)}"><p>${lead}</p>${list}</div>`;
+}
+
 export function renderRefinementPanel({
   reviewId,
   research,
@@ -730,6 +743,8 @@ export function renderRefinementPanel({
   scenarioSelectionReferences = [],
   applicationRoleVersion = '',
   advertiserRelationship = 'unknown',
+  relationshipSource = 'default',
+  relationshipSuggestion = null,
   allowWithoutOrganisationResearch = false,
   letterLengthMode='standard',qualityMaximumWords=500,rejectedRefinementProposal=null
 }) {
@@ -744,7 +759,7 @@ export function renderRefinementPanel({
         ${applicationRoleVersion?`<input type="hidden" name="applicationRoleVersion" value="${escapeHtml(applicationRoleVersion)}">`:''}
         <fieldset class="workspace-choice-cards" data-advertiser-relationship><legend>Advertiser relationship for the next polish</legend><div class="workspace-choice-options">
         ${[['direct-employer','Direct employer','The advertiser is hiring for its own vacancy.'],['recruitment-intermediary','Recruitment agency / intermediary','The advertiser represents a client.'],['unknown','Unknown / unclear','Use neutral wording; do not assume the employer relationship.']].map(([value,label,note])=>`<label class="workspace-choice-card"><input type="radio" name="advertiserRelationship" value="${value}"${value===advertiserRelationship?' checked':''}><span><strong>${label}</strong><small>${note}</small></span></label>`).join('')}
-        </div><p>Choose the relationship before requesting a second opinion. Switching does not rewrite the letter or make a paid call. Direct employer requires successful organisation research.</p></fieldset>
+        </div>${relationshipEvidenceMarkup(relationshipSuggestion, relationshipSource, advertiserRelationship)}<p>Choose the relationship before requesting a second opinion. Switching does not rewrite the letter or make a paid call. Direct employer requires successful organisation research.</p></fieldset>
 
         ${
           values.length
@@ -1000,7 +1015,9 @@ export function renderApplicationReview({
   cvSelectionMessage = '',
   contacts = [],
   contactLinking = null
-}) {
+,
+  relationshipSuggestion = null}) {
+  const relationshipChoice = effectiveRelationship(formData || {}, relationshipSuggestion);
   const bestCv = prepared.recommendation?.bestCv || {};
   const alternativeCv = prepared.recommendation?.alternativeCv || null;
   const atsScore = prepared.recommendation?.ats?.score;
@@ -1033,8 +1050,10 @@ export function renderApplicationReview({
     scenarioSelectionReferences,
     applicationRoleVersion:roleState?.version||'',
     letterLengthMode,qualityMaximumWords,rejectedRefinementProposal,
-    advertiserRelationship:contextMode(formData),
-    allowWithoutOrganisationResearch:usesCandidateValues(formData)
+    advertiserRelationship:relationshipChoice.relationship,
+    relationshipSource:relationshipChoice.source,
+    relationshipSuggestion,
+    allowWithoutOrganisationResearch:usesCandidateValues({...formData,advertiserRelationship:relationshipChoice.relationship})
   });
 
   const rolePanel=roleState?`<details class="application-role-title-review" ${roleState.needsConfirmation?'open':''}><summary>Application role title — ${roleState.needsConfirmation?'confirmation required':roleState.confirmationValid?'confirmed':'no explicit mismatch detected'}</summary>
