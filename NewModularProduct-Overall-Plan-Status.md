@@ -364,3 +364,20 @@ Everything merged to master up to `5ad5108`:
 4. Patch B, evidence-library quality.
 5. R9, splitting `rendering.js` and `create-local-server.js`, one area at a time alongside feature work.
 6. Larger, each needing its own design: interview tracking, CV indexing cache (area 11), sources beyond LinkedIn.
+
+## Releases — 19 November 2026 (`d0c4fc1`, `f4763e3`)
+
+Production serves `f4763e3`, as reported by the owner after `ship.cmd`. This supersedes the "Next candidates" list of the `5ad5108` section.
+
+### Released to production
+- **`d0c4fc1`, insights phase 1 (outcome capture).** An Outcome section on each application: No reply, Recruiter replied, Interview, Rejected, Offer or Withdrawn, each with a date and an optional note. Outcome counts and an Outcome column on the dashboard; an Outcome column on Saved applications. Follow-ups due skip applications with a response. New `application-insights-v1.db`.
+- **`f4763e3`, advertiser relationship from evidence.** The Direct employer / Agency / Unknown choice is worked out from advert wording, the LinkedIn advertiser and posters, organisation research and earlier choices per advertiser. An explicit choice always wins, and the reasons are listed. See [docs/application-questions.md](docs/application-questions.md).
+- **`f4763e3`, application questions helper.** Portal answers within an exact word or character limit: a free evidence draft and optional paid AI writing (estimate first), with a figure check and saved answers. New `application-answers-v1.db`.
+
+### Next candidates, in recommended order
+1. Insights phase 2: feature snapshot (in progress).
+2. Insights phase 3: insights page, once groups have at least 10 outcomes.
+3. Gmail readiness display: needs the owner's drafts-only versus drafts-and-sending decision.
+4. Patch B, evidence-library quality.
+5. R9, splitting the large files, alongside feature work.
+6. Larger, each needing its own design: interview tracking, CV indexing cache (area 11), sources beyond LinkedIn.
