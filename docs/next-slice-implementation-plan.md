@@ -65,7 +65,10 @@ One branch; see [robustness-review-2026-11-18.md](robustness-review-2026-11-18.m
 - Questions helper: a free evidence draft within an exact word or character limit; optional paid AI writing (estimate first); figure check; saved answers in a new `application-answers-v1.db`.
 - Advertiser relationship: suggested from advert wording, the LinkedIn advertiser and posters, research and earlier choices. An explicit choice always wins.
 
+### Insights engine phase 2 (built on `feat/insights-features`, not yet merged)
+- The feature snapshot and the Insights data page; see [insights-and-job-sources-plan.md](insights-and-job-sources-plan.md).
+
 ### Then
-- Insights engine phase 2 (feature snapshot), from [insights-and-job-sources-plan.md](insights-and-job-sources-plan.md).
+- Insights engine phase 3 (insights page), once groups have at least 10 outcomes.
 - Patch B (evidence-library quality), below.
 

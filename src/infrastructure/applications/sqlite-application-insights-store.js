@@ -16,7 +16,8 @@ export function createApplicationInsightsStore({filePath, clock = () => Date.now
   db.exec(`CREATE TABLE IF NOT EXISTS insights_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
 INSERT OR IGNORE INTO insights_meta VALUES('schema','1');
 CREATE TABLE IF NOT EXISTS outcome_events(id INTEGER PRIMARY KEY AUTOINCREMENT,review_id TEXT NOT NULL,outcome TEXT NOT NULL,occurred_on TEXT NOT NULL,recorded_at INTEGER NOT NULL,payload TEXT NOT NULL);
-CREATE INDEX IF NOT EXISTS outcome_events_review ON outcome_events(review_id);`);
+CREATE INDEX IF NOT EXISTS outcome_events_review ON outcome_events(review_id);
+CREATE TABLE IF NOT EXISTS application_features(review_id TEXT PRIMARY KEY,built_at INTEGER NOT NULL,payload TEXT NOT NULL);`);
   const row = r => ({id: r.id, reviewId: r.review_id, outcome: r.outcome, occurredOn: r.occurred_on, recordedAt: r.recorded_at, note: (() => { try { return JSON.parse(r.payload).note || ''; } catch { return ''; } })()});
   return {
     record(reviewId, {outcome, occurredOn, note = ''}) {
@@ -29,6 +30,21 @@ CREATE INDEX IF NOT EXISTS outcome_events_review ON outcome_events(review_id);`)
     // Removes one entry recorded by mistake, for this application only.
     remove(reviewId, id) { return db.prepare('DELETE FROM outcome_events WHERE review_id=? AND id=?').run(String(reviewId), Number(id)).changes === 1; },
     all() { return db.prepare('SELECT * FROM outcome_events ORDER BY review_id,occurred_on,recorded_at,id').all().map(row); },
+    // The feature snapshot is derived data: each rebuild replaces it in one transaction.
+    replaceFeatures(rows, builtAt = clock()) {
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        db.exec('DELETE FROM application_features');
+        const insert = db.prepare('INSERT INTO application_features(review_id,built_at,payload) VALUES(?,?,?)');
+        for (const r of rows) insert.run(String(r.reviewId), builtAt, JSON.stringify(r));
+        db.exec('COMMIT');
+      } catch (error) { db.exec('ROLLBACK'); throw error; }
+      return {count: rows.length, builtAt};
+    },
+    features() {
+      const rows = db.prepare('SELECT payload,built_at FROM application_features ORDER BY review_id').all();
+      return {builtAt: rows[0]?.built_at || null, rows: rows.map(r => JSON.parse(r.payload))};
+    },
     close() { db.close(); }
   };
 }

@@ -16,7 +16,7 @@ export function outcomeState(store, reviewId) {
   return {options: OUTCOMES.map(({id, label}) => ({id, label})), current: currentOutcome(history), history};
 }
 
-export function createApplicationOutcomesHandler({store, getReview, sendJson, sendText, now = () => new Date()}) {
+export function createApplicationOutcomesHandler({store, getReview, sendJson, sendText, now = () => new Date(), onChange = () => {}}) {
   return async (req, res, url) => {
     const method = req.method || 'GET';
     if (method === 'GET' && url.pathname === '/application-outcome-controls.js') {
@@ -37,6 +37,7 @@ export function createApplicationOutcomesHandler({store, getReview, sendJson, se
         const body = await jsonBody(req);
         store.record(reviewId, validateOutcome(body, {now: now()}));
       }
+      if (method === 'POST') { try { onChange(reviewId); } catch {} }
       sendJson(res, 200, {ok: true, ...outcomeState(store, reviewId)});
       return true;
     } catch (error) {
