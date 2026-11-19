@@ -268,3 +268,6 @@ html.review-workspace #polishing-model[data-workspace-choice-carrier],html.revie
 .application-questions .questions-panel>summary h2{display:inline;margin:0}
 .application-questions .questions-saved-count{color:#475569;font-size:.9em}
 
+/* Section rail lands on the section's main control and highlights it briefly */
+.workspace-focus-flash{outline:3px solid #f59e0b!important;outline-offset:3px;box-shadow:0 0 0 6px rgba(245,158,11,.25);transition:outline-color .3s,box-shadow .3s}
+

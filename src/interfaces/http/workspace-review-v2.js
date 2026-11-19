@@ -59,13 +59,49 @@ function sections(doc){
  const nodes={vacancy:doc.querySelector('.panel--vacancy'),email:doc.getElementById('email-domain-resolution'),cv:doc.querySelector('.panel--decision'),tailored:doc.getElementById('tailored-cv'),achievements:doc.querySelector('.achievement-selection-summary')||doc.getElementById('achievement-preparation'),research:doc.querySelector('.panel--research'),polishing:doc.querySelector('.refinement-panel'),proposal:doc.querySelector('.refinement-proposal'),letter:doc.querySelector('.panel--current'),contacts:doc.querySelector('form[action="/recruiter-contacts/link"]')?.closest('section'),organisation:doc.querySelector('.organisation-contact-summary'),queue:doc.querySelector('.outreach-queue-section'),history:doc.querySelector('.sent-history-table')?.closest('section'),import:findTitle('Imported LinkedIn advert')};
  return labels.map(([key,label])=>({key,label,target:nodes[key]})).filter(x=>x.target&&!x.target.hidden);
 }
+// The control each rail link lands on: the section's main button or field, not just the section heading.
+export const SECTION_ACTIONS=Object.freeze({
+ vacancy:['[name="jobTitle"]','input','textarea'],
+ email:['.find-email-domain-button','#email-domain-input'],
+ cv:[{text:'Apply CV selection'},'input[name="selectedCvRoleCode"]:checked','input[name="selectedCvRoleCode"]'],
+ tailored:[{text:'Draft tailored CV'}],
+ achievements:['input[type="checkbox"]','button'],
+ research:[{text:'Research organisation'}],
+ polishing:[{text:'Polish cover letter'}],
+ proposal:[{text:'Use proposal as current draft'}],
+ letter:['#cover-letter-draft','[contenteditable="true"]'],
+ contacts:[{text:'Refresh contacts'},{text:'Link selected contacts'}],
+ organisation:['button','a[href]'],
+ queue:['button','a[href]'],
+ history:['a[href]','button'],
+ import:['button','a[href]']
+});
+const visible=e=>Boolean(e)&&!e.disabled&&!e.hidden&&!e.closest('[hidden]')&&(e.offsetParent!==null||e.getClientRects?.().length>0);
+export function actionFor(key,target){
+ for(const rule of SECTION_ACTIONS[key]||[]){
+  const found=typeof rule==='string'?[...target.querySelectorAll(rule)]:[...target.querySelectorAll('button,input[type="submit"],a[href]')].filter(e=>(e.textContent||e.value||'').trim()===rule.text);
+  const hit=found.find(visible);if(hit)return hit;
+ }
+ return null;
+}
+// Scrolls to the section's main control, focuses it and highlights it briefly; falls back to the section itself.
+export function focusSectionAction(key,target,doc=target.ownerDocument){
+ const control=actionFor(key,target);
+ const goal=control||target;
+ if(!control&&!target.hasAttribute('tabindex'))target.setAttribute('tabindex','-1');
+ try{goal.scrollIntoView({block:control?'center':'start',behavior:'smooth'});}catch{goal.scrollIntoView?.();}
+ try{goal.focus({preventScroll:true});}catch{goal.focus?.();}
+ goal.classList.add('workspace-focus-flash');
+ (doc.defaultView||globalThis).setTimeout(()=>goal.classList.remove('workspace-focus-flash'),1600);
+ return goal;
+}
 const SECTION_GROUPS={vacancy:'Role',import:'Role',email:'Role',cv:'Prepare',tailored:'Prepare',achievements:'Prepare',research:'Prepare',polishing:'Letter',proposal:'Letter',letter:'Letter',contacts:'Outreach',organisation:'Outreach',queue:'Outreach',history:'Outreach'};
 function sectionNav(doc){
  const entries=sections(doc),main=doc.querySelector('main');if(!entries.length||!main)return;
  let nav=doc.querySelector('.workspace-section-nav');if(!nav){nav=node(doc,'nav');nav.className='workspace-section-nav';nav.setAttribute('aria-label','Application sections');main.before(nav);}
  for(const x of entries){if(!x.target.id)x.target.id='workspace-section-'+x.key;x.target.classList.add('workspace-section-target');}
  const signature=entries.map(x=>x.target.id+':'+x.label).join('|');
- if(nav.dataset.signature!==signature){nav.dataset.signature=signature;nav.replaceChildren();let group='';for(const x of entries){const g=SECTION_GROUPS[x.key]||'More';if(g!==group){group=g;const h=node(doc,'span',g);h.className='workspace-section-group';h.setAttribute('aria-hidden','true');nav.appendChild(h);}const a=node(doc,'a');a.href='#'+x.target.id;a.title=x.label;a.setAttribute('aria-label',x.label);a.append(icon(x.key,doc),node(doc,'span',x.label));nav.appendChild(a);}}
+ if(nav.dataset.signature!==signature){nav.dataset.signature=signature;nav.replaceChildren();let group='';for(const x of entries){const g=SECTION_GROUPS[x.key]||'More';if(g!==group){group=g;const h=node(doc,'span',g);h.className='workspace-section-group';h.setAttribute('aria-hidden','true');nav.appendChild(h);}const a=node(doc,'a');a.href='#'+x.target.id;a.title=x.label;a.setAttribute('aria-label',x.label);a.dataset.sectionKey=x.key;a.append(icon(x.key,doc),node(doc,'span',x.label));a.addEventListener('click',event=>{const target=doc.getElementById(x.target.id);if(!target)return;event.preventDefault();try{doc.defaultView?.history?.replaceState(null,'','#'+x.target.id);}catch{}focusSectionAction(x.key,target,doc);});nav.appendChild(a);}}
  if(!doc.__workspaceIntersection&&doc.defaultView?.IntersectionObserver){doc.__workspaceIntersection=new doc.defaultView.IntersectionObserver(changes=>{for(const item of changes){if(!item.isIntersecting)continue;for(const a of nav.querySelectorAll('a')){if(a.hash==='#'+item.target.id)a.setAttribute('aria-current','location');else a.removeAttribute('aria-current');}}},{rootMargin:'-5% 0px -70% 0px'});doc.__workspaceObserved=new Set();}
  if(doc.__workspaceIntersection)for(const x of entries)if(!doc.__workspaceObserved.has(x.target)){doc.__workspaceObserved.add(x.target);doc.__workspaceIntersection.observe(x.target);}
 }
