@@ -183,6 +183,7 @@ const server = createLocalServer({
   cvEvidenceLoader,
   cvTailoringService,
   insightsStore,
+  relationshipMemory:workflowAutomationStore?{get:key=>workflowAutomationStore.relationshipChoice(key),record:(key,name,relationship)=>workflowAutomationStore.recordRelationshipChoice(key,name,relationship)}:null,
   // Read-only System check page: data files, CV library and files, documents, services and this PC.
   systemCheck:()=>runSystemCheck(createSystemCheckProbes({stateDirectory:deployment.state,cvFolder:config.storage.cvFolder||'',outputFolder:process.env.APPLICATION_OUTPUT_FOLDER||'',outputForbidden:[projectRoot,deployment.state,config.storage.cvFolder,'D:\\NewModularProduct-Production'],cvTailoringService,
     cvLibrary:async()=>{const data=await cvInventoryRepository.load();return data?.cv_inventory?.cvs||data?.cvs||[];},locateWord:createWordCvLocator({cvFolder:config.storage.cvFolder}),

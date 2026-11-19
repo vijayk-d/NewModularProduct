@@ -16,7 +16,8 @@ export function createWorkflowAutomationStore({filePath, clock = () => Date.now(
 INSERT OR IGNORE INTO workflow_automation_meta VALUES('schema','1');
 CREATE TABLE IF NOT EXISTS organisation_research(organisation_key TEXT PRIMARY KEY,organisation_name TEXT NOT NULL,research_json TEXT NOT NULL,researched_at INTEGER NOT NULL,origin TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS automatic_research_calls(day TEXT PRIMARY KEY,calls INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS portal_exports(id INTEGER PRIMARY KEY AUTOINCREMENT,review_id TEXT NOT NULL,job_advert_link TEXT NOT NULL,exported_at INTEGER NOT NULL);`);
+CREATE TABLE IF NOT EXISTS portal_exports(id INTEGER PRIMARY KEY AUTOINCREMENT,review_id TEXT NOT NULL,job_advert_link TEXT NOT NULL,exported_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS advertiser_relationships(advertiser_key TEXT PRIMARY KEY,advertiser_name TEXT NOT NULL,relationship TEXT NOT NULL,chosen_at INTEGER NOT NULL);`);
   const day = () => new Date(clock()).toISOString().slice(0, 10);
   return {
     getResearch(key) {
@@ -32,6 +33,12 @@ CREATE TABLE IF NOT EXISTS portal_exports(id INTEGER PRIMARY KEY AUTOINCREMENT,r
     recordAutomaticCall() { db.prepare('INSERT INTO automatic_research_calls VALUES(?,1) ON CONFLICT(day) DO UPDATE SET calls=calls+1').run(day()); },
     recordPortalExport(reviewId, jobAdvertLink) { db.prepare('INSERT INTO portal_exports(review_id,job_advert_link,exported_at) VALUES(?,?,?)').run(String(reviewId), String(jobAdvertLink || ''), clock()); },
     portalExports() { return db.prepare('SELECT review_id AS reviewId,job_advert_link AS jobAdvertLink,exported_at AS exportedAt FROM portal_exports ORDER BY id').all().map(r => ({...r})); },
+    // The relationship last used in a polish for this advertiser, to suggest it next time.
+    relationshipChoice(key) { const r = db.prepare('SELECT advertiser_name,relationship,chosen_at FROM advertiser_relationships WHERE advertiser_key=?').get(String(key)); return r ? {name: r.advertiser_name, relationship: r.relationship, chosenAt: r.chosen_at} : null; },
+    recordRelationshipChoice(key, name, relationship) {
+      db.prepare('INSERT INTO advertiser_relationships VALUES(?,?,?,?) ON CONFLICT(advertiser_key) DO UPDATE SET advertiser_name=excluded.advertiser_name,relationship=excluded.relationship,chosen_at=excluded.chosen_at')
+        .run(String(key), String(name), String(relationship), clock());
+    },
     close() { db.close(); }
   };
 }

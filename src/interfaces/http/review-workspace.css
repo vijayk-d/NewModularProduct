@@ -241,3 +241,8 @@ html.review-workspace #polishing-model[data-workspace-choice-carrier],html.revie
 .application-outcome [data-outcome-history]{padding-left:1.1rem}
 .application-outcome .outcome-remove{margin-left:.4rem;font-size:.85em;padding:.1rem .5rem}
 
+
+/* Advertiser relationship evidence */
+.relationship-evidence{margin:.6rem 0;padding:.5rem .75rem;border-left:3px solid #94a3b8;background:#f8fafc;font-size:.94em}
+.relationship-evidence p{margin:.2rem 0}
+.relationship-evidence ul{margin:.3rem 0;padding-left:1.1rem}
