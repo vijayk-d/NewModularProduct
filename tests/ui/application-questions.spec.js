@@ -40,9 +40,14 @@ test('draft an answer from evidence, keep it within the limit, then save and cop
   await section.getByRole('button', {name: 'Copy answer'}).click();
   expect(await page.evaluate(() => window.__copied)).toMatch(/PI planning/);
   await expect(section.locator('[data-questions-saved-count]')).toHaveText('1 saved answer');
+  // The browser saves the open/closed state on its toggle event, which arrives just after the click: wait for it before reloading.
+  const remembered = () => page.evaluate(() => localStorage.getItem('jobapp.questionsOpen'));
+  await expect.poll(remembered).toBe('true');
   await page.reload();
   await expect(page.locator('#application-questions details.questions-panel')).toHaveAttribute('open', '');
   await page.locator('#application-questions').getByRole('heading', {name: 'Application questions'}).click();
+  await expect(page.locator('#application-questions details.questions-panel')).not.toHaveAttribute('open', '');
+  await expect.poll(remembered).toBe('false');
   await page.reload();
   await expect(page.locator('#application-questions details.questions-panel')).not.toHaveAttribute('open', '');
   await expect(page.locator('#application-questions [data-questions-saved-count]')).toHaveText('1 saved answer');
