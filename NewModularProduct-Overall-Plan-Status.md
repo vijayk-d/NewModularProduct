@@ -381,3 +381,22 @@ Production serves `f4763e3`, as reported by the owner after `ship.cmd`. This sup
 4. Patch B, evidence-library quality.
 5. R9, splitting the large files, alongside feature work.
 6. Larger, each needing its own design: interview tracking, CV indexing cache (area 11), sources beyond LinkedIn.
+
+## Releases — 20 November 2026 (up to `f24dd74`)
+
+Production serves `f24dd74`, as reported by the owner. This supersedes the "Next candidates" list of the 19 November section.
+
+### Released to production
+- **CV library index.** Indexed CV text drives CV ranking, indexing runs automatically, and the library uses a card layout.
+- **Backups of every store.** Release backups cover all data stores, the PDF and template folders, and the shared CV library.
+- **Evidence engine.** Learns from recorded outcomes which evidence gets responses and where the repeated gaps are; Evidence learning page; checklist notes and a small ranking nudge.
+- **Polish gate.** Queueing, Gmail drafts, sending and scheduling are refused until "Use proposal as current draft" has been clicked, or "Send without polishing" is ticked for that application. A banner shows the state; the queue shows why checked rows are skipped.
+- **Gmail scheduler in production.** Its own private Sheet, namespace and keys; Cloud scheduling is a Features switch; System check row "Gmail scheduler". Accepted with a self-addressed test email on 20 November.
+
+### Next candidates, in recommended order
+1. Insights phase 3: insights page, once groups have at least 10 outcomes.
+2. Interview tracking: stages, dates and preparation notes per application, building on Outcome.
+3. Recovery: a documented restore drill.
+4. Privacy and security review (areas 28–30), including the encoded email and CV copies held in the scheduler Sheet.
+5. R9, splitting `rendering.js` and `create-local-server.js`, alongside feature work.
+6. Job sources beyond LinkedIn (see [docs/insights-and-job-sources-plan.md](docs/insights-and-job-sources-plan.md)).

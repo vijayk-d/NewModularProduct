@@ -24,7 +24,7 @@ Decisions taken on 20 November 2026:
 | Scheduler | Locked to development in code. It needs its own production Sheet and keys, and Gmail sending switched on in production. | `gmail-scheduling.js` `config()`, `gmail-send-service.js` |
 | Recovery | The shared CV library and shared evidence folders sit outside `shared\data`, so release backups do not cover them. | `local_delivery.py` backs up `shared\data` only |
 
-## Slice 1 — CV library (built on `feat/cv-library-index`, not yet merged)
+## Slice 1 — CV library (done, in production)
 Status:
 - **Built:** all three parts below.
 - **Read-only check on 20 November:** the development index was out of date for 10 of 12 CVs (last indexed 31 October), so they would have ranked on tags only. The production index was current for all 12.
@@ -42,7 +42,7 @@ Status:
    - Each card shows the Word file, sections, top terms and last indexed time.
    - Search and filter, and actions grouped as Library, Indexing and Check.
 
-## Slice 2 — Evidence engine (built on `feat/evidence-engine`, not yet merged)
+## Slice 2 — Evidence engine (done, in production; Evidence library switched on)
 Status:
 - **Built:**
   - **What each application used:** the feature snapshot now records it as keys (selected achievements and polishing scenarios), along with the job's top terms and the terms missing from the chosen CV. Labels (achievement text, scenario titles) are kept in a separate `evidence_items` table in `application-insights-v1.db`, rebuilt with the snapshot.
@@ -69,8 +69,9 @@ Status:
    - Wording you approved in a tailored CV or a saved answer can be offered as a candidate scenario wording, which needs your approval.
    - Nothing is invented.
 
-## Slice 3 — Gmail scheduler in production
-Status: code built on `feat/production-scheduler` (Cloud scheduling is a Features switch; System check row "Gmail scheduler"). Owner set-up steps are in `apps-script/gmail-scheduler/README.md`, "Production set-up".
+## Slice 3 — Gmail scheduler in production (done, live)
+Status: live in production since 20 November 2026 (`f24dd74`). The owner completed the "Production set-up" in `apps-script/gmail-scheduler/README.md`; a self-addressed test email was sent at its scheduled time. Cloud scheduling is a Features switch (needs Send emails); System check has a "Gmail scheduler" row.
+- The Google Picker step failed with "The API developer key is invalid" (as it did in development) but was not needed: `nmpSchedulerInstall` passed its Drive and privacy checks.
 
 1. **Code.**
    - Allow scheduling when `NMP_ENV=production`, `ENABLE_CLOUD_SCHEDULING=true` and Gmail sending are on.
@@ -83,7 +84,7 @@ Status: code built on `feat/production-scheduler` (Cloud scheduling is a Feature
    - Schedule one email to yourself as the acceptance test.
 
 ## Other important roadmap items
-1. **Recovery:** back up the shared CV library and evidence folders on each ship, and document a restore drill. This matters because the evidence library becomes production data.
+1. **Recovery:** backups on each ship now cover every store and the shared CV library (`b64702a`). Still to do: a documented restore drill.
 2. **Insights phase 3:** the insights page, once groups have at least 10 outcomes.
 3. **Interview tracking:** stages, dates and preparation notes per application, building on Outcome.
 4. **Job sources beyond LinkedIn:** see [insights-and-job-sources-plan.md](insights-and-job-sources-plan.md).
