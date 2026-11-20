@@ -24,7 +24,11 @@ Decisions taken on 20 November 2026:
 | Scheduler | Locked to development in code. It needs its own production Sheet and keys, and Gmail sending switched on in production. | `gmail-scheduling.js` `config()`, `gmail-send-service.js` |
 | Recovery | The shared CV library and shared evidence folders sit outside `shared\data`, so release backups do not cover them. | `local_delivery.py` backs up `shared\data` only |
 
-## Slice 1 — CV library (now)
+## Slice 1 — CV library (built on `feat/cv-library-index`, not yet merged)
+Status:
+- **Built:** all three parts below.
+- **Read-only check on 20 November:** the development index was out of date for 10 of 12 CVs (last indexed 31 October), so they would have ranked on tags only. The production index was current for all 12.
+- **Saved applications:** they never store CV text. It is attached only for scoring, then removed.
 1. **Indexed text feeds ranking.**
    - Preparation, ATS and the CV recommendation read each CV's indexed full text when the index matches the current file (same SHA-256).
    - Otherwise they fall back to tags, and the page says so.

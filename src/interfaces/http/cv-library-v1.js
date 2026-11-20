@@ -38,4 +38,5 @@ export function installCvLibrary(server,options){
    json(res,200,url.pathname.endsWith('/save')?await library.save(body):await library.reindex(body));
   }catch(e){if(!res.headersSent)json(res,Number.isInteger(e.status)?e.status:409,{error:e.status?e.message:'Library operation failed. Check the catalogue, CV_FOLDER and local file access. No substitute evidence was used.'});else res.end();}
  });
+ return library;
 }
