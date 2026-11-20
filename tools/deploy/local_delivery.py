@@ -5,6 +5,15 @@ from datetime import datetime,timezone
 ROOT=Path(os.getenv('NMP_SOURCE_ROOT') or Path(__file__).resolve().parents[2]).resolve()
 FLAGS=['ENABLE_GMAIL','ENABLE_GMAIL_SENDING','ENABLE_GMAIL_DRAFT_CREATION','ENABLE_GMAIL_MAILBOX_CHECK','ENABLE_GMAIL_SIGNATURE','ENABLE_PERPLEXITY_RESEARCH','ENABLE_COVER_LETTER_REFINEMENT']
 STORES=['outreach.db','application-reviews-v1.db','job-imports-v1.db','job-imports-v1-hidden.db','imported-recruiter-contacts.json']
+# Backed up too, but not schema-guarded: newer stores add tables of their own over time (workflow automation, tailored CV,
+# insights, answers, email-domain lookups and any later ones). Folders hold tailored-CV PDFs and the private letter template.
+EXTRA_DIRS=['tailored-cv-pdfs','cover-letter-export']
+def extra_stores(source):
+ return sorted(p.name for p in Path(source).iterdir() if p.is_file() and not p.is_symlink() and p.suffix in ('.db','.json') and p.name not in STORES and p.name!='snapshot.json') if Path(source).is_dir() else []
+def copy_sqlite(src,dst,label):
+ with _managed_sqlite_connection(src.as_uri()+'?mode=ro',uri=True) as a,_managed_sqlite_connection(dst) as b:
+  a.backup(b)
+  if b.execute('PRAGMA quick_check').fetchone()[0]!='ok':fail('Database backup integrity failed: '+label)
 def fail(s):raise RuntimeError(s)
 def stamp():return datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
 def sha(b):return hashlib.sha256(b).hexdigest()
@@ -172,7 +181,38 @@ def snapshot(source,target):
     src.backup(dst)
     if dst.execute('PRAGMA quick_check').fetchone()[0]!='ok':fail('Database backup integrity failed: '+n)
   else:b=p.read_bytes();json.loads(b.decode('utf-8-sig'));(target/n).write_bytes(b)
- atomic(target/'snapshot.json',{'schema':schemas(target),'createdAt':stamp(),'files':{n:hashed(target/n) for n in STORES if (target/n).is_file()}})
+ extras=extra_stores(source)
+ for n in extras:
+  p=source/n
+  if p.suffix=='.db':copy_sqlite(p,target/n,n)
+  else:(target/n).write_bytes(p.read_bytes())
+ for n in EXTRA_DIRS:
+  p=source/n
+  if p.is_dir() and not p.is_symlink():shutil.copytree(p,target/n,symlinks=False)
+ atomic(target/'snapshot.json',{'schema':schemas(target),'createdAt':stamp(),'files':{n:hashed(target/n) for n in STORES+extras if (target/n).is_file()},'folders':[n for n in EXTRA_DIRS if (target/n).is_dir()]})
+def env_value(prod,key):
+ f=Path(prod)/'shared/config/production.env'
+ if not f.is_file():return ''
+ for line in f.read_text(encoding='utf-8-sig').splitlines():
+  k,_,v=line.partition('=')
+  if k.strip()==key:return v.strip().strip('"').strip("'")
+ return ''
+def backup_shared_cv(prod,backup):
+ # The shared CV library lives outside shared\data: back up its catalogue, ownership file and evidence database.
+ # Text indexes rebuild themselves and are skipped.
+ shared=env_value(prod,'NMP_CV_LIBRARY_DIRECTORY')
+ if not shared:return None
+ src=Path(shared)
+ if not src.is_dir() or src.is_symlink():return None
+ target=Path(backup)/'shared-cv-library';target.mkdir(parents=True)
+ for n in ['catalogue.json','ownership.json']:
+  if (src/n).is_file() and not (src/n).is_symlink():(target/n).write_bytes((src/n).read_bytes())
+ evidence=src/'evidence'
+ if evidence.is_dir() and not evidence.is_symlink():
+  (target/'evidence').mkdir()
+  for db in sorted(evidence.glob('*.db')):
+   if db.is_file() and not db.is_symlink():copy_sqlite(db,target/'evidence'/db.name,'shared evidence '+db.name)
+ return target
 def initialise(args):
  prod=prod_root(args)
  with delivery_lock(prod):
@@ -350,7 +390,7 @@ def deliver(args):
    if any(not (release/n).is_file() or hashed(release/n)!=h for n,h in sourceHashes.items()):fail('Verification changed committed source; no promotion.')
    if active and checked_release(prod/'releases'/active['commit'])['runtime']['contract']!=runtime['contract']:fail('Storage contract differs; reviewed migration required.')
    smoke(release,release/'var/verification/empty-state',commit,log);session=pause(prod)
-   backup=prod/'shared/backups'/('before-'+commit[:12]+'-'+stamp());snapshot(prod/'shared/data',backup)
+   backup=prod/'shared/backups'/('before-'+commit[:12]+'-'+stamp());snapshot(prod/'shared/data',backup);backup_shared_cv(prod,backup)
    probe=release/'var/verification/production-copy';snapshot(backup,probe);before=schemas(probe);smoke(release,probe,commit,log);after=schemas(probe)
    if any(after.get(n)!=h for n,h in before.items()):fail('Candidate changes an existing production schema. Migration review required; no promotion.')
    template=release/'templates/standard-cover-letter.md'
