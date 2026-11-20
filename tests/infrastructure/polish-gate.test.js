@@ -17,6 +17,7 @@ test('polish gate: blocked until a proposal is applied or the owner overrides', 
   assert.equal(polishGate({ refinementHistory: [{ appliedAt: '2026-11-20T10:00:00Z' }] }).allowed, true);
   assert.equal(polishGate({ sendWithoutPolish: true }).overridden, true);
   assert.equal(polishGate(null).allowed, false);
+  assert.match(polishGate(null).message, /no longer available/, 'a missing application is not described as unpolished');
   assert.throws(() => assertPolished({}), error => error.statusCode === 409 && error.code === 'LETTER_NOT_POLISHED');
 });
 

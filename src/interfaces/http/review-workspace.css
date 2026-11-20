@@ -285,3 +285,5 @@ html.review-workspace #polishing-model[data-workspace-choice-carrier],html.revie
 .letter-gate[data-allowed="true"]{border-color:#86efac;background:#f0fdf4;color:#14532d}
 .letter-gate p{margin:.1rem 0 .3rem;font-weight:600}
 .letter-gate label{font-size:.92em}
+
+.outreach-skip-reasons{margin:.4rem 0 0;padding:.4rem .6rem;border-left:3px solid #b45309;background:#fff7ed;color:#7c2d12;font-size:.9rem}
