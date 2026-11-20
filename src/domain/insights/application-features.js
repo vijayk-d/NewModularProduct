@@ -1,6 +1,7 @@
 // One row of facts per application, for comparing choices against outcomes (insights phase 2). Pure.
 // Built only from data the app already stores; no letter, CV or note text is copied into the row.
 import {currentOutcome, hasResponse} from './application-outcome.js';
+import {evidenceUsed} from './evidence-learning.js';
 
 const DAY = 86400000;
 const ROLE_FAMILIES = [
@@ -72,10 +73,14 @@ export function buildApplicationFeatures({reviewId, review, importedJob = null, 
     outcome: outcome?.outcome || '',
     outcomeOn: outcome?.occurredOn || '',
     responded: hasResponse(outcome),
-    daysToOutcome: days(appliedAt ?? createdAt, outcomeAt)
+    daysToOutcome: days(appliedAt ?? createdAt, outcomeAt),
+    // Evidence used (keys only), the job's top terms and the terms missing from the chosen CV: for the evidence engine.
+    evidenceKeys: evidenceUsed(review).map(e => e.key),
+    jobTerms: (Array.isArray(review?.prepared?.jobDescription?.atsTerms) ? review.prepared.jobDescription.atsTerms.map(t => t?.term) : (review?.prepared?.jobDescription?.keywords || [])).filter(Boolean).slice(0, 15).map(String),
+    missingTerms: (review?.prepared?.recommendation?.ats?.missingKeywords || []).slice(0, 15).map(String)
   };
 }
 
 export const FEATURE_COLUMNS = Object.freeze(['createdAt', 'organisation', 'jobTitle', 'roleFamily', 'seniority', 'advertSource', 'daysAdvertToApplication', 'advertiserRelationship', 'cvCode', 'atsScore',
   'cvTailored', 'tailoredVersions', 'letterTone', 'letterLength', 'polishingModel', 'letterEdited', 'letterWords', 'achievementsSelected', 'scenariosSelected', 'research', 'channel', 'appliedAt',
-  'outcome', 'outcomeOn', 'responded', 'daysToOutcome']);
+  'outcome', 'outcomeOn', 'responded', 'daysToOutcome', 'evidenceKeys', 'jobTerms', 'missingTerms']);

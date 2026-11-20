@@ -17,7 +17,8 @@ export function createApplicationInsightsStore({filePath, clock = () => Date.now
 INSERT OR IGNORE INTO insights_meta VALUES('schema','1');
 CREATE TABLE IF NOT EXISTS outcome_events(id INTEGER PRIMARY KEY AUTOINCREMENT,review_id TEXT NOT NULL,outcome TEXT NOT NULL,occurred_on TEXT NOT NULL,recorded_at INTEGER NOT NULL,payload TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS outcome_events_review ON outcome_events(review_id);
-CREATE TABLE IF NOT EXISTS application_features(review_id TEXT PRIMARY KEY,built_at INTEGER NOT NULL,payload TEXT NOT NULL);`);
+CREATE TABLE IF NOT EXISTS application_features(review_id TEXT PRIMARY KEY,built_at INTEGER NOT NULL,payload TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS evidence_items(evidence_key TEXT PRIMARY KEY,kind TEXT NOT NULL,label TEXT NOT NULL,last_seen INTEGER NOT NULL);`);
   const row = r => ({id: r.id, reviewId: r.review_id, outcome: r.outcome, occurredOn: r.occurred_on, recordedAt: r.recorded_at, note: (() => { try { return JSON.parse(r.payload).note || ''; } catch { return ''; } })()});
   return {
     record(reviewId, {outcome, occurredOn, note = ''}) {
@@ -41,6 +42,17 @@ CREATE TABLE IF NOT EXISTS application_features(review_id TEXT PRIMARY KEY,built
       } catch (error) { db.exec('ROLLBACK'); throw error; }
       return {count: rows.length, builtAt};
     },
+    // Labels for evidence keys (achievement text or scenario title), kept beside the snapshot and rebuilt with it.
+    replaceEvidenceItems(items, seenAt = clock()) {
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        db.exec('DELETE FROM evidence_items');
+        const insert = db.prepare('INSERT OR REPLACE INTO evidence_items(evidence_key,kind,label,last_seen) VALUES(?,?,?,?)');
+        for (const i of items) insert.run(String(i.key), String(i.kind), String(i.label || ''), seenAt);
+        db.exec('COMMIT');
+      } catch (error) { db.exec('ROLLBACK'); throw error; }
+    },
+    evidenceItems() { return new Map(db.prepare('SELECT evidence_key,kind,label FROM evidence_items').all().map(r => [r.evidence_key, {kind: r.kind, label: r.label}])); },
     features() {
       const rows = db.prepare('SELECT payload,built_at FROM application_features ORDER BY review_id').all();
       return {builtAt: rows[0]?.built_at || null, rows: rows.map(r => JSON.parse(r.payload))};
