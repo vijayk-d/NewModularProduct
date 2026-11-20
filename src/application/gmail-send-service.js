@@ -1,3 +1,4 @@
+import {schedulingAllowed} from './gmail-scheduler-protocol.js';
 import {assertFrozenDraftPalette} from './frozen-draft-palette.js';
 import {applyGmailSignature,readGmailSignature,letterWithoutSignature} from './gmail-message-presentation.js';
 import {recipientFirstName,assertResolvedMessage} from './outreach-recipient-identity.js';
@@ -65,7 +66,7 @@ export function createGmailSendService({repository,mailboxPort,env=process.env,r
   return {ticket,expiresAt,mode,sendingAccount:account,recipient:item.email,emailVerified:item.verified===true,emailSource:item.emailSource||'unknown',subject:summary.subject,bodyPlainText:summary.bodyPlainText,bodyHtml:summary.bodyHtml,attachments:summary.attachments,contentHash:summary.contentHash,sent:false};
  },
  async reserveScheduled({ticket,confirmed=false,repeatApproved=false}={}){
-  const account=gate();if(String(env.ENABLE_CLOUD_SCHEDULING||'')!=='true'||env.NMP_ENV!=='development'||env.NMP_ALLOW_DEVELOPMENT_INTEGRATIONS!=='true')fail('Development scheduling is disabled.','SCHEDULE_DISABLED',403);
+  const account=gate();const allowed=schedulingAllowed(env);if(!allowed.allowed)fail(allowed.reason||'Scheduling is disabled.','SCHEDULE_DISABLED',403);
   if(confirmed!==true)fail('Confirm the exact scheduled send.','SEND_CONFIRMATION',400);
   const a=tickets.get(ticket);if(!a)fail('Confirmation missing, consumed or expired. An app restart also clears it. Review the message again.');tickets.delete(ticket);
   if(a.expiresAt<=clock()||a.account.toLowerCase()!==account.toLowerCase())fail('Confirmation expired or sender changed.');

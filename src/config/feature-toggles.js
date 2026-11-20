@@ -18,12 +18,12 @@ export const FEATURES = Object.freeze([
   { id: 'perplexity-research', env: 'ENABLE_PERPLEXITY_RESEARCH', label: 'Organisation research', description: 'Uses the Perplexity API for organisation research (paid API calls).', risk: 'paid-api' },
   { id: 'cover-letter-refinement', env: 'ENABLE_COVER_LETTER_REFINEMENT', label: 'Cover-letter polishing', description: 'Uses the Perplexity API to refine cover letters (paid API calls).', risk: 'paid-api' },
   { id: 'cover-letter-quality-v2', env: 'ENABLE_COVER_LETTER_QUALITY_V2', requires: ['cover-letter-refinement'], label: 'Cover-letter quality V2', description: 'New letter quality checks: evidence audit, source-bound claims and role-focused examples during polishing.', risk: 'paid-api' },
+  { id: 'cloud-scheduling', env: 'ENABLE_CLOUD_SCHEDULING', requires: ['gmail-sending'], label: 'Cloud scheduling', description: 'Schedule a reviewed email for later through your own private scheduler Sheet. Google sends it at that time, even while this PC is off. Needs the scheduler set-up first.', risk: 'sends-email' },
   { id: 'one-click-send', env: 'ENABLE_ONE_CLICK_SEND', requires: ['gmail-sending'], label: 'One-click send', description: 'Send without the extra confirmation popup. The labelled Send click is still required; duplicate protection and the bound-content check stay on.', risk: 'sends-email' }
 ]);
 
 // Features that the code currently limits to development on port 3000. Shown on the page, not switchable.
 export const DEVELOPMENT_ONLY = Object.freeze([
-  { id: 'cloud-scheduling', env: 'ENABLE_CLOUD_SCHEDULING', label: 'Cloud scheduling', description: 'Scheduled sending through Google Sheets.' },
   { id: 'template-cover-letter', env: null, label: 'Template cover letter', description: 'Local template-based cover-letter documents.' }
 ]);
 

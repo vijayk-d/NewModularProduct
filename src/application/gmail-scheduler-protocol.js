@@ -2,6 +2,18 @@ import {createHmac,timingSafeEqual,createHash} from 'node:crypto';
 export const MAX_RAW=4*1024*1024;
 export const MAX_FUTURE=30*24*60*60*1000;
 export function schedulerError(message,statusCode=409){return Object.assign(new Error(message),{statusCode});}
+// Where new schedules may be created. Production needs the Cloud scheduling and Send emails switches on (Features page);
+// development needs the development-integrations opt-in as before; verification never schedules.
+export function schedulingAllowed(env=process.env){
+ const mode=String(env.NMP_ENV||'development'),flag=String(env.ENABLE_CLOUD_SCHEDULING||'')==='true';
+ if(mode==='production'){
+  if(!flag)return {allowed:false,mode,reason:'Cloud scheduling is switched off on the Features page.'};
+  if(String(env.ENABLE_GMAIL_SENDING||'')!=='true')return {allowed:false,mode,reason:'Cloud scheduling needs Send emails switched on (Features page).'};
+  return {allowed:true,mode,reason:''};
+ }
+ if(mode==='development'&&flag&&env.NMP_ALLOW_DEVELOPMENT_INTEGRATIONS==='true')return {allowed:true,mode,reason:''};
+ return {allowed:false,mode,reason:'New scheduling access is disabled.'};
+}
 export function signingKey(env){const key=String(env.CLOUD_SCHEDULER_SIGNING_KEY||'');if(!/^[a-f0-9]{64}$/.test(key))throw schedulerError('Configure the private scheduler signing key locally.',503);return key;}
 export function mac(text,key){return createHmac('sha256',key).update(text,'utf8').digest('hex');}
 export function signed(value,key){const text=JSON.stringify(value);return {text,mac:mac(text,key)};}
