@@ -27,6 +27,18 @@ class SetupTests(unittest.TestCase):
   verifier,challenge=setup.pkce();self.assertTrue(43<=len(verifier)<=128);self.assertEqual(challenge,base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('='))
  def test_desktop_client_standard_google_auth_uri_is_accepted(self):
   self.assertEqual(setup.load_desktop_client(self.client(),{})['project_id'],'dedicated-scheduler')
+ def test_google_errors_name_the_stage_and_reason_without_tokens(self):
+  import io,urllib.error
+  body=json.dumps({'error':'invalid_grant','error_description':'Bad Request','access_token':'ya29.secret-token'}).encode()
+  fail=urllib.error.HTTPError(setup.TOKEN_URL,400,'Bad Request',{},io.BytesIO(body))
+  with patch.object(setup.urllib.request,'urlopen',side_effect=fail):
+   with self.assertRaises(RuntimeError) as caught:setup.google_json(setup.TOKEN_URL,body={'code':'x'},stage='Token exchange')
+  message=str(caught.exception)
+  self.assertIn('Token exchange request failed (HTTP 400, invalid_grant: Bad Request)',message)
+  self.assertNotIn('ya29',message)
+  with patch.object(setup.urllib.request,'urlopen',side_effect=OSError('offline')):
+   with self.assertRaises(RuntimeError) as caught:setup.google_json(setup.USERINFO_URL,access_token='t',stage='Account identity')
+  self.assertIn('Account identity request could not reach Google (OSError)',str(caught.exception))
  def test_existing_production_gmail_client_cannot_be_reused(self):
   with self.assertRaises(RuntimeError):setup.load_desktop_client(self.client(),{'GMAIL_OAUTH_CLIENT_ID':'scheduler.apps.googleusercontent.com'})
  def test_web_client_file_cannot_accidentally_enter_desktop_flow(self):
