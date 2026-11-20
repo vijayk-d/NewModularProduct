@@ -19,6 +19,7 @@ import {createApplicationInsightsStore} from '../../infrastructure/applications/
 import {createApplicationAnswersStore} from '../../infrastructure/applications/sqlite-application-answers-store.js';
 import {createQuestionAnswerWriter} from '../../infrastructure/refinement/perplexity-question-answer-adapter.js';
 import {createInsightsSnapshot} from '../../application/insights-snapshot.js';
+import {attachIndexedText,withoutCvText,describeSections} from '../../application/cv-text-index.js';
 import {createTemplateCoverLetterDocuments} from '../../infrastructure/documents/template-cover-letter.js';
 import {createSqliteJobImportStore} from '../../infrastructure/applications/sqlite-job-import-store.js';
 import { gmailLoadedEnvironment } from '../../application/gmail-runtime-diagnostics.js';
@@ -172,6 +173,9 @@ const insightsSnapshot=insightsStore?createInsightsSnapshot({reviews:application
   portalExports:()=>workflowAutomationStore?workflowAutomationStore.portalExports():[],sentEmails:()=>outreachRepository.listSentEmails(),tailoredLatest:id=>cvTailoringStore?cvTailoringStore.latest(id):null}):null;
 insightsSnapshot?.start();
 
+// The CV library (when enabled) supplies indexed CV text for ranking; set once it is installed below.
+let cvLibraryInstance=null;
+
 let assignmentEvidenceStore=null;
 try{
  const filePath=resolveEvidenceLibraryPath({env:process.env,mode:deployment.mode,state:deployment.state});
@@ -248,8 +252,14 @@ const server = createLocalServer({
       },
       templateId: DEFAULT_TEMPLATE_ID,
       templateRepository,
-      cvInventoryRepository
-    }).then((prepared) => {
+      // Ranking reads each CV's indexed full text when the index matches the current file; otherwise its tags.
+      cvInventoryRepository: cvLibraryInstance ? {load: async () => {
+        const inventory = await cvInventoryRepository.load();
+        let texts = {};
+        try { texts = (await cvLibraryInstance.indexedTexts()).texts; } catch { texts = {}; }
+        return attachIndexedText(inventory, texts);
+      }} : cvInventoryRepository
+    }).then(withoutCvText).then((prepared) => {
       if (localDiagnosticsEnabled) {
         process.stdout.write(
           `[LOCAL_DIAGNOSTICS] application_prepare_completed ` +
@@ -265,7 +275,14 @@ const server = createLocalServer({
 
 // CV_LIBRARY_SHARED_V1_BEGIN
 if (cvLibraryRuntime.enabled) {
-  installCvLibrary(server, {
+  cvLibraryInstance = installCvLibrary(server, {
+    // Index records also note the Word file and the sections recognised (read-only check).
+    describe: async entry => {
+      const word = await createWordCvLocator({cvFolder: config.storage.cvFolder})(entry.local_path, cvTailoringStore?.preferences?.(entry.role_code)?.wordFile || '');
+      if (!word.relativePath) return {word: {name: '', match: word.match}};
+      const result = await documentWorker({action: 'sections', root: config.storage.cvFolder, relativePath: word.relativePath, expectedHash: null});
+      return {word: {name: word.name, match: word.match}, sections: describeSections(result.sections)};
+    },
     mode: deployment.mode,
     projectRoot,
     sharedDirectory: cvLibraryRuntime.sharedDirectory || '',
@@ -274,6 +291,7 @@ if (cvLibraryRuntime.enabled) {
     privateDirectory: cvLibraryRuntime.privateDirectory,
     adapter: createCvDocumentAdapter({cvFolder: config.storage.cvFolder})
   });
+  cvLibraryInstance.startAutoIndex();
 }
 // CV_LIBRARY_SHARED_V1_END
 
