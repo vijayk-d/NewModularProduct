@@ -13,7 +13,7 @@ const sends=[0,1].map(i=>({id:'fixture-send-'+i,fullName:'Alex Example',email:'a
 const repository={list:()=>[],listSentEmails:()=>structuredClone(sends)};
 const server=createLocalServer({applicationReviewStore:store,recruiterContactStore:contacts,outreachRepository:repository,prepareApplication:async()=>{throw new Error('Fixture preparation disabled');}});
 const handler=server.listeners('request')[0];server.removeAllListeners('request');
-const reads=new Set(['/','/outreach-queue','/applications/'+id,'/api/application-reviews/'+id,'/api/recruiter-contacts/linking','/api/outreach-queue','/api/outreach-queue/send-history','/api/outreach-queue/gmail-status','/api/outreach-queue/gmail-draft-status','/api/outreach-queue/send-status']);
+const reads=new Set(['/','/outreach-queue','/applications/'+id,'/api/application-reviews/'+id,'/api/recruiter-contacts/linking','/api/outreach-queue','/api/outreach-queue/send-history','/api/outreach-queue/gmail-status','/api/outreach-queue/gmail-draft-status','/api/outreach-queue/send-status','/api/reviews/'+id+'/letter-gate']);
 const writes=new Set(['/api/application-reviews/save','/review-subject-save','/review-cv-selection']);
 server.on('request',(req,res)=>{const u=new URL(req.url,'http://localhost');if(req.method==='GET'&&(reads.has(u.pathname)||/^\/[a-z0-9-]+\.(?:js|css)$/.test(u.pathname)))return handler(req,res);if(req.method==='POST'&&writes.has(u.pathname))return handler(req,res);res.writeHead(403,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:'This operation is disabled in the isolated UI fixture.'}));});
 server.listen(Number(process.env.REVIEW_UI_PORT||3317),'127.0.0.1',()=>console.log('UI_FIXTURE_PORT='+server.address().port));

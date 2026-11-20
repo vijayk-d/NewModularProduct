@@ -5,7 +5,7 @@ import { createOutreachHttpHandler } from '../../src/interfaces/http/outreach-qu
 function fixture() {
   const stored=[];
   const repository={list(){return structuredClone(stored);},async addMany(items){stored.push(...structuredClone(items));return {added:items.length,duplicates:0,items:structuredClone(stored)};}};
-  const review={formData:{jobTitle:'Delivery lead'},prepared:{coverLetter:{subject:'Application for delivery lead'}}};
+  const review={refinementHistory:[{appliedAt:'2026-11-20T10:00:00Z'}],formData:{jobTitle:'Delivery lead'},prepared:{coverLetter:{subject:'Application for delivery lead'}}};
   const handler=createOutreachHttpHandler({repository,getReview:()=>review,contactStore:{async listByReview(){return [{id:'contact',selectedEmail:'matt@example.test',fullName:'Matt Smith'}];}}});
   return {stored,async add(subject,include=true){
     const payload={reviewId:'review',recipients:[{contactId:'contact',email:'matt@example.test'}],bodyPlainText:'Reviewed draft',...(include?{subject}:{})};

@@ -8,6 +8,15 @@ import { createRecruiterContactStore } from "../../src/application/recruiter-con
 import {createOutreachRepository} from "../../src/infrastructure/outreach/sqlite-outreach-repository.js";
 import {createDurableReviewStore,createMemoryReviewRepository} from "../../src/application/durable-review-store.js";
 
+// The polish gate blocks queueing an unpolished letter; these specs tick the per-application override in the banner.
+async function allowUnpolished(page) {
+  await expect(page.locator('#letter-gate')).toContainText('Draft and Send are blocked');
+  const saved = page.waitForResponse(r => /\/letter-gate$/.test(r.url()) && r.request().method() === 'POST');
+  await page.locator('#send-without-polish').check();
+  expect((await saved).status()).toBe(200);
+  await expect(page.locator('#letter-gate')).toContainText('Sending without polishing');
+}
+
 const test = base.extend({
   app: async ({}, use) => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "contact-browser-"));
@@ -265,6 +274,7 @@ test("link selected moves only the checked row and retains the page sections", a
   const reviewId = await prepare(page, app);
   await availableRow(page, "selected").locator("input[type=checkbox]").check();
 
+  await allowUnpolished(page);
   const queued = page.waitForResponse(r=>r.url().endsWith('/api/outreach-queue/link-and-add')&&r.request().method()==='POST');
   await page.getByRole('button',{name:/^Link and add selected to queue/}).click();
   expect((await queued).status()).toBe(200);
@@ -450,6 +460,7 @@ test("organisation summary follows refresh domain saving and unlinking", async (
   expect((await app.store.listAll()).length).toBe(4);
 
   await availableRow(page, "linked").locator("input[type=checkbox]").check();
+  await allowUnpolished(page);
   const queued = page.waitForResponse(r=>r.url().endsWith('/api/outreach-queue/link-and-add')&&r.request().method()==='POST');
   await page.getByRole('button',{name:/^Link and add selected to queue/}).click();
   expect((await queued).status()).toBe(200);

@@ -279,3 +279,9 @@ html.review-workspace #polishing-model[data-workspace-choice-carrier],html.revie
  .workspace-section-nav .workspace-subsections a.workspace-subsection:hover{background:#f1f5f9;color:#1d4ed8}
 }
 
+
+/* Outreach letter gate */
+.letter-gate{margin:1rem 0;padding:.6rem .9rem;border-radius:.5rem;border:1px solid #fca5a5;background:#fef2f2;color:#7f1d1d}
+.letter-gate[data-allowed="true"]{border-color:#86efac;background:#f0fdf4;color:#14532d}
+.letter-gate p{margin:.1rem 0 .3rem;font-weight:600}
+.letter-gate label{font-size:.92em}

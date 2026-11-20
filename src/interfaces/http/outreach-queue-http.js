@@ -1,3 +1,5 @@
+import {polishGate, assertPolished} from '../../application/polish-gate.js';
+import {createGmailScheduling} from '../../application/gmail-scheduling.js';
 import {createSchedulingHttp} from './gmail-scheduling-http.js';
 import {createGmailSendService} from '../../application/gmail-send-service.js';
 // outreach-bulk-controls-v1
@@ -22,7 +24,12 @@ export function createOutreachHttpHandler({ repository, contactStore, getReview,
   const confirmedDrafts = gmailDraftCreationPort || createConfirmedGmailDraftService({repository,mailboxPort});
   const service = repository ? createOutreachQueueService({ repository, contactStore, getReview, tailoredAttachment }) : null;
   const sends=gmailSendPort||createGmailSendService({repository,mailboxPort});
-  const handleScheduling=createSchedulingHttp({sends,repository});
+  // Polish gate: queueing, drafting, sending and scheduling need the polished letter applied (or a deliberate override).
+  const gateForReview=reviewId=>polishGate(getReview?.(reviewId));
+  const assertQueueItemPolished=queueId=>{const item=service?.list().find(i=>i.id===queueId);if(item)assertPolished(getReview?.(item.reviewId));};
+  const baseScheduling=createGmailScheduling({sends,repository});
+  const gatedScheduling={...baseScheduling,prepare:async args=>{assertQueueItemPolished(args?.queueId);return baseScheduling.prepare(args);}};
+  const handleScheduling=createSchedulingHttp({sends,repository,scheduling:gatedScheduling});
   const messageEditor=repository?createQueueMessageEditor({repository}):null;
   const json = (response, code, data) => {
     response.writeHead(code, { 'content-type': 'application/json; charset=utf-8',
@@ -81,7 +88,7 @@ export function createOutreachHttpHandler({ repository, contactStore, getReview,
       }
       // outreach-send-pilot-v1
       if(request.method==='GET'&&route==='/api/outreach-queue/send-status'){json(response,200,{ok:true,...sends.getStatus()});return true;}
-      if(request.method==='POST'&&route==='/api/outreach-queue/send-prepare'){json(response,200,{ok:true,...await sends.prepare(await body(request))});return true;}
+      if(request.method==='POST'&&route==='/api/outreach-queue/send-prepare'){const values=await body(request);assertQueueItemPolished(values?.queueId);json(response,200,{ok:true,...await sends.prepare(values)});return true;}
       if(request.method==='POST'&&route==='/api/outreach-queue/send-cancel'){json(response,200,{ok:true,...sends.cancel(await body(request))});return true;}
       if(request.method==='POST'&&route==='/api/outreach-queue/send-commit'){
         const result=await sends.commit(await body(request));console.info('[OUTREACH_SEND]\n'+JSON.stringify({sent:result.sent,messageId:result.messageId||null,persistenceConfirmed:result.persistenceConfirmed!==false},null,2));
@@ -112,7 +119,7 @@ export function createOutreachHttpHandler({ repository, contactStore, getReview,
         json(response,200,{ok:true,...confirmedDrafts.getStatus()});return true;
       }
       if (request.method === 'POST' && route === '/api/outreach-queue/gmail-draft-preview') {
-        const values=await body(request);const result=await confirmedDrafts.preview(values);
+        const values=await body(request);assertQueueItemPolished(values?.queueId);const result=await confirmedDrafts.preview(values);
         json(response,200,{ok:true,...result});return true;
       }
       if (request.method === 'POST' && route === '/api/outreach-queue/gmail-draft-create') {
@@ -121,7 +128,7 @@ export function createOutreachHttpHandler({ repository, contactStore, getReview,
       }
       if(request.method==='POST'&&route==='/api/outreach-queue/draft-one'){
         if(typeof confirmedDrafts.draftOne!=='function')throw Object.assign(new Error('Direct drafting unavailable.'),{statusCode:503});
-        const values=await body(request);
+        const values=await body(request);assertQueueItemPolished(values?.queueId);
         console.info('[OUTREACH_ACTION]\n'+JSON.stringify({event:'draft_started',queueId:values.queueId},null,2));
         const result=await confirmedDrafts.draftOne(values);
         console.info('[OUTREACH_ACTION]\n'+JSON.stringify({event:'draft_result',queueId:values.queueId,created:result.created===true,draftId:result.draftId||null,persistenceConfirmed:result.persistenceConfirmed!==false},null,2));
@@ -133,7 +140,8 @@ export function createOutreachHttpHandler({ repository, contactStore, getReview,
         const scope=url.searchParams.get('reviewId');
         if(scope!==null&&(!/^[A-Za-z0-9-]{1,100}$/.test(scope)||!getReview(scope))){json(response,404,{ok:false,error:'Application review not found; no queue records returned.'});return true;}
         const items=service.list().filter(item=>scope===null||item.reviewId===scope).map(item=>{const operation=item.draftOperationId&&repository.getDraftOperationById?.(item.draftOperationId);
-          return {...item,sendAction:sends.eligibility(item,sendStatus.configuredMailbox),...messagePresentation(item,{attempted:messageAttempts.some(a=>a.applicationKey===item.applicationKey&&a.recipientKey===String(item.email||'').toLowerCase())}),safeToRetry:operation?.status==='failed'&&operation.safeToRetry===true};});
+          const letterGate=gateForReview(item.reviewId),eligibility=sends.eligibility(item,sendStatus.configuredMailbox);
+          return {...item,letterGate,sendAction:letterGate.allowed||item.status==='sent'?eligibility:{...eligibility,eligible:false,reason:letterGate.message},...messagePresentation(item,{attempted:messageAttempts.some(a=>a.applicationKey===item.applicationKey&&a.recipientKey===String(item.email||'').toLowerCase())}),safeToRetry:operation?.status==='failed'&&operation.safeToRetry===true};});
         json(response, 200, { ok: true, items }); return true;
       }
       if (request.method === 'POST' && route !== '/api/outreach-queue') {
@@ -142,6 +150,7 @@ export function createOutreachHttpHandler({ repository, contactStore, getReview,
         if(route==='/api/outreach-queue/link-and-add'){
           const review=getReview(values.reviewId);
           if(!review)throw Object.assign(new Error('The application review expired. Prepare it again.'),{statusCode:410});
+          assertPolished(review);
           if(!contactStore?.saveOutreachCandidates)throw Object.assign(new Error('Contact editing is unavailable.'),{statusCode:503});
           if(!Array.isArray(values.rows)||!values.rows.length||values.rows.length>100)throw Object.assign(new Error('Select between 1 and 100 address rows.'),{statusCode:400});
           const snapshot=snapshotMessage(values.bodyPlainText,values.bodyHtml,review.formData?.jobAdvertLink||'');
@@ -151,7 +160,7 @@ export function createOutreachHttpHandler({ repository, contactStore, getReview,
           try{result=await service.add({...values,recipients,finalizeIdentity:true});}
           catch(error){error.message='Contacts saved and linked; queueing failed: '+error.message;throw error;}
         }
-        else if (route === '/api/outreach-queue/add') result = await service.add(values);
+        else if (route === '/api/outreach-queue/add') { const queuedReview = getReview(values.reviewId); if (queuedReview) assertPolished(queuedReview); result = await service.add(values); }
         else if (route === '/api/outreach-queue/prepare-drafts') result = service.prepareDrafts(values);
         else if (route === '/api/outreach-queue/delete') result = service.deleteSelected(values);
         else if (route === '/api/outreach-queue/clear') result = service.clear(values);
