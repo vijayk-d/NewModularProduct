@@ -5,6 +5,7 @@ export function partitionQueueSelection(items,ids,kind){
  for(const id of new Set(ids)){
   const item=byId.get(id);let reason='';
   if(!item)reason='Row no longer exists.';
+  else if(item.letterGate&&item.letterGate.allowed===false&&kind!=='remove')reason=item.letterGate.message;
   else if(kind==='draft'&&!(item.status==='new'||(item.status==='draft_failed'&&item.safeToRetry===true)))reason='Not a new/safe failed draft.';
   else if(kind==='send'&&(item.status==='sent'||item.sendAction?.mode==='repeat'))reason='Already sent; use explicit row-level Send again.';
   else if(kind==='send'&&!(item.sendAction?.eligible===true&&['new','draft'].includes(item.sendAction.mode)))reason=item.sendAction?.reason||'Not eligible for sending.';

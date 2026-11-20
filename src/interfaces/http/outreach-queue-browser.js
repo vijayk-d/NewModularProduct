@@ -84,7 +84,8 @@ function startOutreachQueue() {
       row.insertCell().appendChild(createQueueMessageControl(item));
       // outreach-actions-hotfix-v1
       const actionCell=row.insertCell();
-      const eligible=item.status==='new'||(item.status==='draft_failed'&&item.safeToRetry===true);
+      const blocked=item.letterGate&&item.letterGate.allowed===false;
+      const eligible=!blocked&&(item.status==='new'||(item.status==='draft_failed'&&item.safeToRetry===true));
       const draftButton=document.createElement('button');
       draftButton.type='button';draftButton.textContent=item.status==='draft_failed'?'Retry draft':'Draft';draftButton.setAttribute('aria-label',draftButton.textContent+' for '+(item.fullName||item.email));
       if(eligible){
@@ -94,7 +95,7 @@ function startOutreachQueue() {
         draftButton.title='Create a draft only. Nothing is sent.';
       }else{
         draftButton.disabled=true;
-        draftButton.title=item.status==='drafted'?'A Gmail draft already exists. Repeat-draft creation is not included yet.':
+        draftButton.title=blocked?item.letterGate.message:item.status==='drafted'?'A Gmail draft already exists. Repeat-draft creation is not included yet.':
           'This operation is not eligible for creation. Check its recorded outcome before retrying.';
       }
       actionCell.appendChild(draftButton);

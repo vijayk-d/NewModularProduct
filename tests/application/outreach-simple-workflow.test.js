@@ -61,7 +61,7 @@ test('edited address preserves manual origin and never becomes verified',async t
 });
 test('plain-only link flow retains names and CV metadata',async t=>{
  const store=await contactFixture(t),recipients=await store.saveOutreachCandidates({reviewId:'r',rows:[contactRow]});let items;
- const service=createOutreachQueueService({contactStore:store,getReview:()=>({formData:{jobTitle:'Delivery Manager'},prepared:{coverLetter:{subject:'Application | Vijay DAFAL'},recommendation:{bestCv:{role_code:'DM',local_path:'cv.pdf'}}}}),repository:{addMany(value){items=value;return {added:value.length};}}});
+ const service=createOutreachQueueService({contactStore:store,getReview:()=>({refinementHistory:[{appliedAt:'2026-11-20T10:00:00Z'}],formData:{jobTitle:'Delivery Manager'},prepared:{coverLetter:{subject:'Application | Vijay DAFAL'},recommendation:{bestCv:{role_code:'DM',local_path:'cv.pdf'}}}}),repository:{addMany(value){items=value;return {added:value.length};}}});
  await service.add({reviewId:'r',recipients,bodyPlainText:plain,finalizeIdentity:true});assert.equal(items[0].firstname,'Zoe');assert.equal(items[0].attachment.relativePath,'cv.pdf');assert.match(items[0].bodyPlainText,/^Dear Zoe,/);
 });
 test('direct Draft performs one internally prepared creation',async t=>{const f=await fixture(t);const r=await f.service.draftOne({queueId:f.queue.id,confirmed:true});assert.equal(r.created,true);assert.equal(f.calls,1);});
@@ -90,6 +90,6 @@ test('direct Draft rejects cross-origin requests',async()=>{
  const handler=createOutreachHttpHandler({gmailDraftCreationPort:{draftOne(){assert.fail('must not draft');}}});assert.equal((await request(handler,'/api/outreach-queue/draft-one',{},'https://untrusted.test')).code,403);
 });
 test('bad letter is rejected before contact save',async()=>{
- const handler=createOutreachHttpHandler({repository:{list:()=>[]},getReview:()=>({formData:{},prepared:{coverLetter:{subject:'Application'}}}),contactStore:{saveOutreachCandidates(){assert.fail('must not save');}}});
+ const handler=createOutreachHttpHandler({repository:{list:()=>[]},getReview:()=>({refinementHistory:[{appliedAt:'2026-11-20T10:00:00Z'}],formData:{},prepared:{coverLetter:{subject:'Application'}}}),contactStore:{saveOutreachCandidates(){assert.fail('must not save');}}});
  assert.equal((await request(handler,'/api/outreach-queue/link-and-add',{reviewId:'r',rows:[contactRow],bodyPlainText:'No signature'})).code,400);
 });

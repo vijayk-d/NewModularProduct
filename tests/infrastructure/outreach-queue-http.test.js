@@ -10,7 +10,7 @@ async function fixture(t) {
   let active = true;
   const contact = { id: 'c1', fullName: 'Test Person', selectedEmail: 'test@company.test',
     emailCandidates: ['other@company.test'], emailSource: 'inferred', verified: false };
-  const review = { formData: { jobTitle: 'Delivery lead', organisationName: 'Company', jobAdvertLink: 'https://company.test/job/1' },
+  const review = { refinementHistory: [{appliedAt: '2026-11-20T10:00:00Z'}], formData: { jobTitle: 'Delivery lead', organisationName: 'Company', jobAdvertLink: 'https://company.test/job/1' },
     prepared: { coverLetter: { subject: 'Application for delivery lead' } } };
   const handler = createOutreachHttpHandler({ repository,
     contactStore: { async listByReview() { return [contact]; } },
