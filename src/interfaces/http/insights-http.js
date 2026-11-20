@@ -1,3 +1,4 @@
+import {insightPatterns} from '../../domain/insights/insight-patterns.js';
 // Insights data page (/insights/data) and JSON (/api/insights/features): the feature snapshot, read-only, plus a rebuild.
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 const LABELS = {
@@ -46,10 +47,37 @@ ${l.gaps.length ? l.gaps.slice(0, 25).map(g => `<div class="gap" data-gap="${esc
 </main></body></html>`;
 }
 
+// Insights page (/insights): rates per choice, shown only for groups with enough outcomes. Correlation, not cause.
+export function renderInsights(p, {builtAt = null, labels = new Map()} = {}) {
+  const o = p.overall, min = p.minGroupOutcomes;
+  const rate = g => g.ready ? pct(g.responseRate) : `<span class="muted">needs ${g.needed} more</span>`;
+  const irate = g => g.ready ? pct(g.interviewRate) : '—';
+  const diff = g => g.versusOverall === null ? '' : `<span class="${g.versusOverall >= 0 ? 'up' : 'down'}">${g.versusOverall >= 0 ? '+' : ''}${g.versusOverall} pts</span>`;
+  const section = d => `<section aria-labelledby="dim-${esc(d.id)}" data-dimension="${esc(d.id)}"><h2 id="dim-${esc(d.id)}">${esc(d.label)}</h2>
+<div class="scroll"><table><thead><tr><th scope="col">${esc(d.label)}</th><th scope="col">Applications</th><th scope="col">With outcome</th><th scope="col">Response rate</th><th scope="col">Interview rate</th><th scope="col">Versus overall</th></tr></thead><tbody>
+${d.groups.map(g => `<tr data-group="${esc(g.value)}" data-ready="${g.ready}"><td>${esc(g.value)}</td><td>${g.applications}</td><td>${g.decided}</td><td>${rate(g)}</td><td>${irate(g)}</td><td>${diff(g)}</td></tr>`).join('')}
+</tbody></table></div></section>`;
+  const evidence = p.interviewEvidence.slice(0, 25);
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Insights</title>
+<style>body{font:16px/1.5 system-ui,sans-serif;background:#f5f7fb;color:#172033;margin:0}main{max-width:1200px;margin:auto;padding:24px}section{background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:16px 18px;margin:16px 0}
+h2{margin:0 0 .5rem;font-size:1.15rem}.scroll{overflow:auto}table{border-collapse:collapse;width:100%;font-size:.92rem}th,td{border-bottom:1px solid #e2e8f0;padding:6px 8px;text-align:left;vertical-align:top}th{color:#475569}
+.muted{color:#475569;font-size:.92rem}.up{color:#166534}.down{color:#9a3412}.note{border-left:4px solid #2563eb;background:#eff6ff;padding:.6rem .8rem}</style></head><body><main>
+<h1>Insights</h1>
+<p data-insights-overall>${o.applications} application${o.applications === 1 ? '' : 's'}, ${o.decided} with an outcome. ${o.ready ? `Overall: ${pct(o.responseRate)} got a response, ${pct(o.interviewRate)} reached interview.` : `Overall rates show once ${min} applications have an outcome (${o.needed} more needed).`}</p>
+<p class="note">These are patterns in your own applications, not causes: a group may do better for reasons this page cannot see (the market, the advert, timing). A rate shows only once a group has ${min} applications with an outcome; smaller groups show how many more are needed. Nothing here changes your CVs, letters or evidence, and nothing leaves this PC.</p>
+${p.dimensions.map(section).join('\n')}
+<section aria-labelledby="interview-evidence"><h2 id="interview-evidence">Evidence in applications that reached interview</h2>
+${evidence.length ? `<div class="scroll"><table><thead><tr><th scope="col">Evidence</th><th scope="col">Interviews or offers</th></tr></thead><tbody>${evidence.map(e => `<tr data-evidence="${esc(e.key)}"><td>${esc(labels.get(e.key) || (e.key.startsWith('scn:') ? 'Polishing scenario' : '(no longer in the snapshot)'))}</td><td>${e.interviews}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No interviews or offers recorded yet.</p>'}
+<p class="muted">Keyword gaps and response rates per evidence line are on <a href="/insights/evidence">Evidence learning</a>.</p></section>
+<section aria-labelledby="spend"><h2 id="spend">Spend per application</h2><p class="muted">Not available yet: the cost of paid calls is not stored per application.</p></section>
+<p class="muted">Updated with the Insights data snapshot${builtAt ? ' (' + esc(new Date(builtAt).toISOString().replace('T', ' ').slice(0, 16)) + ' UTC)' : ''}. <a href="/insights/data">Insights data</a> · <a href="/api/insights/patterns">JSON</a></p>
+</main></body></html>`;
+}
+
 export function createInsightsHandler({snapshot, learning = null, sendJson, sendHtml}) {
   return async (req, res, url) => {
     const method = req.method || 'GET', route = url.pathname;
-    if (!((method === 'GET' && ['/insights/data', '/api/insights/features', '/insights/evidence', '/api/insights/evidence'].includes(route)) || (method === 'POST' && ['/insights/rebuild', '/api/insights/rebuild'].includes(route)))) return false;
+    if (!((method === 'GET' && ['/insights', '/api/insights/patterns', '/insights/data', '/api/insights/features', '/insights/evidence', '/api/insights/evidence'].includes(route)) || (method === 'POST' && ['/insights/rebuild', '/api/insights/rebuild'].includes(route)))) return false;
     const origin = req.headers.origin;
     if ((origin && origin !== `http://${req.headers.host}` && origin !== `https://${req.headers.host}`) || req.headers['sec-fetch-site'] === 'cross-site') { sendJson(res, 403, {ok: false, error: 'Cross-origin access is not allowed.'}); return true; }
     if (!snapshot) { sendJson(res, 503, {ok: false, error: 'Insights are unavailable in this configuration.'}); return true; }
@@ -57,6 +85,14 @@ export function createInsightsHandler({snapshot, learning = null, sendJson, send
       if (!learning) { sendJson(res, 503, {ok: false, error: 'Evidence learning is unavailable in this configuration.'}); return true; }
       const l = learning.summary();
       if (route === '/api/insights/evidence') sendJson(res, 200, {ok: true, ...l}); else sendHtml(res, 200, renderEvidenceLearning(l));
+      return true;
+    }
+    if (route === '/insights' || route === '/api/insights/patterns') {
+      const {rows, builtAt} = snapshot.read(), patterns = insightPatterns(rows);
+      let labels = new Map();
+      try { if (learning) labels = new Map(learning.summary().evidence.filter(e => e.label).map(e => [e.key, e.label])); } catch { /* labels are optional */ }
+      if (route === '/api/insights/patterns') sendJson(res, 200, {ok: true, builtAt, ...patterns});
+      else sendHtml(res, 200, renderInsights(patterns, {builtAt, labels}));
       return true;
     }
     if (method === 'POST') {

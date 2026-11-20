@@ -25,6 +25,7 @@ export const NAV_GROUPS = Object.freeze([
     { href: '/', label: 'New application', icon: I.add, match: (p) => p === '/' },
     { href: '/applications', label: 'Saved applications', icon: I.folder, match: (p) => p === '/applications' || p.startsWith('/applications/') || p === '/application-reviews' },
     { href: '/dashboard', label: 'Dashboard', icon: I.chart },
+    { href: '/insights', label: 'Insights', icon: I.chart, match: (p) => p === '/insights' },
     { href: '/insights/data', label: 'Insights data', icon: I.pulse },
     { href: '/insights/evidence', label: 'Evidence learning', icon: I.evidence },
   ] },
