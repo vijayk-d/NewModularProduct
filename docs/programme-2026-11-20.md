@@ -42,7 +42,18 @@ Status:
    - Each card shows the Word file, sections, top terms and last indexed time.
    - Search and filter, and actions grouped as Library, Indexing and Check.
 
-## Slice 2 — Evidence engine (next)
+## Slice 2 — Evidence engine (built on `feat/evidence-engine`, not yet merged)
+Status:
+- **Built:**
+  - **What each application used:** the feature snapshot now records it as keys (selected achievements and polishing scenarios), along with the job's top terms and the terms missing from the chosen CV. Labels (achievement text, scenario titles) are kept in a separate `evidence_items` table in `application-insights-v1.db`, rebuilt with the snapshot.
+  - **What it learns,** per item: uses, uses with an outcome, response and interview rates (from 5 decided uses), and when it was last used. Per job term: how many adverts asked for it, and how often it was missing (a gap is at least 3 adverts and missing in at least half).
+  - **Where it shows:**
+    - The achievement checklist shows a learned note on each statement.
+    - "Best 12" ranking takes a bounded nudge (at most ±2) once there are enough outcomes.
+    - A new **Evidence learning** page (Applications menu, `/insights/evidence`) lists proven evidence, gaps and evidence still building a record.
+- **Separate branch `fix/backup-all-stores`:** release backups now cover every store, the PDF and template folders, and the shared CV library, including the evidence database.
+- **Owner step for production:** switch on **Evidence library** in Feature toggles. It already uses the shared folder when `NMP_CV_LIBRARY_DIRECTORY` is set.
+- **Not yet built:** offering approved tailored-CV or answer wording as candidate scenario wording.
 1. **Production, shared.**
    - The evidence library runs in production from the shared folder (feature toggle).
    - The shared folders are added to release backups.

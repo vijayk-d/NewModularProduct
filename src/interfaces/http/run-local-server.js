@@ -19,6 +19,7 @@ import {createApplicationInsightsStore} from '../../infrastructure/applications/
 import {createApplicationAnswersStore} from '../../infrastructure/applications/sqlite-application-answers-store.js';
 import {createQuestionAnswerWriter} from '../../infrastructure/refinement/perplexity-question-answer-adapter.js';
 import {createInsightsSnapshot} from '../../application/insights-snapshot.js';
+import {createEvidenceLearning} from '../../application/evidence-learning.js';
 import {attachIndexedText,withoutCvText,describeSections} from '../../application/cv-text-index.js';
 import {createTemplateCoverLetterDocuments} from '../../infrastructure/documents/template-cover-letter.js';
 import {createSqliteJobImportStore} from '../../infrastructure/applications/sqlite-job-import-store.js';
@@ -170,7 +171,9 @@ try{answersStore=createApplicationAnswersStore({filePath:path.join(deployment.st
 
 // Insights phase 2: the feature snapshot, rebuilt in the background from local data only.
 const insightsSnapshot=insightsStore?createInsightsSnapshot({reviews:applicationReviewStore,store:insightsStore,jobImports:jobImportService,
-  portalExports:()=>workflowAutomationStore?workflowAutomationStore.portalExports():[],sentEmails:()=>outreachRepository.listSentEmails(),tailoredLatest:id=>cvTailoringStore?cvTailoringStore.latest(id):null}):null;
+  portalExports:()=>workflowAutomationStore?workflowAutomationStore.portalExports():[],sentEmails:()=>outreachRepository.listSentEmails(),tailoredLatest:id=>cvTailoringStore?cvTailoringStore.latest(id):null,
+  scenarioLabel:(scenarioId,assignmentId)=>{try{const a=assignmentId?assignmentEvidenceStore?.get?.(assignmentId):null,s=a?.scenarios?.find(x=>x.id===scenarioId);return s?.title||s?.data?.title||'';}catch{return '';}}}):null;
+const evidenceLearning=insightsStore?createEvidenceLearning({store:insightsStore}):null;
 insightsSnapshot?.start();
 
 // The CV library (when enabled) supplies indexed CV text for ranking; set once it is installed below.
@@ -200,6 +203,7 @@ const server = createLocalServer({
   cvTailoringService,
   insightsStore,
   insightsSnapshot,
+  evidenceLearning,
   answersStore,
   questionWriter:createQuestionAnswerWriter({apiKey:config.integrations.perplexity.apiKey,enabled:config.features.enableCoverLetterRefinement}),
   tailoredCvLatest:cvTailoringStore?id=>cvTailoringStore.latest(id):null,

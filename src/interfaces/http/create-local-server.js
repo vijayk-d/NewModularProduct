@@ -229,6 +229,7 @@ export function createLocalServer({
   questionWriter = null,
   tailoredCvLatest = null,
   insightsSnapshot = null,
+  evidenceLearning = null,
   candidateDisplayName = "Candidate",
   portalExports = null,
   coverLetterRefinementPort = null,
@@ -450,7 +451,9 @@ export function createLocalServer({
     }
   }
 
-  const handleAchievementPreparation=createAchievementPreparationHandler({service:achievementEvidenceService,sendJson,sendText});
+  // The checklist carries what has been learned about each statement (when the evidence engine is available).
+  const achievementService=achievementEvidenceService&&evidenceLearning?{...achievementEvidenceService,load:async body=>evidenceLearning.annotate(await achievementEvidenceService.load(body))}:achievementEvidenceService;
+  const handleAchievementPreparation=createAchievementPreparationHandler({service:achievementService,sendJson,sendText});
   const handleJobs=createJobImportHandler({service:jobImportService,getReview:id=>reviewStore.get(id),contactStore:recruiterContactStore,sendJson,sendText,reviews:reviewStore,outreach:outreachRepository,portalExports});
   const handleSavedDelete=createSavedApplicationDeleteHandler({store:reviewStore,contactStore:recruiterContactStore,outreachRepository,sendJson,sendText});
   const handleOrganisationContacts=createOrganisationContactHandler({contactStore:recruiterContactStore,outreachRepository,getReview:id=>reviewStore.get(id),sendJson});
@@ -462,7 +465,7 @@ export function createLocalServer({
     tailoredLatest:id=>typeof tailoredCvLatest==='function'?tailoredCvLatest(id):null,
     scenarioEvidence:review=>{try{const refs=review.polishingScenarios?.references||[];if(!refs.length||!assignmentEvidenceStore)return [];const ev=approvedScenarioRequest(resolveScenarioSelection(assignmentEvidenceStore,JSON.stringify(refs))).approvedScenarioEvidence||[];return ev.map(s=>({text:s.approvedWording,source:'Approved scenario'+(s.organisation?' ('+s.organisation+')':'')}));}catch{return [];}}}):null;
   const handleQuestions=createApplicationQuestionsHandler({service:questionsService,sendJson,sendText});
-  const handleInsights=createInsightsHandler({snapshot:insightsSnapshot,sendJson,sendHtml});
+  const handleInsights=createInsightsHandler({snapshot:insightsSnapshot,learning:evidenceLearning,sendJson,sendHtml});
   const handleOutcomes=createApplicationOutcomesHandler({store:insightsStore,getReview:id=>reviewStore.get(id),sendJson,sendText,onChange:()=>insightsSnapshot?.schedule()});
   const handleCvTailoring=createCvTailoringHandler({service:cvTailoringService,getReview:id=>reviewStore.get(id),sendJson,sendText,candidateName:candidateDisplayName,outputFolder:applicationOutputFolder});
   const handleCvDocument=createCvDocumentHandler({store:reviewStore,inventory:cvInventoryRepository,adapter:cvDocumentAdapter});
