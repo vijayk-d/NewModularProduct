@@ -1,5 +1,5 @@
 """Explicit one-time scheduler authorisation/setup. Existing Gmail credentials and flags remain untouched."""
-import argparse,base64,hashlib,hmac,http.server,importlib.util,json,os,re,secrets,shutil,subprocess,sys,tempfile,time,urllib.parse,urllib.request,webbrowser
+import argparse,base64,hashlib,hmac,http.server,importlib.util,json,os,re,secrets,shutil,subprocess,sys,tempfile,time,urllib.error,urllib.parse,urllib.request,webbrowser
 from pathlib import Path
 from datetime import datetime,timezone
 sys.dont_write_bytecode=True
@@ -53,7 +53,18 @@ def make_handler(expected_state,box):
    self.send_response(200);self.send_header('Content-Type','text/plain; charset=utf-8');self.end_headers();self.wfile.write(b'Authorisation response received. Close this tab and return to the setup tool. No email was sent.')
  return Callback
 
-def google_json(url,body=None,access_token=None):
+def safe_google_error(error):
+ # Google's error code and short description name the problem (e.g. invalid_grant: Bad Request); they never contain tokens.
+ code=getattr(error,'code',None)
+ try:
+  value=json.loads(error.read(8192).decode('utf-8'))
+  name=value.get('error');detail=value.get('error_description','')
+  if isinstance(name,dict):detail=name.get('message','');name=name.get('status','')
+ except Exception:name,detail='',''
+ clean=lambda text:re.sub(r'[^A-Za-z0-9 _.,:;()\'/-]','',str(text or ''))[:160]
+ return 'HTTP '+str(code)+(', '+clean(name) if name else '')+(': '+clean(detail) if detail else '')
+
+def google_json(url,body=None,access_token=None,stage='Google'):
  data=urllib.parse.urlencode(body).encode('ascii') if body is not None else None
  headers={'Accept':'application/json'}
  if data is not None:headers['Content-Type']='application/x-www-form-urlencoded'
@@ -61,7 +72,8 @@ def google_json(url,body=None,access_token=None):
  try:
   with urllib.request.urlopen(urllib.request.Request(url,data=data,headers=headers),timeout=30) as response:
    raw=response.read(1024*1024+1);require(len(raw)<=1024*1024,'Google response exceeded limit.');return json.loads(raw.decode('utf-8'))
- except Exception:raise RuntimeError('Google authorisation/identity request failed. No token or provider response was logged.') from None
+ except urllib.error.HTTPError as error:raise RuntimeError(stage+' request failed ('+safe_google_error(error)+'). No token was logged.') from None
+ except Exception as error:raise RuntimeError(stage+' request could not reach Google ('+type(error).__name__+'). No token was logged.') from None
 
 def validate_tokens(tokens,expected,identity):
  granted=set(str(tokens.get('scope','')).split())
@@ -83,8 +95,8 @@ def authorise(client,account):
  require(not box.get('error'),box.get('error','Authorisation failed.'))
  body={'grant_type':'authorization_code','code':box['code'],'code_verifier':verifier,'client_id':client['client_id'],'redirect_uri':redirect}
  if client.get('client_secret'):body['client_secret']=client['client_secret']
- tokens=google_json(TOKEN_URL,body=body);require(isinstance(tokens.get('access_token'),str) and tokens['access_token'],'Google returned no access token.')
- identity=google_json(USERINFO_URL,access_token=tokens['access_token'])
+ tokens=google_json(TOKEN_URL,body=body,stage='Token exchange');require(isinstance(tokens.get('access_token'),str) and tokens['access_token'],'Google returned no access token.')
+ identity=google_json(USERINFO_URL,access_token=tokens['access_token'],stage='Account identity')
  return validate_tokens(tokens,account,identity)
 
 def update_config(file,updates,expected_raw,backup_root):
