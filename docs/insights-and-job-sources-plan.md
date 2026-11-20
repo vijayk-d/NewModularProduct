@@ -50,6 +50,7 @@ Without outcomes the engine can only describe activity, not learn. So the first 
      - cost of paid calls.
    - It runs in the background, makes no network calls and can be rebuilt at any time.
 3. **Insights page** (medium).
+   **Built on branch `feat/insights-page` (20 November 2026):** `/insights` (Applications menu, JSON at `/api/insights/patterns`) shows response and interview rates by CV, role family, level, letter tone, letter length, tailored or not, ATS band, channel and advertiser, each compared with the overall rate; evidence in applications that reached interview; keyword gaps stay on Evidence learning. Spend is shown as not available yet (cost is not stored per application).
    - Response and interview rates by CV, role family, tone, length, tailored versus not, and ATS band.
    - Advert keywords that keep appearing but are missing from your CVs. This is a skills gap list to improve the CV library honestly.
    - Which scenarios and achievements appeared in applications that reached interview.
