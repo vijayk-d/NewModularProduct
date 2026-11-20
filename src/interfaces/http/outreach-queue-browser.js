@@ -1,7 +1,7 @@
 import {attachOutreachSchedule} from './outreach-schedule.js';
 import {renderHistoryRows} from './review-workspace.js';
 import {createQueueRole} from './review-flow-view.js';
-import {partitionQueueSelection,executeBulkSend,showBulkConfirmation,executeOneClickBulkSend,executeOneClickSend,shortSendLabel} from './outreach-bulk.js';
+import {partitionQueueSelection,skipSummary,executeBulkSend,showBulkConfirmation,executeOneClickBulkSend,executeOneClickSend,shortSendLabel} from './outreach-bulk.js';
 import { createQueueMessageControl, saveQueuedMessageBeforeDraft, queueSendIntentItem } from './queue-message-editor.js';
 import { attachSimpleContacts } from './outreach-simple-contacts.js';
 function startOutreachQueue() {
@@ -265,6 +265,9 @@ function startOutreachQueue() {
   // outreach-bulk-controls-v1
   const selectionNote=document.createElement('span');selectionNote.className='outreach-selection-count';selectionNote.setAttribute('role','status');selectionNote.setAttribute('aria-live','polite');
   section.querySelector('.outreach-bulk-toolbar').appendChild(selectionNote);
+  // Says why checked rows cannot be sent or scheduled, so a zero count is never a mystery.
+  const skipNote=document.createElement('p');skipNote.className='outreach-skip-reasons';skipNote.dataset.queueSkipReasons='';skipNote.setAttribute('role','status');skipNote.hidden=true;
+  section.querySelector('.outreach-bulk-toolbar').after(skipNote);
   const stopBulkButton=document.createElement('button');stopBulkButton.type='button';stopBulkButton.textContent='Stop after current';stopBulkButton.hidden=true;
   stopBulkButton.setAttribute('aria-label','Stop bulk sending after the current operation');section.querySelector('.outreach-bulk-toolbar').appendChild(stopBulkButton);
   let stopBulk=false;stopBulkButton.addEventListener('click',()=>{stopBulk=true;stopBulkButton.disabled=true;status.textContent='Stopping after the current operation. An email already sending cannot be recalled here.';});
@@ -275,6 +278,7 @@ function startOutreachQueue() {
     const draftButton=section.querySelector('[data-queue-action="draft-direct"]'),sendButton=section.querySelector('[data-queue-action="send-selected"]'),remove=section.querySelector('[data-queue-action="delete"]');
     draftButton.textContent=`Draft (${draft.eligible.length})`;draftButton.disabled=directBusy||!liveDraftConfig?.draftCreationEnabled||!liveDraftConfig?.configurationReady||!draft.eligible.length;
     sendButton.textContent=`Send ${send.eligible.length} emails`;sendButton.disabled=directBusy||!sendConfiguration?.sendingEnabled||!send.eligible.length;
+    const skipped=skipSummary(send);skipNote.hidden=!skipped;skipNote.textContent=skipped?`Not sendable or schedulable: ${skipped}`:'';
     remove.textContent=`Remove (${ids.length})`;remove.disabled=directBusy||!ids.length;
     draftButton.setAttribute('aria-label',`Draft ${draft.eligible.length} selected eligible recipients`);sendButton.setAttribute('aria-label',`Send ${send.eligible.length} selected eligible recipients`);remove.setAttribute('aria-label',`Remove ${ids.length} selected queue rows`);
     section.querySelector('[data-queue-action="refresh"]').disabled=directBusy;section.querySelector('[data-queue-action="clear"]').disabled=directBusy||!bulkQueueItems.length;

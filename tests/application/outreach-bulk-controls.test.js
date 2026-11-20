@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {partitionQueueSelection,executeBulkSend,shortSendLabel} from '../../src/interfaces/http/outreach-bulk.js';
+import {partitionQueueSelection,executeBulkSend,shortSendLabel,skipSummary} from '../../src/interfaces/http/outreach-bulk.js';
 const item=(id,extra={})=>({id,applicationKey:'app',contactId:id,email:id+'@business.test',status:'new',sendAction:{eligible:true,mode:'new',label:'Send email'},...extra});
 function fixture({items=[item('a'),item('b')],confirm=true,prepareError,commitError,repeatRace,expires=false,stopAfterFirst=false,saveError}={}){
  const calls=[],saved=[],confirmations=[];let stopped=false;const now=100000;
@@ -59,4 +59,10 @@ test('capacity error pauses preparation without opening confirmation',async()=>{
   if(p.queueId==='b')throw new Error('Too many pending confirmations');return {ticket:'a',expiresAt:999999,mode:'new',recipient:'a@business.test'};
  }});
  assert.equal(calls.some(c=>c[1].queueId==='c'),false);assert.equal(approved,undefined);assert.equal(result.confirmed,false);assert.ok(result.results.some(r=>r.kind==='stopped'));
+});
+test('skip summary explains each distinct reason once with a row count',()=>{
+ const sel=partitionQueueSelection([item('a',{status:'sent'}),item('b',{status:'sent'}),item('c',{letterGate:{allowed:false,message:'Not polished.'}}),item('d')],['a','b','c','d'],'send');
+ assert.equal(sel.eligible.length,1);
+ assert.equal(skipSummary(sel),'Already sent; use explicit row-level Send again. (2 rows) Not polished.');
+ assert.equal(skipSummary({skipped:[]}),'');
 });

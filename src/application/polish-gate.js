@@ -6,7 +6,8 @@ export function polishGate(review) {
   const overridden = review?.sendWithoutPolish === true;
   const allowed = applied || overridden;
   let message = '';
-  if (!allowed) message = pending
+  if (!allowed && !review) message = 'The saved application for this row is no longer available, so its letter cannot be checked. Remove the row, then add it again from the application.';
+  else if (!allowed) message = pending
     ? 'A polished proposal is waiting. Click "Use proposal as current draft" on the application before drafting or sending.'
     : 'This letter has not been polished. Polish it and click "Use proposal as current draft", or tick "Send without polishing" on the application.';
   return {allowed, applied, pending, overridden, message};

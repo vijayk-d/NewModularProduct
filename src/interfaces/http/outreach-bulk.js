@@ -123,3 +123,9 @@ export async function executeOneClickBulkSend({clickedItems,ids,account,userInit
  if(blocked)result.results=result.results.map(r=>['cancelled','stopped'].includes(r.kind)?{...r,kind:'stopped',message:blocked}:r);return {...result,results:[...picked.skipped,...result.results]};
 }
 export async function executeOneClickSend({item,account,userInitiated=false,api,save,loadItems,onStage=()=>{},now=()=>Date.now()}){const r=clickedRows([item],[item.id],account,userInitiated)[0];if(!r.sendAction?.eligible||!['new','draft','repeat'].includes(r.sendAction.mode))throw intentError('This row is not eligible for the labelled send action.');const {frozen}=await freeze([r],save,loadItems);let p;try{onStage('preparing');p=await api('/api/outreach-queue/send-prepare',{queueId:r.id,...expected(frozen[0],account)});valid(p,r,account,now);onStage('sending');const result=await api('/api/outreach-queue/send-commit',{ticket:p.ticket,confirmed:true,repeatApproved:r.sendAction.mode==='repeat'});if(result.sent!==true||!result.messageId)throw intentError('No confirmed send receipt. Check Gmail before retrying.');return result;}finally{if(p?.ticket)try{await api('/api/outreach-queue/send-cancel',{ticket:p.ticket});}catch{}}}
+
+// Why checked rows were left out of a bulk action, e.g. "Already sent; use explicit row-level Send again. (2 rows)".
+export function skipSummary(selection){
+ const counts=new Map();for(const s of selection?.skipped||[])counts.set(s.message,(counts.get(s.message)||0)+1);
+ return [...counts].map(([message,n])=>message+(n>1?' ('+n+' rows)':'')).join(' ');
+}
