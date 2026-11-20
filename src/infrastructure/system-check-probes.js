@@ -30,7 +30,7 @@ async function folderSize(dir, limit = 20000) {
 }
 
 export function createSystemCheckProbes({stateDirectory, cvFolder = '', outputFolder = '', outputForbidden = [], cvTailoringService = null, cvLibrary = null, locateWord = null, probeFiles = null,
-  config = {}, env = process.env, platform = process.platform, wordPaths = WORD_PATHS, now = () => new Date(), minFreeMemoryGb = Number(env.NMP_MIN_FREE_MEMORY_GB) || 3}) {
+  config = {}, schedulerReadiness = null, env = process.env, platform = process.platform, wordPaths = WORD_PATHS, now = () => new Date(), minFreeMemoryGb = Number(env.NMP_MIN_FREE_MEMORY_GB) || 3}) {
   let host = null;
   // One probe call for memory and CV file availability, shared by the checks that need it.
   async function hostProbe() {
@@ -126,6 +126,9 @@ export function createSystemCheckProbes({stateDirectory, cvFolder = '', outputFo
       const configured = Boolean(String(config.integrations?.gmail?.clientId || '').trim() && String(config.integrations?.gmail?.clientSecret || '').trim());
       const detail = 'On: ' + parts.map(([n, v]) => `${n} ${on(v) ? 'on' : 'off'}`).join(', ') + '.';
       return configured ? {status: 'pass', detail} : {status: 'fail', detail: detail + ' Gmail client credentials are not configured.', fix: 'Add the Gmail OAuth client settings to the .env file, or set ENABLE_GMAIL=false, then restart.'};
+    }},
+    {id: 'scheduler', group: 'Services', label: 'Gmail scheduler', async run() {
+      return typeof schedulerReadiness === 'function' ? schedulerReadiness() : {status: 'off', detail: 'Not checked in this environment.'};
     }},
     {id: 'disk', group: 'This PC', label: 'Free disk space for local data', async run() {
       const s = await statfs(stateDirectory);

@@ -8,7 +8,7 @@ SCOPES=('https://www.googleapis.com/auth/drive.file','https://www.googleapis.com
 AUTH_URL='https://accounts.google.com/o/oauth2/v2/auth'
 TOKEN_URL='https://oauth2.googleapis.com/token'
 USERINFO_URL='https://www.googleapis.com/oauth2/v2/userinfo'
-EDITABLE={'CLOUD_SCHEDULER_OAUTH_CLIENT_ID','CLOUD_SCHEDULER_OAUTH_CLIENT_SECRET','CLOUD_SCHEDULER_OAUTH_REFRESH_TOKEN','CLOUD_SCHEDULER_SPREADSHEET_ID','CLOUD_SCHEDULER_NAMESPACE','CLOUD_SCHEDULER_PAIRING_KEY'}
+EDITABLE={'CLOUD_SCHEDULER_OAUTH_CLIENT_ID','CLOUD_SCHEDULER_OAUTH_CLIENT_SECRET','CLOUD_SCHEDULER_OAUTH_REFRESH_TOKEN','CLOUD_SCHEDULER_SPREADSHEET_ID','CLOUD_SCHEDULER_NAMESPACE','CLOUD_SCHEDULER_PAIRING_KEY','CLOUD_SCHEDULER_SIGNING_KEY'}
 KEEP=set('PATH PATHEXT SYSTEMROOT SYSTEMDRIVE WINDIR COMSPEC TEMP TMP USERPROFILE HOME APPDATA LOCALAPPDATA PROGRAMFILES PROGRAMFILES(X86) PROCESSOR_ARCHITECTURE SSL_CERT_FILE SSL_CERT_DIR REQUESTS_CA_BUNDLE NODE_EXTRA_CA_CERTS HTTP_PROXY HTTPS_PROXY NO_PROXY'.split())
 
 def require(ok,message):
@@ -170,7 +170,7 @@ def main():
   try:auth=worker.google_services(env)
   except Exception:raise RuntimeError('Scheduler authentication or Google API startup failed. Check the dedicated client, scopes and enabled APIs. Provider details were not logged.') from None
   require(auth['email']==account,'Authorised scheduler account mismatch. No Sheet created.')
-  title='NewModularProduct - Scheduled Mail';namespace=secrets.token_hex(16);namespace=namespace[:8]+'-'+namespace[8:12]+'-'+namespace[12:16]+'-'+namespace[16:20]+'-'+namespace[20:]
+  title='NewModularProduct - Scheduled Mail'+(' (Production)' if file!=ROOT/'.env' else '');namespace=secrets.token_hex(16);namespace=namespace[:8]+'-'+namespace[8:12]+'-'+namespace[12:16]+'-'+namespace[16:20]+'-'+namespace[20:]
   confirm('Create one private scheduler Sheet?\nAccount: '+account+'\nTitle: '+title+'\nNamespace: '+namespace+'\nConfiguration target: '+str(file)+'\nNo sharing permission, application mail or CV upload will be created.','CREATE')
   operations=ROOT/'var/maintenance/scheduler-setup/operations';operations.mkdir(parents=True,exist_ok=True)
   receipt=operations/(stamp()+'.json');operation={'configTarget':str(file),'account':account,'title':title,'namespace':namespace,'status':'PENDING','createdAt':datetime.now(timezone.utc).isoformat()};save_operation(receipt,operation)
@@ -185,9 +185,14 @@ def main():
   update_config(file,values,raw,backups);operation['status']='CONFIGURED';save_operation(receipt,operation);print('Private scheduler Sheet configured. This setup installed no sending worker and did not change any enable flag.');print('Sheet ID: '+result['spreadsheetId']);return
  require(args.action=='worker-setup-file','Unsupported action.')
  for key in ('CLOUD_SCHEDULER_SPREADSHEET_ID','CLOUD_SCHEDULER_NAMESPACE','CLOUD_SCHEDULER_PAIRING_KEY'):require(bool(env.get(key)),'Complete private Sheet setup first.')
- confirm('Write a PRIVATE local setup file containing the dedicated pairing key? It is for copying into this scheduler project only. Never upload it or paste it into chat.','WRITE')
- backups.mkdir(parents=True,exist_ok=False);target=backups/'worker-setup.private.txt'
- content='PRIVATE - NEVER UPLOAD\nSCHEDULER_SHEET_ID='+env['CLOUD_SCHEDULER_SPREADSHEET_ID']+'\nPAIRING_KEY='+env['CLOUD_SCHEDULER_PAIRING_KEY']+'\nENABLE_SCHEDULED_SENDING=false\n\nRetain this file for the final scheduler-worker installation. This setup bundle installs no clock or sending worker. Review separate Gmail-draft authorisation when the final bundle is supplied.\n'
+ confirm('Write a PRIVATE local setup file containing the dedicated pairing key and signing key? It is for copying into this scheduler project only. Never upload it or paste it into chat.','WRITE')
+ key=str(env.get('CLOUD_SCHEDULER_SIGNING_KEY',''))
+ if not key:
+  # Each environment gets its own signing key; an existing key is never rotated here (pending jobs depend on it).
+  key=secrets.token_hex(32);update_config(file,{'CLOUD_SCHEDULER_SIGNING_KEY':key},raw,backups);print('A new signing key was saved to '+str(file)+'.')
+ require(re.fullmatch(r'[a-f0-9]{64}',key),'The configured CLOUD_SCHEDULER_SIGNING_KEY is invalid. Fix it locally; it is not replaced automatically.')
+ backups.mkdir(parents=True,exist_ok=True);target=backups/'worker-setup.private.txt'
+ content='PRIVATE - NEVER UPLOAD\nSCHEDULER_SHEET_ID='+env['CLOUD_SCHEDULER_SPREADSHEET_ID']+'\nPAIRING_KEY='+env['CLOUD_SCHEDULER_PAIRING_KEY']+'\nNMP_SCHEDULER_KEY='+key+'   (Script Properties of the Sheet Apps Script project)\nENABLE_SCHEDULED_SENDING=false\n\nRetain this file for the final scheduler-worker installation. This setup bundle installs no clock or sending worker. Review separate Gmail-draft authorisation when the final bundle is supplied.\n'
  fd=os.open(target,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
  with os.fdopen(fd,'w',encoding='utf-8') as out:out.write(content)
  print('Private worker setup file created locally. Do not upload this file. Location: '+str(target))

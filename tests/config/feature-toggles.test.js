@@ -99,7 +99,7 @@ test('setFeature saves, bumps revision, rejects stale revision and needs confirm
   view = setFeature(env, { id: 'gmail-sending', enabled: true, expectedRevision: 2, confirmed: true }, { file });
   view = setFeature(env, { id: 'gmail', enabled: false, expectedRevision: 3 }, { file });
   assert.equal(view.features.find(f => f.id === 'gmail-sending').saved, false, 'dependents switch off with their parent');
-  assert.throws(() => setFeature(env, { id: 'cloud-scheduling', enabled: true, expectedRevision: 4 }, { file }), /Unknown or locked/);
+  assert.throws(() => setFeature(env, { id: 'template-cover-letter', enabled: true, expectedRevision: 4 }, { file }), /Unknown or locked/);
 });
 
 test('one-click send and quality V2 are switchable in production, off by default, and depend on their parents', () => {

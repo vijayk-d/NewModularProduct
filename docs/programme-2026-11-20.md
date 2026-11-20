@@ -70,6 +70,8 @@ Status:
    - Nothing is invented.
 
 ## Slice 3 — Gmail scheduler in production
+Status: code built on `feat/production-scheduler` (Cloud scheduling is a Features switch; System check row "Gmail scheduler"). Owner set-up steps are in `apps-script/gmail-scheduler/README.md`, "Production set-up".
+
 1. **Code.**
    - Allow scheduling when `NMP_ENV=production`, `ENABLE_CLOUD_SCHEDULING=true` and Gmail sending are on.
    - Production uses its own namespace, signing key and state, and verification stays clamped off.

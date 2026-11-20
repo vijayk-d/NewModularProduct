@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import '../../config/apply-feature-toggles.js';
+import {schedulerReadiness} from '../../application/scheduler-readiness.js';
+import {runSchedulerSheet} from '../../application/cloud-scheduler-runner.js';
 import {createAssignmentEvidenceStore} from '../../infrastructure/applications/sqlite-assignment-evidence.js';
 import {createApplicationIntelligenceStore} from '../../infrastructure/applications/sqlite-application-intelligence.js';
 import {createApplicationIntelligence} from '../../application/application-intelligence.js';
@@ -211,7 +213,8 @@ const server = createLocalServer({
   // Read-only System check page: data files, CV library and files, documents, services and this PC.
   systemCheck:()=>runSystemCheck(createSystemCheckProbes({stateDirectory:deployment.state,cvFolder:config.storage.cvFolder||'',outputFolder:process.env.APPLICATION_OUTPUT_FOLDER||'',outputForbidden:[projectRoot,deployment.state,config.storage.cvFolder,'D:\\NewModularProduct-Production'],cvTailoringService,
     cvLibrary:async()=>{const data=await cvInventoryRepository.load();return data?.cv_inventory?.cvs||data?.cvs||[];},locateWord:createWordCvLocator({cvFolder:config.storage.cvFolder}),
-    probeFiles:(root,relativePaths)=>documentWorker({action:'probe',root,relativePaths}),config})),
+    probeFiles:(root,relativePaths)=>documentWorker({action:'probe',root,relativePaths}),config,
+    schedulerReadiness:()=>schedulerReadiness({inspect:()=>runSchedulerSheet({action:'inspect'},{timeoutMs:20000})})})),
   // Email-domain lookups live in the state folder; the old file inside the source folder is read once if present.
   emailDomainStore:createJsonEmailDomainStore({filePath:path.join(deployment.state,'email-domain-resolutions-v1.json'),legacyPath:fileURLToPath(new URL('../../../data/email-domain-resolutions.json',import.meta.url))}),
   candidateDisplayName,

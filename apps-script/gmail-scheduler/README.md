@@ -1,6 +1,6 @@
-# Gmail scheduler — development candidate 0.1
+# Gmail scheduler
 
-Status: code candidate, not live-accepted or production-enabled.
+Status: accepted in development; available in production once the owner completes the "Production set-up" below. Production is off until Cloud scheduling is switched on in the Features page.
 
 ## Preserved source
 Code.gs and appsscript.json are the user's existing self-test pilot and manifest. The installer does not overwrite either file. Scheduler.gs is the new application worker. appsscript.scheduler.json is a proposed extended manifest, NOT an automatically activated manifest. Tampermonkey files and their @version headers are not modified.
@@ -40,6 +40,29 @@ After application source installation, restart development normally and visit /o
 6. Review and approve exactly one self-addressed application-like test with a synthetic attachment. Check scheduled acknowledgment, cancel-before-dispatch, then one approved timed send and real Gmail message ID reconciliation. PC-off execution, signature/attachment fidelity, cancellation race, sharing/permission failure and interrupted dispatch require real acceptance before normal application use. Do not test on recruiters.
 
 The package is not fully accepted Gmail scheduling until the Windows composed app/browser checks and these Google-side checks pass. No automatic setup, authorisation, trigger activation or live send is performed by any installer/test command.
+
+## Production set-up (owner-run, once)
+Production has its own scheduler Sheet, namespace, pairing key and signing key, and its own local state
+(`shared\data\gmail-scheduler-v1\jobs.json`). It never shares the development Sheet or keys. Verification releases cannot schedule.
+Run these from the development folder (`D:\monorepo\NewModularProduct`); the tool only edits scheduler keys in `production.env`
+and keeps a backup of it under `var\maintenance\scheduler-setup`.
+
+1. Authorise the dedicated scheduler client against production (the Google sign-in opens in the browser):
+   `python tools/maintenance/configure_cloud_scheduler.py --config D:\NewModularProduct-Production\shared\config\production.env --production-config --client-file <scheduler client JSON outside the repo> authorise`
+2. Create the private production Sheet ("NewModularProduct - Scheduled Mail (Production)"):
+   `python tools/maintenance/configure_cloud_scheduler.py --config ... --production-config create-sheet`
+3. Generate the production signing key and the private set-up file:
+   `python tools/maintenance/configure_cloud_scheduler.py --config ... --production-config worker-setup-file`
+   It prints where the private file is. It holds the Sheet ID, pairing key and `NMP_SCHEDULER_KEY`. Never upload it.
+4. Open the production Sheet > Extensions > Apps Script. Add `Scheduler.gs` (and the picker files if you use them), use
+   `appsscript.scheduler.json` as the manifest, enable the advanced Gmail and Drive services, and set the Script Property
+   `NMP_SCHEDULER_KEY` to the value from the private file. Run `nmpSchedulerInstall` once and accept its dialog.
+5. In production, open Features and switch on Gmail connection, Mailbox check, Send emails and Cloud scheduling. Restart production.
+6. Open System check: the "Gmail scheduler" row should say Ready. Then schedule one email to yourself, 5 minutes ahead,
+   and confirm it arrives and shows as SENT after Refresh. Do not test on recruiters.
+
+To pause production scheduling, switch Cloud scheduling off in Features. That stops new schedules only; cancel existing ones
+on the scheduling page and wait for CANCELLED.
 
 ## Rollback
 Before any cloud jobs are published, restore only source files from the install backup and remove only the new files recorded in installation.json. Never restore databases or mail-history state. After activation/publication, request cancellations and obtain terminal cloud acknowledgment, then pause the worker using nmpSchedulerPause; an in-flight send cannot be recalled. Preserve local and cloud state/tombstones and reconcile outcomes before rolling back source. Do not delete an operation lock without checking whether its process is still running.
