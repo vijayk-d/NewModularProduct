@@ -64,6 +64,13 @@ Memory: verification needs free memory (Windows commit charge). It stops before 
 
 ## Release backups
 
+**What each backup holds (from 20 November 2026):**
+- every database and data file in `shared\data`: the original five stores (which stay schema-guarded), plus workflow automation, tailored CV, insights, saved answers, email-domain lookups and any later store, each integrity-checked;
+- the `tailored-cv-pdfs` and `cover-letter-export` folders;
+- the shared CV library (`NMP_CV_LIBRARY_DIRECTORY` in `production.env`): `catalogue.json`, `ownership.json` and the evidence database in `evidence\`. Text indexes rebuild themselves and are not copied.
+
+To restore a store, stop production, copy the file back from the backup folder, then start production.
+
 Each delivery copies `shared\data` to `shared\backups\before-<commit>-<time>`, and nothing removes them automatically. The System check page shows their count and size. To clean up, run this preview from the project root (it changes nothing):
 
 ```powershell
