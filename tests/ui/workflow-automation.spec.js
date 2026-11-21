@@ -40,6 +40,9 @@ test('an advert pasted from another job site is saved, chosen and applied withou
   page.on('dialog', dialog => { throw new Error('No confirmation should be needed on an empty form: ' + dialog.message()); });
   await page.goto(app.url + '/');
   await page.getByText('Add an advert from any job site').click();
+  // The paste fields must not share wording with the preparation form: specs find those fields by partial label text.
+  for (const label of ['Job title', 'Job description', 'Job advert URL', 'Organisation / advertiser name', 'Vacancy reference', 'Stakeholder source or recruiter page', 'Organisation website or LinkedIn page'])
+    await expect(page.getByLabel(label), label).toHaveCount(1);
   await page.locator('[data-web-advert="jobAdvertLink"]').fill('https://www.reed.co.uk/jobs/synthetic-delivery-manager/555?utm_source=alert');
   await page.locator('[data-web-advert="jobTitle"]').fill('Synthetic Reed Delivery Manager');
   await page.locator('[data-web-advert="advertiserName"]').fill('Example Agency');
