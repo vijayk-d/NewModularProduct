@@ -25,6 +25,7 @@ import {createEvidenceLearning} from '../../application/evidence-learning.js';
 import {attachIndexedText,withoutCvText,describeSections} from '../../application/cv-text-index.js';
 import {createTemplateCoverLetterDocuments} from '../../infrastructure/documents/template-cover-letter.js';
 import {createSqliteJobImportStore} from '../../infrastructure/applications/sqlite-job-import-store.js';
+import {createSlowStepMonitor} from '../../infrastructure/slow-step-monitor.js';
 import { gmailLoadedEnvironment } from '../../application/gmail-runtime-diagnostics.js';
 import {createSqliteReviewStore} from '../../infrastructure/applications/sqlite-review-store.js';
 import { createOutreachRepository } from '../../infrastructure/outreach/sqlite-outreach-repository.js';
@@ -302,6 +303,8 @@ if (cvLibraryRuntime.enabled) {
 }
 // CV_LIBRARY_SHARED_V1_END
 
+// Logs [SLOW] lines naming what made every tab wait (method, path and milliseconds only).
+createSlowStepMonitor().attach(server).start();
 server.listen(config.server.port, config.server.host, () => {
   process.stdout.write(
     `Application UI available at http://${config.server.host}:${config.server.port}\n`
