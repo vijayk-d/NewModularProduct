@@ -18,7 +18,15 @@ def fail(s):raise RuntimeError(s)
 def stamp():return datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
 def sha(b):return hashlib.sha256(b).hexdigest()
 def hashed(p):return sha(p.read_bytes())
-def read(p,default=None):return json.loads(p.read_text(encoding='utf-8-sig')) if p.is_file() else default
+def read(p,default=None):
+ # Windows: a status/control file being replaced by the other process (supervisor or ship, every 0.4 s) briefly
+ # refuses to open with "Permission denied". That is a local file race, not an external operation, so wait it out
+ # for up to about 2 s; any other error, or a lasting one, still stops delivery.
+ for attempt in range(40):
+  try:return json.loads(p.read_text(encoding='utf-8-sig')) if p.is_file() else default
+  except PermissionError:
+   if attempt==39:raise
+   time.sleep(.05)
 def atomic(p,value):
  p.parent.mkdir(parents=True,exist_ok=True);tmp=p.with_name(p.name+'.'+uuid.uuid4().hex+'.tmp');tmp.write_text(json.dumps(value,indent=2),encoding='utf-8');os.replace(tmp,p)
 def run(args,cwd=None,env=None,log=None):
@@ -345,11 +353,15 @@ def pause(prod):
  s=read(prod/'supervisor-status.json',{})
  if time.time()-s.get('heartbeat',0)<5 and s.get('session'):
   session=s['session'];atomic(prod/'supervisor-control.json',{'session':session,'paused':True});deadline=time.time()+105
-  while time.time()<deadline:
-   current=read(prod/'supervisor-status.json',{})
-   if current.get('session')==session and current.get('mode')=='paused':return session
-   time.sleep(.3)
-  fail('Supervisor did not acknowledge graceful pause; no promotion.')
+  try:
+   while time.time()<deadline:
+    current=read(prod/'supervisor-status.json',{})
+    if current.get('session')==session and current.get('mode')=='paused':return session
+    time.sleep(.3)
+   fail('Supervisor did not acknowledge graceful pause; no promotion.')
+  except BaseException:
+   # The caller never received the session, so it cannot resume: un-pause here so production keeps serving.
+   resume(prod,session);raise
  if busy(3100):fail('Unverified process owns port 3100; it will not be killed.')
  return None
 def resume(prod,session):
