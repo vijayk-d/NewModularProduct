@@ -1,15 +1,16 @@
 import {createHash} from 'node:crypto';
 import {vacancyIdentity} from './vacancy-identity.js';
 import {jobImportListOptions,jobError} from './linkedin-job-import.js';
+import {isAdvertId,isWebAdvertId,webAdvertId} from './web-advert-import.js';
 export const ADVERT_STATUSES=Object.freeze(['new','in_progress','complete','needs_attention']);
 const labels={new:'New',in_progress:'In progress',complete:'Complete — email sent',needs_attention:'Needs attention'};
 const colours={new:'blue',in_progress:'amber',complete:'green',needs_attention:'red'};
 function confirmed(r){return r.status==='sent'&&typeof r.messageId==='string'&&r.messageId.trim()&&!/^local-/i.test(r.messageId)&&typeof r.sendingAccount==='string'&&r.sendingAccount.trim();}
-function sourceId(form){return vacancyIdentity(form||{}).sourceId.replace(/^linkedin:/,'');}
+function sourceId(form){const v=vacancyIdentity(form||{});if(v.sourceId.startsWith('linkedin:'))return v.sourceId.slice(9);return v.advertUrl?webAdvertId(v.advertUrl):'';}
 export const IDLE_DAYS=14;
 const when=v=>{if(typeof v==='number'&&Number.isFinite(v))return v;const n=Date.parse(v);return Number.isFinite(n)?n:0;};
 export function deriveAdvertStatus({jobId,reviews=[],queue=[],sent=[],sendAttempts=[],draftOperations=[],exports=[],historyAvailable=true,coverageComplete=true,now=Date.now()}={}){
- if(typeof jobId!=='string'||!/^\d{1,20}$/.test(jobId))throw Error('Exact LinkedIn job ID required.');
+ if(!isAdvertId(jobId))throw Error('Exact LinkedIn job ID or pasted-advert ID required.');
  const byReview=new Map(reviews.map(r=>[r.id,r.value])),byQueue=new Map(queue.map(r=>[r.id,r]));
  const formFor=r=>{const forms=[r.application,r.formData,r.snapshot?.application,byQueue.get(r.queueId)?.application,byReview.get(r.reviewId)?.formData];return forms.find(f=>typeof f?.jobAdvertLink==='string'&&f.jobAdvertLink.trim())||forms.find(Boolean)||{};};
  const matches=r=>sourceId(formFor(r))===jobId;
@@ -31,7 +32,7 @@ export function deriveAdvertStatus({jobId,reviews=[],queue=[],sent=[],sendAttemp
  const addresses=new Set(sends.map(r=>String(r.email||r.recipientKey||r.snapshot?.email||'').toLowerCase()).filter(Boolean));
  const pendingRecipientCount=new Set(q.filter(r=>r.status!=='sent'&&!addresses.has(String(r.email||'').toLowerCase())).map(r=>String(r.email||r.id).toLowerCase())).size;
  return {status,label:exported?'Complete — portal pack exported':idle?'Needs attention — no activity for '+IDLE_DAYS+' days':labels[status],colour:colours[status],hasApplied,exported,idle,confirmedSendCount:sends.length,pendingRecipientCount,lastSentAt:dates[0]||null,needsAttention,historyAvailable,coverageComplete,
-  reason:idle?'Saved work has had no activity for '+IDLE_DAYS+' days. Continue it or remove the advert.':exported?'Portal application pack exported; no confirmed email send.':!historyAvailable?'History unavailable; status cannot be verified.':uncertain?'A related operation has an uncertain outcome.':malformedReceipt||orphanSent?'A sent marker lacks a valid confirmed send receipt.':hasApplied?'Confirmed email send for this exact LinkedIn job ID.':!coverageComplete?'Historical coverage incomplete; no-send status cannot be established.':progressed?'Saved application work exists; no confirmed email send.':'No prior work or confirmed send found in checked local records.'};
+  reason:idle?'Saved work has had no activity for '+IDLE_DAYS+' days. Continue it or remove the advert.':exported?'Portal application pack exported; no confirmed email send.':!historyAvailable?'History unavailable; status cannot be verified.':uncertain?'A related operation has an uncertain outcome.':malformedReceipt||orphanSent?'A sent marker lacks a valid confirmed send receipt.':hasApplied?'Confirmed email send for this exact advert.':!coverageComplete?'Historical coverage incomplete; no-send status cannot be established.':progressed?'Saved application work exists; no confirmed email send.':'No prior work or confirmed send found in checked local records.'};
 }
 function reviewRows(store){
  if(!store)throw Error('Review history unavailable.');
@@ -58,7 +59,7 @@ export function advertStatusIndex(jobIds,snapshot){
   if(!id&&key!=='reviews'){const candidate=legacy.get(row.applicationKey);if(candidate&&candidate!=='ambiguous')id=candidate;}
   if(!id){let knownOtherSource=false;try{const u=new URL(vacancyIdentity(form).advertUrl);knownOtherSource=!(u.hostname==='linkedin.com'||u.hostname.endsWith('.linkedin.com'));}catch{}if(key!=='reviews'&&!knownOtherSource)unidentified++;continue;}
   const group=grouped.get(id);if(!group)continue;
-  if(key==='reviews')group.reviews.push(row);else group[key].push({...row,application:{...form,jobAdvertLink:'https://www.linkedin.com/jobs/view/'+id+'/'}});
+  if(key==='reviews')group.reviews.push(row);else group[key].push({...row,application:{...form,jobAdvertLink:isWebAdvertId(id)?form.jobAdvertLink:'https://www.linkedin.com/jobs/view/'+id+'/'}});
  }
  const statuses=new Map();for(const [id,group]of grouped){group.coverageComplete=unidentified===0;statuses.set(id,deriveAdvertStatus({jobId:id,...group}));}
  return {statuses,coverage:{historyAvailable:snapshot.historyAvailable,unidentifiedHistoricalRecords:unidentified,scope:'Local saved reviews and recorded mail operations only; no full Gmail or portal audit.'}};

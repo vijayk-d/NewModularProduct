@@ -80,6 +80,8 @@ The preparation form accepts any advert URL and a pasted job description. The le
 1. **"Paste any advert" import.**
    - Any https URL plus pasted text becomes a job import with its source site recorded.
    - Its ID is a hash of the normalised URL, so advert status and follow-ups work for every site.
+
+   **Built on branch `feat/any-advert-import` (21 November 2026):** on the preparation page, under Imported adverts, "Add an advert from any job site" takes an https link (not LinkedIn), job title, optional advertiser and location, and the whole job description. It is stored as `web-<16 hex>` (a hash of the link with tracking parameters and the #fragment removed) in a new file beside the import database, `job-imports-v1-web.db`; `job-imports-v1.db` is unchanged. It appears in the same advert list, with New / In progress / Complete / Needs attention status, Remove and Restore. Applying it fills the form without a LinkedIn job reference. Nothing is fetched from the site.
 2. **Application questions helper.**
    - For portal questions with word or character limits, such as Serco's "250 words" or "250 characters", or Civil Service Success Profiles behaviour statements.
    - Evidence-led STAR answers from the CV and approved scenarios, with an exact counter.
