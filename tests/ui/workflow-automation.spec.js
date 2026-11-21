@@ -27,13 +27,31 @@ test('choosing a stored advert loads and applies it in one step on an empty form
   page.on('dialog', dialog => { throw new Error('No confirmation should be needed on an empty form: ' + dialog.message()); });
   await page.goto(app.url + '/');
   await page.getByRole('group', {name: 'Filter stored adverts by status'}).getByRole('radio', {name: 'New', exact: true}).check();
-  const choice = page.getByRole('combobox', {name: 'Choose a stored LinkedIn advert'});
+  const choice = page.getByRole('combobox', {name: 'Choose a stored advert'});
   await expect(choice.locator('option[value="4242"]')).toHaveCount(1);
   await choice.selectOption('4242');
   await expect(page.locator('[name="jobTitle"]')).toHaveValue('Synthetic Delivery Manager');
   await expect(page.locator('[name="jobDescriptionText"]')).toHaveValue(/Synthetic description/);
   await expect(page.locator('[name="jobAdvertLink"]')).toHaveValue('https://www.linkedin.com/jobs/view/4242/');
   await expect(page.getByText(/Job 4242, revision 1 applied/)).toBeVisible();
+});
+
+test('an advert pasted from another job site is saved, chosen and applied without a LinkedIn reference', async ({page, app}) => {
+  page.on('dialog', dialog => { throw new Error('No confirmation should be needed on an empty form: ' + dialog.message()); });
+  await page.goto(app.url + '/');
+  await page.getByText('Add an advert from any job site').click();
+  await page.locator('[data-web-advert="jobAdvertLink"]').fill('https://www.reed.co.uk/jobs/synthetic-delivery-manager/555?utm_source=alert');
+  await page.locator('[data-web-advert="jobTitle"]').fill('Synthetic Reed Delivery Manager');
+  await page.locator('[data-web-advert="advertiserName"]').fill('Example Agency');
+  await page.locator('[data-web-advert="jobDescriptionText"]').fill('Synthetic description for a delivery role advertised on a UK job board, with agile teams and stakeholders.');
+  await page.getByRole('button', {name: 'Save advert'}).click();
+  await expect(page.locator('[name="jobTitle"]')).toHaveValue('Synthetic Reed Delivery Manager');
+  await expect(page.locator('[name="jobAdvertLink"]')).toHaveValue('https://www.reed.co.uk/jobs/synthetic-delivery-manager/555');
+  await expect(page.locator('[name="organisationName"]')).toHaveValue('Example Agency');
+  await expect(page.locator('[name="jobReference"]')).toHaveValue('');
+  await expect(page.getByText(/Advert from reed\.co\.uk, revision 1 applied/)).toBeVisible();
+  const choice = page.getByRole('combobox', {name: 'Choose a stored advert'});
+  await expect(choice.locator('option:checked')).toHaveText(/reed\.co\.uk/);
 });
 
 test('the export CV choice is remembered after a reload', async ({page, app}) => {
