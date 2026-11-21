@@ -23,7 +23,7 @@ export function attachSimpleContacts(){
  const reviewId=form.querySelector('[name="reviewId"]')?.value,available=document.querySelector('.available-imported-contacts-body'),linked=document.querySelector('.linked-imported-contacts-body'),organisation=document.querySelector('.organisation-contact-summary-body');
  const submit=form.querySelector('[type="submit"]'),edits=new Map(),manual=[];let busy=false;
  const hint=document.createElement('p');hint.textContent='Queueing applies each selected contact’s name and the configured candidate signoff, keeping the experience text and formatting. Existing attempts are not overwritten.';form.prepend(hint);
- const status=document.createElement('p');status.setAttribute('role','status');status.setAttribute('aria-live','polite');status.className='simple-contact-status';form.appendChild(status);
+ const status=document.createElement('p');status.setAttribute('role','status');status.setAttribute('aria-live','polite');status.className='simple-contact-status';if(submit?.parentNode)submit.after(status);else form.appendChild(status);// beside the button, so a refusal (for example an unpolished letter) is seen where you clicked
  const makeButton=(label,fn)=>{const b=document.createElement('button');b.type='button';b.textContent=label;
   if(label==='Suggest email'){
    b.className='suggest-email-icon';b.setAttribute('aria-label','Suggest email (inferred)');b.title='Suggest email from names and domain; not verified';b.dataset.uiLabel='Suggest email (inferred)';

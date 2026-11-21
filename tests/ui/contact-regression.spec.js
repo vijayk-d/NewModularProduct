@@ -270,6 +270,21 @@ test("research polish and apply preserve contacts, email layout and saved domain
   expect(errors).toEqual([]);
 });
 
+test("an unpolished letter is refused with a message right under the Link and add button", async ({ page, app }) => {
+  await prepare(page, app);
+  await availableRow(page, "selected").locator("input[type=checkbox]").check();
+  const queued = page.waitForResponse(r=>r.url().endsWith('/api/outreach-queue/link-and-add')&&r.request().method()==='POST');
+  const button = page.getByRole('button',{name:/^Link and add selected to queue/});
+  await button.click();
+  expect((await queued).status()).toBe(409);
+  const status = page.locator('.simple-contact-status');
+  await expect(status).toContainText('This letter has not been polished');
+  await expect(status).toBeInViewport();
+  const [b, s] = [await button.boundingBox(), await status.boundingBox()];
+  expect(s.y - (b.y + b.height)).toBeLessThan(80);
+  await expect(availableRow(page, "selected")).toBeVisible();
+});
+
 test("link selected moves only the checked row and retains the page sections", async ({ page, app }) => {
   const reviewId = await prepare(page, app);
   await availableRow(page, "selected").locator("input[type=checkbox]").check();
