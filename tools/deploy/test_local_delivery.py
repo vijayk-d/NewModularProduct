@@ -118,6 +118,25 @@ class Tests(unittest.TestCase):
   with patch.object(d,'verify_candidate',side_effect=RuntimeError('synthetic')),patch.object(d,'pause') as pause:
    with self.assertRaises(RuntimeError):d.deliver(self.args(ref='HEAD'))
   pause.assert_not_called();self.assertEqual(d.read(self.prod/'active.json')['commit'],'old');self.assertFalse((self.prod/'delivery.lock').exists())
+ def test_read_waits_out_a_brief_windows_permission_error_on_a_status_file(self):
+  f=Path(self.tmp.name)/'supervisor-status.json';d.atomic(f,{'mode':'running'});real=Path.read_text;calls=[]
+  def flaky(path,*a,**k):
+   calls.append(1)
+   if len(calls)<3:raise PermissionError(13,'Permission denied')
+   return real(path,*a,**k)
+  with patch.object(Path,'read_text',flaky),patch.object(d.time,'sleep'):self.assertEqual(d.read(f)['mode'],'running')
+  self.assertEqual(len(calls),3)
+  with patch.object(Path,'read_text',side_effect=PermissionError(13,'Permission denied')),patch.object(d.time,'sleep'):
+   with self.assertRaises(PermissionError):d.read(f)
+ def test_pause_failure_unpauses_production(self):
+  self.prod.mkdir(parents=True,exist_ok=True);d.atomic(self.prod/'supervisor-status.json',{'session':'s1','heartbeat':d.time.time(),'mode':'running'})
+  real=d.read
+  def broken(p,default=None):
+   if p.name=='supervisor-status.json' and real(self.prod/'supervisor-control.json',{}).get('paused'):raise PermissionError(13,'Permission denied')
+   return real(p,default)
+  with patch.object(d,'read',broken):
+   with self.assertRaises(PermissionError):d.pause(self.prod)
+  self.assertEqual(real(self.prod/'supervisor-control.json'),{'session':'s1','paused':False})
  def leftover(self,commit,promoted=False):
   release=self.prod/'releases'/commit;release.mkdir(parents=True);d.atomic(release/'candidate.json',{'commit':commit});(release/'diagnostic.log').write_text('kept')
   if promoted:d.atomic(release/'release.json',{'commit':commit})
