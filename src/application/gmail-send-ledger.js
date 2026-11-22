@@ -7,12 +7,20 @@ export function createSendLedger(db,{additionalBlocker=()=>false}={}){
  const decode=r=>r?JSON.parse(r.payload):null;
  const get=id=>decode(db.prepare('SELECT payload FROM outreach_gmail_send_attempts WHERE id=?').get(id));
  const queue=id=>decode(db.prepare('SELECT payload FROM outreach_queue WHERE id=?').get(id));
- function state(item,account){
-  const records=db.prepare('SELECT payload FROM outreach_gmail_send_attempts WHERE application_key=? AND recipient_key=? AND sending_account=? ORDER BY rowid DESC').all(item.applicationKey,item.email.toLowerCase(),account.toLowerCase()).map(decode);
-  const legacy=db.prepare(`SELECT id FROM outreach_sent_emails WHERE sending_account=? AND json_extract(payload,'$.applicationKey')=? AND lower(json_extract(payload,'$.email'))=? LIMIT 1`).get(account.toLowerCase(),item.applicationKey,item.email.toLowerCase());
+ // One pass over the send attempts and the sent history for a whole list, instead of one scan per row.
+ function context(account){
+  const acct=String(account||'').toLowerCase(),attempts=new Map(),sent=new Set();
+  for(const r of db.prepare('SELECT application_key,recipient_key,payload FROM outreach_gmail_send_attempts WHERE sending_account=? ORDER BY rowid DESC').all(acct)){const k=r.application_key+'\n'+r.recipient_key;if(!attempts.has(k))attempts.set(k,[]);attempts.get(k).push(JSON.parse(r.payload));}
+  for(const r of db.prepare(`SELECT json_extract(payload,'$.applicationKey') AS a,lower(json_extract(payload,'$.email')) AS e FROM outreach_sent_emails WHERE sending_account=?`).all(acct))sent.add(r.a+'\n'+r.e);
+  return {account:acct,attempts,sent};
+ }
+ function state(item,account,ctx=null){
+  const key=item.applicationKey+'\n'+item.email.toLowerCase(),usable=ctx&&ctx.account===account.toLowerCase();
+  const records=usable?(ctx.attempts.get(key)||[]):db.prepare('SELECT payload FROM outreach_gmail_send_attempts WHERE application_key=? AND recipient_key=? AND sending_account=? ORDER BY rowid DESC').all(item.applicationKey,item.email.toLowerCase(),account.toLowerCase()).map(decode);
+  const legacy=usable?(ctx.sent.has(key)||null):db.prepare(`SELECT id FROM outreach_sent_emails WHERE sending_account=? AND json_extract(payload,'$.applicationKey')=? AND lower(json_extract(payload,'$.email'))=? LIMIT 1`).get(account.toLowerCase(),item.applicationKey,item.email.toLowerCase());
   return {blocked:records.some(r=>['reserved','unknown'].includes(r.status))||additionalBlocker(item),hasSent:Boolean(legacy)||records.some(r=>r.status==='sent'),retryAllowed:records[0]?.status==='failed'&&records[0].safeToRetry===true,last:records[0],count:records.length};
  }
- return {state,list:()=>db.prepare('SELECT payload FROM outreach_gmail_send_attempts ORDER BY rowid DESC').all().map(decode),
+ return {state,context,list:()=>db.prepare('SELECT payload FROM outreach_gmail_send_attempts ORDER BY rowid DESC').all().map(decode),
  claim({queueId,account,version,mode,summary}){
   db.exec('BEGIN IMMEDIATE');try{
    const item=queue(queueId);if(!item||messageEditVersion(item)!==version)fail('Queue changed after send confirmation.');

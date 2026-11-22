@@ -197,7 +197,7 @@ export function createOutreachRepository({ filePath }) {
     claimDraftLetterUpdate:letterUpdates.claimDraft,
     finishDraftLetterUpdate:letterUpdates.finishDraft,
     listLetterUpdates:letterUpdates.list,
-    getSendState:sendLedger.state,
+    getSendState:sendLedger.state,getSendStateContext:sendLedger.context,
     listSendAttempts:sendLedger.list,
     claimSendAttempt:sendLedger.claim,
     finishSendAttempt:sendLedger.finish,

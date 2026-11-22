@@ -13,6 +13,9 @@ function clean(value){
 const hashes=v=>Object.fromEntries(Object.entries(v).map(([k,x])=>[k,hash(x)]));
 export function createDurableReviewStore(repository){
  const store={durable:repository.durable===true,deletionSupported:typeof repository.remove==='function',
+  // Read-only light read for display checks (for example the polish gate on the outreach queue): no validation copy
+  // or field hashes. Never save what it returns; use get() before any write.
+  peek(id){const row=repository.read(id);return row?row.value:undefined;},
   get(id){const row=repository.read(id);if(!row)return undefined;const value=clean(row.value);return {...value,_storageMeta:{revision:row.revision,fields:hashes(value)}};},
   has(id){return Boolean(repository.read(id));},
   set(id,input){

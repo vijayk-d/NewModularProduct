@@ -12,8 +12,8 @@ export function createGmailSendService({repository,mailboxPort,env=process.env,r
  const tickets=new Map();
  function getStatus(){const m=mailboxPort.getStatus(),flags=['ENABLE_GMAIL','ENABLE_GMAIL_SENDING'].every(k=>String(env[k]||'').trim().toLowerCase()==='true'),ready=Boolean(m.mailboxCheckEnabled&&m.configurationReady&&repository&&['getSendState','claimSendAttempt','finishSendAttempt'].every(k=>typeof repository[k]==='function'));return {sendingEnabled:flags&&ready,oneClickSendingEnabled:flags&&ready&&oneClickEnvironment(env)&&String(env.ENABLE_ONE_CLICK_SEND||'')==='true',configurationReady:ready,configuredMailbox:m.configuredFromAddress||'',reason:!flags?'Sending disabled. Enable both ENABLE_GMAIL and ENABLE_GMAIL_SENDING explicitly.':!ready?'Configure mailbox checking, OAuth and send storage.':'Sending ready; each email requires explicit confirmation.'};}
  function gate(){const s=getStatus();if(!s.sendingEnabled)fail(s.reason,'SEND_DISABLED',403);return s.configuredMailbox;}
- function modeFor(item,account){
-  const s=repository.getSendState(item,account);
+ function modeFor(item,account,ctx=null){
+  const s=ctx?repository.getSendState(item,account,ctx):repository.getSendState(item,account);
   if(s.blocked||['send_pending','send_unknown','draft_unknown','draft_creating'].includes(item.status))fail('Operation pending or uncertain. Check Gmail; do not retry blindly.','SEND_UNKNOWN');
   if(item.status==='send_failed'&&!s.retryAllowed)fail('This failure is not confirmed safe to retry.');
   if(s.hasSent)return {mode:'repeat',state:s};
@@ -25,7 +25,9 @@ export function createGmailSendService({repository,mailboxPort,env=process.env,r
   const d=repository.findDraftOperation?.({applicationKey:item.applicationKey,email:item.email,sendingAccount:account});
   if(d&&!(d.status==='failed'&&d.safeToRetry===true))fail('Resolve the existing draft operation before sending a new message.');return {mode:'new',state:s};
  }
- function eligibility(item,account){try{const {mode,state}=modeFor(item,account);return {eligible:true,mode,label:state.retryAllowed?'Retry send':mode==='repeat'?'Send again':mode==='draft'?'Send draft':'Send email'};}catch(e){return {eligible:false,reason:e.message};}}
+ // ctx (optional): eligibilityContext(account), read once for a whole list; same answers, one pass over history.
+ function eligibilityContext(account){try{return account&&typeof repository?.getSendStateContext==='function'?repository.getSendStateContext(account):null;}catch{return null;}}
+ function eligibility(item,account,ctx=null){try{const {mode,state}=modeFor(item,account,ctx);return {eligible:true,mode,label:state.retryAllowed?'Retry send':mode==='repeat'?'Send again':mode==='draft'?'Send draft':'Send email'};}catch(e){return {eligible:false,reason:e.message};}}
  async function withCV(item){
   const draft=prepareDraftSnapshot({...item,status:'new'}),relative=String(draft.attachment?.relativePath||'').replaceAll('\\','/');
   if(!relative||/^(?:\/|[A-Za-z]:)/.test(relative))fail('A relative PDF/DOCX CV is required.','SEND_CV');
@@ -36,7 +38,7 @@ export function createGmailSendService({repository,mailboxPort,env=process.env,r
    const bytes=await readFile(file);if(bytes.length>20*1024*1024)fail('CV exceeds 20 MiB.','SEND_CV');if(tailored&&hash(bytes)!==draft.attachment.sha256)fail('The tailored CV PDF changed after it was queued. Remove and requeue.','SEND_CV');draft.attachment={...draft.attachment,sha256:hash(bytes),sizeBytes:bytes.length};return draft;
   }catch(e){if(e.statusCode)throw e;fail('Selected CV could not be verified.','SEND_CV');}
  }
- return {getStatus,eligibility,cancel({ticket}={}){return {cancelled:tickets.delete(ticket),sent:false};},
+ return {getStatus,eligibility,eligibilityContext,cancel({ticket}={}){return {cancelled:tickets.delete(ticket),sent:false};},
  async prepare({queueId,expectedVersion,expectedAccount,expectedRecipient,expectedMode,expectedDraftId}={}){
   const account=gate();if(typeof queueId!=='string'||!queueId)fail('Choose one explicit queue item.');const item=repository.getById(queueId);if(!item)fail('Queue item no longer exists.');
   const {mode}=modeFor(item,account),version=messageEditVersion(item);
