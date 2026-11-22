@@ -19,7 +19,7 @@ function outreachOrganisationKey(form={}) {
     return host?`domain:${host}`:'organisation:unknown';
   }catch{return 'organisation:unknown';}
 }
-export function createOutreachHttpHandler({ repository, contactStore, getReview, gmailMailboxPort = null, gmailDraftCreationPort = null, gmailSendPort = null, tailoredAttachment = null }) {
+export function createOutreachHttpHandler({ repository, contactStore, getReview, peekReview = null, gmailMailboxPort = null, gmailDraftCreationPort = null, gmailSendPort = null, tailoredAttachment = null }) {
   const mailboxPort = gmailMailboxPort || createGmailMailboxPort();
   const confirmedDrafts = gmailDraftCreationPort || createConfirmedGmailDraftService({repository,mailboxPort});
   const service = repository ? createOutreachQueueService({ repository, contactStore, getReview, tailoredAttachment }) : null;
@@ -137,11 +137,15 @@ export function createOutreachHttpHandler({ repository, contactStore, getReview,
       if (!service) { json(response, 503, { ok: false, error: 'Outreach storage is not configured.' }); return true; }
       if (request.method === 'GET' && route === '/api/outreach-queue') {
         const messageAttempts=[...(repository.listDraftOperations?.()||[]),...(repository.listSendAttempts?.()||[])];const sendStatus=sends.getStatus();
+        // Built once per list: attempted keys, the polish gate per application (light read) and the send history.
+        const attemptedKeys=new Set(messageAttempts.map(a=>a.applicationKey+'\n'+a.recipientKey));
+        const gates=new Map(),gateOnce=id=>{if(!gates.has(id))gates.set(id,polishGate((peekReview||getReview)?.(id)));return gates.get(id);};
+        const sendContext=typeof sends.eligibilityContext==='function'?sends.eligibilityContext(sendStatus.configuredMailbox):null;
         const scope=url.searchParams.get('reviewId');
         if(scope!==null&&(!/^[A-Za-z0-9-]{1,100}$/.test(scope)||!getReview(scope))){json(response,404,{ok:false,error:'Application review not found; no queue records returned.'});return true;}
         const items=service.list().filter(item=>scope===null||item.reviewId===scope).map(item=>{const operation=item.draftOperationId&&repository.getDraftOperationById?.(item.draftOperationId);
-          const letterGate=gateForReview(item.reviewId),eligibility=sends.eligibility(item,sendStatus.configuredMailbox);
-          return {...item,letterGate,sendAction:letterGate.allowed||item.status==='sent'?eligibility:{...eligibility,eligible:false,reason:letterGate.message},...messagePresentation(item,{attempted:messageAttempts.some(a=>a.applicationKey===item.applicationKey&&a.recipientKey===String(item.email||'').toLowerCase())}),safeToRetry:operation?.status==='failed'&&operation.safeToRetry===true};});
+          const letterGate=gateOnce(item.reviewId),eligibility=sendContext?sends.eligibility(item,sendStatus.configuredMailbox,sendContext):sends.eligibility(item,sendStatus.configuredMailbox);
+          return {...item,letterGate,sendAction:letterGate.allowed||item.status==='sent'?eligibility:{...eligibility,eligible:false,reason:letterGate.message},...messagePresentation(item,{attempted:attemptedKeys.has(item.applicationKey+'\n'+String(item.email||'').toLowerCase())}),safeToRetry:operation?.status==='failed'&&operation.safeToRetry===true};});
         json(response, 200, { ok: true, items }); return true;
       }
       if (request.method === 'POST' && route !== '/api/outreach-queue') {
