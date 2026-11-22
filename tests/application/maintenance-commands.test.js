@@ -7,3 +7,10 @@ async function fixture(t){const server=createLocalServer();server.listen(0,'127.
 test('page and catalogue served without operational dependencies',async t=>{const url=await fixture(t),r=await fetch(url+'/maintenance');assert.equal(r.status,200);assert.equal(r.headers.get('cache-control'),'no-store');assert.match(await r.text(),/Nothing here executes commands/);const data=await(await fetch(url+'/api/maintenance-commands')).json();assert.equal(data.commands.length,MAINTENANCE_COMMANDS.length);});
 test('POST never executes anything',async t=>{const url=await fixture(t);for(const path of ['/maintenance','/api/maintenance-commands','/maintenance-client.js'])assert.equal((await fetch(url+path,{method:'POST',body:'deliver'})).status,405);});
 test('cross-origin requests rejected',async t=>{const url=await fixture(t);assert.equal((await fetch(url+'/api/maintenance-commands',{headers:{origin:'https://other.test'}})).status,403);});
+test('performance commands read the logs only; only the resume command changes production, and only when paused',()=>{
+ const byId=id=>MAINTENANCE_COMMANDS.find(c=>c.id===id);
+ for(const id of ['slow-log-latest','slow-log-summary','slow-log-freezes','release-log-tail','prod-running-commit']){const c=byId(id);assert.ok(c,id);assert.equal(c.effect,'Read-only',id);assert.doesNotMatch(c.command,/Set-Content|Move-Item|Remove-Item|Out-File|>\s*['"$]/,id);}
+ assert.match(byId('slow-log-summary').command,/Group-Object Route/);assert.match(byId('slow-log-freezes').command,/Every tab waited/);
+ const resume=byId('prod-resume-paused');assert.equal(resume.effect,'Changes production');assert.equal(resume.category,'Recovery');assert.match(resume.command,/-ne 'paused'.*nothing to resume/);assert.match(resume.command,/paused=\$false/);
+ assert.ok(MAINTENANCE_COMMANDS.filter(c=>c.category==='Performance').length>=4);
+});
