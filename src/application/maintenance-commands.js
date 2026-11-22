@@ -249,5 +249,65 @@ export const MAINTENANCE_COMMANDS = Object.freeze([
     "caution": "Review for hard-coded private information before sharing. No .env, CV or database uploads. The current collector omits fixtures and some maintenance utilities, so a capture is not a complete runnable checkout. Note: tools/WorkflowStabilisation is not in GitHub (local only).",
     "effect": "Writes source report",
     "directory": "D:\\monorepo\\NewModularProduct"
+  },
+  {
+      "id": "slow-log-latest",
+      "title": "Slow steps: latest lines",
+      "category": "Performance",
+      "command": "$f=Get-ChildItem 'D:\\NewModularProduct-Production\\shared\\logs\\production-*.log' | Sort-Object LastWriteTime -Descending | Select-Object -First 1; Select-String -Path $f.FullName -Pattern '\\[SLOW\\]' | Select-Object -Last 40 | ForEach-Object { $_.Line }",
+      "purpose": "Shows the last 40 [SLOW] lines from the current production log: requests over 2 seconds, and moments when every tab waited over 200 ms.",
+      "caution": "Read-only. Lines hold only method, path and milliseconds, so they are safe to paste into a support chat.",
+      "effect": "Read-only",
+      "directory": "D:\\monorepo\\NewModularProduct"
+  },
+  {
+      "id": "slow-log-summary",
+      "title": "Slow steps: summary by page or action (7 days)",
+      "category": "Performance",
+      "command": "$files=Get-ChildItem 'D:\\NewModularProduct-Production\\shared\\logs\\production-*.log' | Where-Object { $_.LastWriteTime -gt (Get-Date).AddDays(-7) }; Select-String -Path $files.FullName -Pattern '\\[SLOW\\] (\\S+ \\S+) took (\\d+) ms' | ForEach-Object { [pscustomobject]@{Route=$_.Matches[0].Groups[1].Value; Ms=[int]$_.Matches[0].Groups[2].Value} } | Group-Object Route | ForEach-Object { $m=$_.Group | Measure-Object Ms -Average -Maximum; [pscustomobject]@{Route=$_.Name; Count=$_.Count; AverageMs=[int]$m.Average; MaxMs=[int]$m.Maximum} } | Sort-Object MaxMs -Descending | Format-Table -AutoSize",
+      "purpose": "Groups the slow requests of the last 7 days by page or action, with count, average and worst time. The worst and most frequent rows are the ones to improve first.",
+      "caution": "Read-only. send-commit at about 2 seconds is normal: each email starts the Gmail worker in the background and does not freeze other tabs.",
+      "effect": "Read-only",
+      "directory": "D:\\monorepo\\NewModularProduct"
+  },
+  {
+      "id": "slow-log-freezes",
+      "title": "Slow steps: worst whole-app freezes (7 days)",
+      "category": "Performance",
+      "command": "$files=Get-ChildItem 'D:\\NewModularProduct-Production\\shared\\logs\\production-*.log' | Where-Object { $_.LastWriteTime -gt (Get-Date).AddDays(-7) }; Select-String -Path $files.FullName -Pattern 'Every tab waited about (\\d+) ms' | Sort-Object { [int]$_.Matches[0].Groups[1].Value } -Descending | Select-Object -First 15 | ForEach-Object { $_.Line }",
+      "purpose": "Lists the 15 longest moments when every tab waited, with what was running. These are what make other tabs slow while sending.",
+      "caution": "Read-only. 'In progress: none' means background work (for example the Insights rebuild), not a page.",
+      "effect": "Read-only",
+      "directory": "D:\\monorepo\\NewModularProduct"
+  },
+  {
+      "id": "release-log-tail",
+      "title": "Last release log (why a ship stopped)",
+      "category": "Performance",
+      "command": "$log=Get-ChildItem 'D:\\NewModularProduct-Production\\shared\\logs\\release-*.log' | Sort-Object LastWriteTime -Descending | Select-Object -First 1; $log.FullName; Get-Content $log.FullName -Tail 80",
+      "purpose": "Shows the end of the latest release verification log, where the failing test or step is named when ship.cmd stops.",
+      "caution": "Read-only. Check the output for personal details before pasting it into a chat.",
+      "effect": "Read-only",
+      "directory": "D:\\monorepo\\NewModularProduct"
+  },
+  {
+      "id": "prod-running-commit",
+      "title": "Production: running commit, supervisor mode and health",
+      "category": "Production",
+      "command": "$p='D:\\NewModularProduct-Production'; 'Commit: ' + (Get-Content \"$p\\active.json\" -Raw | ConvertFrom-Json).commit; 'Supervisor: ' + (Get-Content \"$p\\supervisor-status.json\" -Raw | ConvertFrom-Json).mode; try { Invoke-RestMethod 'http://127.0.0.1:3100/healthz' -TimeoutSec 5 | Out-Null; 'HEALTH OK' } catch { 'HEALTH FAILED' }",
+      "purpose": "Shows which commit production runs, whether the supervisor is running or paused, and whether port 3100 answers. Use it after a ship to confirm the new commit is live.",
+      "caution": "Read-only. 'paused' with HEALTH FAILED after a stopped ship: see 'Resume a paused production'.",
+      "effect": "Read-only",
+      "directory": "D:\\monorepo\\NewModularProduct"
+  },
+  {
+      "id": "prod-resume-paused",
+      "title": "Resume a paused production",
+      "category": "Recovery",
+      "command": "$p='D:\\NewModularProduct-Production'; $s=Get-Content \"$p\\supervisor-status.json\" -Raw | ConvertFrom-Json; if ($s.mode -ne 'paused') { 'Supervisor is ' + $s.mode + '; nothing to resume.' } else { $tmp=\"$p\\supervisor-control.json.$([guid]::NewGuid().ToString('N')).tmp\"; (@{session=$s.session; paused=$false} | ConvertTo-Json) | Set-Content $tmp -Encoding UTF8; Move-Item $tmp \"$p\\supervisor-control.json\" -Force; Start-Sleep 3; try { Invoke-RestMethod 'http://127.0.0.1:3100/healthz' -TimeoutSec 5 | Out-Null; 'HEALTH OK' } catch { 'HEALTH FAILED' } }",
+      "purpose": "Tells a paused production supervisor to serve again, for example after a ship stopped part-way. Does nothing unless the supervisor reports paused.",
+      "caution": "Use only when no ship is running. It changes no data or release; if health still fails, close the production window with Ctrl+C and start it again.",
+      "effect": "Changes production",
+      "directory": "D:\\monorepo\\NewModularProduct"
   }
 ]);
