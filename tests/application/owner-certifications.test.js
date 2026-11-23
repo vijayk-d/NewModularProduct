@@ -6,7 +6,6 @@ import path from 'node:path';
 import {addCertifications, removeCertification, normaliseCertifications, mergeCertifications, MAX_CERTIFICATIONS} from '../../src/domain/cv/owner-certifications.js';
 import {readOwnerCertifications, writeOwnerCertifications, CERTIFICATIONS_FILE} from '../../src/infrastructure/owner-certifications-file.js';
 import {factLinesWithCertifications} from '../../src/domain/cv/cv-facts.js';
-import {draftFitParagraph} from '../../src/application/fit-paragraph.js';
 import {buildPolishingApiRequest} from '../../src/infrastructure/refinement/perplexity-cover-letter-refinement-adapter.js';
 import {buildEvidenceContract} from '../../src/application/cover-letter-quality-v2.js';
 import {parseArguments, runCertifications} from '../../tools/maintenance/owner-certifications.mjs';
@@ -57,14 +56,6 @@ test('CV facts include saved certifications even when the role CV lists only som
   assert.equal(certs.source, 'Saved certifications');
   assert.ok(lines.some(l => l.kind === 'years'));
   assert.equal(factLinesWithCertifications('', []).length, 0);
-});
-
-test('fit paragraph names at most three certifications, the ones the advert mentions first', () => {
-  const evidence = [{text: 'Certifications: ITIL 4, PMP, SAFe SPC, PRINCE2 Practitioner, CSM.', source: 'Saved certifications', kind: 'certifications', items: ['ITIL 4', 'PMP', 'SAFe SPC', 'PRINCE2 Practitioner', 'CSM']},
-    {text: 'Led delivery of AI agents with GitHub Copilot.', source: 'Selected achievement'}];
-  const r = draftFitParagraph({jobTitle: 'AI Delivery Lead', jobDescriptionText: 'PRINCE2 and SAFe experience required. Lead AI delivery.', evidence});
-  assert.deepEqual(r.used.certifications, ['SAFe SPC', 'PRINCE2 Practitioner', 'ITIL 4']);
-  assert.match(r.paragraph, /Led delivery of AI agents|I led delivery of AI agents/);
 });
 
 test('polishing request carries saved certifications as evidence and the early-weeks choice', () => {

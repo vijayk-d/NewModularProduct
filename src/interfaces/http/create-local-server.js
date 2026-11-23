@@ -53,7 +53,6 @@ import { createApplicationQuestionsHandler } from "./application-questions-http.
 import { createRecruiterReplyHandler } from "./recruiter-reply-http.js";
 import { createLetterKeywordsHandler } from "./letter-keywords-http.js";
 import { createLetterKeywordService } from "../../application/letter-keywords.js";
-import { createFitParagraphService } from "../../application/fit-paragraph.js";
 import { factLinesWithCertifications } from "../../domain/cv/cv-facts.js";
 import { normaliseCertifications } from "../../domain/cv/owner-certifications.js";
 import { createRecruiterReplyService } from "../../application/recruiter-reply.js";
@@ -477,7 +476,7 @@ export function createLocalServer({
   const letterUpdates=outreachRepository?createUnsentLetterUpdateService({getReview:id=>reviewStore.get(id),repository:outreachRepository,draftUpdates:gmailDraftUpdatePort||createGmailDraftUpdatePort()}):null;
   const handleApplications=createApplicationReviewHandler({outcomeFor:insightsStore?id=>{const o=currentOutcome(insightsStore.history(id));return o?{label:outcomeLabel(o.outcome),occurredOn:o.occurredOn}:null;}:null,store:reviewStore,renderReview:renderCompleteReview,sendJson,sendHtml,sendText,applicationPackExporter,letterUpdates,outputFolder:applicationOutputFolder});
   const handleSystemCheck=createSystemCheckHandler({runCheck:systemCheck,sendJson,sendHtml});
-  // The owner's saved certifications (maintenance command), used by polishing, the strong-fit paragraph and answers.
+  // The owner's saved certifications (maintenance command), used by polishing and application answers.
   const savedCertifications=()=>{try{return normaliseCertifications(typeof ownerCertifications==='function'?ownerCertifications():[]);}catch{return [];}};
   // Polishing: the strong-fit paragraph is always requested; the early-weeks paragraph only when ticked.
   const letterSectionRequest=values=>{const c=savedCertifications();return {...(values.getAll('includeEarlyWeeks').includes('true')?{includeEarlyWeeks:true}:{}),...(c.length?{candidateCertifications:c}:{})};};
@@ -495,7 +494,7 @@ export function createLocalServer({
   const handleReply=createRecruiterReplyHandler({service:replyService,sendJson,sendText});
   // Letter keyword check: the advert's ATS terms against the letter and your evidence; free and local.
   const letterEvidence=async id=>questionsService?await questionsService.evidenceFor(id):[];
-  const handleKeywords=createLetterKeywordsHandler({service:createLetterKeywordService({reviews:reviewStore,evidence:letterEvidence}),fitService:createFitParagraphService({reviews:reviewStore,evidence:letterEvidence}),sendJson,sendText});
+  const handleKeywords=createLetterKeywordsHandler({service:createLetterKeywordService({reviews:reviewStore,evidence:letterEvidence}),sendJson,sendText});
   const handleLetterGate=createLetterGateHandler({reviewStore,sendJson,sendText});
   const handleInsights=createInsightsHandler({snapshot:insightsSnapshot,learning:evidenceLearning,sendJson,sendHtml});
   const handleOutcomes=createApplicationOutcomesHandler({store:insightsStore,getReview:id=>reviewStore.get(id),sendJson,sendText,onChange:()=>insightsSnapshot?.schedule()});
