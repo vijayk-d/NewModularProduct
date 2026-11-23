@@ -133,7 +133,7 @@ test('converts an adapter failure into a controlled refinement error', async () 
   assert.equal(result.model, '');
   assert.equal(
     result.error,
-    '[REFINEMENT_FAILED] Cover-letter refinement is currently unavailable. See the server diagnostic with the matching request ID.'
+    '[REFINEMENT_FAILED] Cover-letter refinement is currently unavailable. Details: Maintenance, "Recent polishing and letter errors".'
   );
   assert.equal(result.errorCode, 'REFINEMENT_FAILED');
 });

@@ -76,5 +76,5 @@ export function formatRefinementFailure(error) {
   if (details.privateReplayStatus) message += ' Private replay: '+details.privateReplayStatus+'.';
   if (details.httpStatus) message += ` Provider HTTP status: ${details.httpStatus}.`;
   if (details.networkCode) message += ` Network error: ${details.networkCode}.`;
-  return `[${details.errorCode}] ${message} See the server diagnostic with the matching request ID.`;
+  return `[${details.errorCode}] ${message} Details: Maintenance, "Recent polishing and letter errors".`;
 }
