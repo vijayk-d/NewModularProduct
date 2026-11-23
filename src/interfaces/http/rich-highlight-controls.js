@@ -1,5 +1,8 @@
 const internal=new WeakSet(),history=new WeakMap(),attrs=['data-highlight-origin','data-highlight-id','data-highlight-quote','data-job-aligned','data-highlight','data-highlight-manual'];
-function painted(e){return e?.nodeType===1&&(e.tagName==='MARK'||Boolean(e.style?.backgroundColor)||Boolean(e.style?.background));}
+// Only inline text elements can be highlights. Block elements with a background (the email-theme table and cell,
+// paragraphs, divs) are layout, never highlights: splitting them would duplicate the whole letter box per text piece.
+const INLINE_PAINT=new Set(['MARK','SPAN','FONT','B','STRONG','I','EM','U','A','SMALL','SUB','SUP']);
+function painted(e){return e?.nodeType===1&&(e.tagName==='MARK'||(INLINE_PAINT.has(e.tagName)&&(Boolean(e.style?.backgroundColor)||Boolean(e.style?.background))));}
 function owner(n,editor){for(let p=n.parentElement;p&&p!==editor;p=p.parentElement)if(painted(p))return p;return null;}
 function textNodes(e){const w=e.ownerDocument.createTreeWalker(e,4),a=[];let n;while(n=w.nextNode())if(n.data.length)a.push(n);return a;}
 function provenance(e){return e.dataset.highlightOrigin||(e.dataset.jobAligned==='true'?'auto':e.dataset.highlightManual==='true'?'manual':'legacy');}
