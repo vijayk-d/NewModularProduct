@@ -1,3 +1,4 @@
+import {mergeCertifications} from './owner-certifications.js';
 // Facts read from a CV's own text, so letters and answers can name them without inventing anything:
 // certifications that appear in the CV, and a stated length of experience ("15+ years"). Pure.
 
@@ -46,5 +47,13 @@ export function cvFactLines(text = '') {
   const lines = [], certs = certificationsIn(text), years = yearsOfExperienceIn(text);
   if (certs.length) lines.push({text: 'Certifications: ' + certs.join(', ') + '.', source: 'Selected CV', kind: 'certifications', items: certs});
   if (years) lines.push({text: 'Experience: ' + years + '.', source: 'Selected CV', kind: 'years', value: years});
+  return lines;
+}
+
+// CV facts with the owner's saved certifications merged in (saved first, then any others the selected CV names).
+export function factLinesWithCertifications(text = '', saved = []) {
+  const lines = cvFactLines(text).filter(l => l.kind !== 'certifications');
+  const items = mergeCertifications(saved, certificationsIn(text));
+  if (items.length) lines.unshift({text: 'Certifications: ' + items.join(', ') + '.', source: saved.length ? 'Saved certifications' : 'Selected CV', kind: 'certifications', items});
   return lines;
 }

@@ -19,8 +19,11 @@ const sentence = text => {
 
 export function draftFitParagraph({jobTitle = '', organisationName = '', jobDescriptionText = '', evidence = []}) {
   const lines = (Array.isArray(evidence) ? evidence : []).filter(e => e && e.text);
-  const facts = lines.filter(e => e.source === 'Selected CV'), stories = lines.filter(e => e.source !== 'Selected CV');
-  const certifications = facts.find(f => f.kind === 'certifications')?.items || [];
+  const facts = lines.filter(e => e.kind), stories = lines.filter(e => !e.kind);
+  // Saved certifications can be many: name the ones the advert mentions first, at most three.
+  const jd = String(jobDescriptionText || '').toLowerCase(), mentioned = c => c.toLowerCase().split(/[\s\-]+/).filter(w => w.length > 2 && !/^(?:certified|certificate|practitioner|professional|foundation|management|manager|and|the)$/.test(w)).some(w => jd.includes(w));
+  const allCertifications = facts.find(f => f.kind === 'certifications')?.items || [];
+  const certifications = [...allCertifications.filter(mentioned), ...allCertifications.filter(c => !mentioned(c))].slice(0, 3);
   const years = facts.find(f => f.kind === 'years')?.value || '';
   const terms = extractAtsTerms(String(jobDescriptionText || ''), {limit: 30, organisationName}).filter(t => !(t.kind === 'word' && KEYWORD_FILLER.has(t.term.toLowerCase())));
   const supported = new Set(termsFoundIn(terms, stories.map(e => e.text).join('\n')));

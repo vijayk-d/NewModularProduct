@@ -46,3 +46,18 @@ test('toolbar shortcuts work in the letter and the tooltips name them', async ({
   await page.keyboard.press('Control+/');
   await expect(page.locator('[data-keyword-panel="cover-letter-draft"] [data-shortcut-list]')).toContainText('Ctrl+Shift+K: Keywords');
 });
+
+test('hovering a toolbar button shows its shortcut at once', async ({page, app}) => {
+  await page.goto(app.url + '/applications/r1');
+  const toolbar = page.getByRole('toolbar', {name: 'Cover letter formatting'});
+  const tip = page.locator('[data-instant-tip]');
+  await toolbar.locator('button[data-editor-command="bold"]').hover();
+  await expect(tip).toBeVisible();
+  await expect(tip).toContainText('Ctrl+B');
+  await toolbar.locator('button[data-editor-command="undo"]').hover();
+  await expect(tip).toContainText('Ctrl+Z');
+  await page.mouse.move(5, 5);
+  await expect(tip).toBeHidden();
+  await expect(toolbar.locator('button[data-editor-command="undo"]')).toHaveAttribute('title', /Ctrl\+Z/);
+});
+

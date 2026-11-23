@@ -1,3 +1,4 @@
+import {normaliseCertifications as normalizeCertifications} from '../domain/cv/owner-certifications.js';
 import {normalizeWritingReferenceExamples} from './writing-reference-selection.js';
 import {normalizeApprovedScenarioEvidence} from './scenario-polishing.js';
 import {lengthPolicy,normalizeLengthMode} from '../domain/cover-letter/letter-quality-policy.js';
@@ -102,7 +103,9 @@ function normalizeRefinementRequest({
   organisationUrl = '',
   instructions = '',
   letterLengthMode = 'standard',
-  maxWords = 500
+  maxWords = 500,
+  includeEarlyWeeks = false,
+  candidateCertifications = []
 } = {}) {
   const writingExamples=normalizeWritingReferenceExamples(writingReferenceExamples);
   const draft = normalizeString(draftPlainText);
@@ -138,7 +141,9 @@ function normalizeRefinementRequest({
     organisationUrl: normalizeUrl(organisationUrl),
     instructions: normalizeString(instructions),
     letterLengthMode:normalizeLengthMode(letterLengthMode),
-    maxWords: normalizeMaxWords(maxWords,letterLengthMode)
+    maxWords: normalizeMaxWords(maxWords,letterLengthMode),
+    ...(includeEarlyWeeks === true ? {includeEarlyWeeks: true} : {}),
+    ...(normalizeCertifications(candidateCertifications).length ? {candidateCertifications: normalizeCertifications(candidateCertifications)} : {})
   };
 }
 

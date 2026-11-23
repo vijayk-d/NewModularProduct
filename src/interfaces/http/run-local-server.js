@@ -20,6 +20,7 @@ import {runSystemCheck} from '../../application/system-check.js';
 import {createApplicationInsightsStore} from '../../infrastructure/applications/sqlite-application-insights-store.js';
 import {createApplicationAnswersStore} from '../../infrastructure/applications/sqlite-application-answers-store.js';
 import {createReplyThreadsStore} from '../../infrastructure/applications/sqlite-reply-threads-store.js';
+import {createOwnerCertificationsReader} from '../../infrastructure/owner-certifications-file.js';
 import {createQuestionAnswerWriter} from '../../infrastructure/refinement/perplexity-question-answer-adapter.js';
 import {createRecruiterReplyWriter} from '../../infrastructure/refinement/perplexity-recruiter-reply-adapter.js';
 import {createInsightsSnapshot} from '../../application/insights-snapshot.js';
@@ -215,6 +216,7 @@ const server = createLocalServer({
   answersStore,
   questionWriter:createQuestionAnswerWriter({apiKey:config.integrations.perplexity.apiKey,enabled:config.features.enableCoverLetterRefinement}),
   // The selected CV's indexed text, for facts it states (certifications, years of experience).
+  ownerCertifications:createOwnerCertificationsReader(deployment.state),
   cvTextFor:async code=>{try{return cvLibraryInstance?((await cvLibraryInstance.indexedTexts()).texts[code]||''):'';}catch{return '';}},
   replyThreadsStore,
   replyWriter:createRecruiterReplyWriter({apiKey:config.integrations.perplexity.apiKey,enabled:config.features.enableCoverLetterRefinement}),
