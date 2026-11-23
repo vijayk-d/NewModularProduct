@@ -1,7 +1,7 @@
 import {attachOutreachSchedule} from './outreach-schedule.js';
 import {renderHistoryRows} from './review-workspace.js';
 import {createQueueRole} from './review-flow-view.js';
-import {partitionQueueSelection,skipSummary,executeBulkSend,showBulkConfirmation,executeOneClickBulkSend,executeOneClickSend,shortSendLabel} from './outreach-bulk.js';
+import {runSendInBackground,partitionQueueSelection,skipSummary,executeBulkSend,showBulkConfirmation,executeOneClickBulkSend,executeOneClickSend,shortSendLabel} from './outreach-bulk.js';
 import { createQueueMessageControl, saveQueuedMessageBeforeDraft, queueSendIntentItem } from './queue-message-editor.js';
 import { attachSimpleContacts } from './outreach-simple-contacts.js';
 function startOutreachQueue() {
@@ -262,6 +262,11 @@ function startOutreachQueue() {
   async function refreshHistory(){try{const data=await request(`/api/outreach-queue/send-history?page=${historyPage}&q=${encodeURIComponent(history.querySelector('input').value)}`);historyPage=data.page;const body=history.querySelector('tbody');renderHistoryRows(body,data.items,document);history.querySelector('[data-history-status]').textContent=`${data.total} recorded ${data.total===1?'send':'sends'}${data.pages>1?` · Page ${data.page} of ${data.pages}`:''}`;history.querySelector('[data-history-prev]').disabled=data.page<=1;history.querySelector('[data-history-next]').disabled=data.page>=data.pages;history.querySelector('[data-history-prev]').hidden=data.pages<=1;history.querySelector('[data-history-next]').hidden=data.pages<=1;}catch(e){history.querySelector('[data-history-status]').textContent=e.message;}}
   history.querySelector('[data-history-search]').addEventListener('click',()=>{historyPage=1;refreshHistory();});history.querySelector('[data-history-refresh]').addEventListener('click',refreshHistory);history.querySelector('[data-history-prev]').addEventListener('click',()=>{historyPage=Math.max(1,historyPage-1);refreshHistory();});history.querySelector('[data-history-next]').addEventListener('click',()=>{historyPage++;refreshHistory();});history.querySelector('input').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();historyPage=1;refreshHistory();}});
   refreshSendFeature();refreshHistory();
+  // A batch approved earlier may still be sending in the background: show its progress and let Stop reach it.
+  (async()=>{let watching=false;try{let {run}=await request('/api/outreach-queue/send-run');if(run?.state!=='running'||directBusy)return;watching=true;directBusy=true;queueProgress(true);stopBulk=false;stopBulkButton.hidden=false;stopBulkButton.disabled=false;let stopSent=false;
+    while(run?.state==='running'&&!leaving){status.textContent=`Sending in the background: ${run.done} of ${run.total} done${run.currentEmail?', now '+run.currentEmail:''}. You can use other pages meanwhile.`;if(stopBulk&&!stopSent){stopSent=true;({run}=await request('/api/outreach-queue/send-run/stop',{}));}await new Promise(r=>setTimeout(r,1000));({run}=await request('/api/outreach-queue/send-run'));}
+    if(run&&!leaving){renderBulkResults(run.results);status.textContent=`Background run ${run.state}: ${run.sent} sent of ${run.total}. See Batch results.`;}
+  }catch{/* the queue stays usable */}finally{if(watching){directBusy=false;queueProgress(false);stopBulkButton.hidden=true;try{await refresh();await refreshHistory();}catch{}}}})();
   // outreach-bulk-controls-v1
   const selectionNote=document.createElement('span');selectionNote.className='outreach-selection-count';selectionNote.setAttribute('role','status');selectionNote.setAttribute('aria-live','polite');
   section.querySelector('.outreach-bulk-toolbar').appendChild(selectionNote);
@@ -309,8 +314,10 @@ function startOutreachQueue() {
       const runBatch=sendConfiguration.oneClickSendingEnabled?
         options=>executeOneClickBulkSend({...options,clickedItems,ids:clickedIds,account:clickedAccount,userInitiated:true,loadItems:async()=>(await request(queueListUrl)).items}):
         async options=>executeBulkSend({...options,items:(await request(queueListUrl)).items,ids:clickedIds,save:saveQueuedMessageBeforeDraft,confirm:data=>showBulkConfirmation(data)});
-      const batch=await runBatch({api:request,save:saveForSend,isStopped:()=>stopBulk,
-        onProgress:p=>status.textContent=`${({saving:'Saving',preparing:'Preparing',sending:'Sending'})[p.stage]||'Preparing'} ${p.index}/${p.total} · batch ${p.batchIndex}/${p.batchCount}: ${p.email}. One-second spacing; no automatic retries.`});
+      // After approval the server sends the batch; this page only watches, so other pages and tabs can be used meanwhile.
+      const runInBackground=({fresh,onProgress})=>runSendInBackground({api:request,fresh,onProgress,shouldStop:()=>stopBulk&&!leaving});
+      const batch=await runBatch({api:request,save:saveForSend,isStopped:()=>stopBulk,runInBackground,
+        onProgress:p=>status.textContent=p.stage==='sending'?`Sending in the background ${p.index}/${p.total} · batch ${p.batchIndex}/${p.batchCount}${p.email?': '+p.email:''}. You can use other pages meanwhile; no automatic retries.`:`${({saving:'Saving',preparing:'Preparing'})[p.stage]||'Preparing'} ${p.index}/${p.total} · batch ${p.batchIndex}/${p.batchCount}: ${p.email}.`});
       renderBulkResults(batch.results);
       const sent=batch.results.filter(r=>['sent','sent_attention'].includes(r.kind)),uncertain=batch.results.filter(r=>r.kind==='uncertain').length;
       const completed=new Set(sent.map(r=>r.id));tbody.querySelectorAll('.outreach-queue-checkbox').forEach(b=>{if(completed.has(b.value))b.checked=false;});

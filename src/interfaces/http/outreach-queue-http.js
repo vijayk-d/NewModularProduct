@@ -1,3 +1,4 @@
+import {createSendRun} from '../../application/send-run.js';
 import {polishGate, assertPolished} from '../../application/polish-gate.js';
 import {createGmailScheduling} from '../../application/gmail-scheduling.js';
 import {createSchedulingHttp} from './gmail-scheduling-http.js';
@@ -24,6 +25,8 @@ export function createOutreachHttpHandler({ repository, contactStore, getReview,
   const confirmedDrafts = gmailDraftCreationPort || createConfirmedGmailDraftService({repository,mailboxPort});
   const service = repository ? createOutreachQueueService({ repository, contactStore, getReview, tailoredAttachment }) : null;
   const sends=gmailSendPort||createGmailSendService({repository,mailboxPort});
+  // Approved batches are sent by the server, so clicking elsewhere does not interrupt them (see send-run.js).
+  const sendRun=createSendRun({sends});
   // Polish gate: queueing, drafting, sending and scheduling need the polished letter applied (or a deliberate override).
   const gateForReview=reviewId=>polishGate(getReview?.(reviewId));
   const assertQueueItemPolished=queueId=>{const item=service?.list().find(i=>i.id===queueId);if(item)assertPolished(getReview?.(item.reviewId));};
@@ -55,7 +58,7 @@ export function createOutreachHttpHandler({ repository, contactStore, getReview,
     if(await handleScheduling(request,response,url))return true;
     const route = url.pathname;
     if (!['/outreach-queue', '/outreach-queue.js', '/outreach-simple-contacts.js', '/outreach-workflow.css', '/queue-message-editor.js', '/outreach-bulk.js','/outreach-schedule.js', '/api/outreach-queue',
-      '/api/outreach-queue/add', '/api/outreach-queue/delete', '/api/outreach-queue/clear', '/api/outreach-queue/prepare-drafts', '/api/outreach-queue/gmail-status', '/api/outreach-queue/check-mailbox', '/api/outreach-queue/gmail-draft-status', '/api/outreach-queue/gmail-draft-preview', '/api/outreach-queue/gmail-draft-create', '/api/outreach-queue/draft-one', '/api/outreach-queue/link-and-add', '/api/outreach-queue/message-save','/api/outreach-queue/send-status','/api/outreach-queue/send-prepare','/api/outreach-queue/send-commit','/api/outreach-queue/send-cancel','/api/outreach-queue/send-history'].includes(route)) return false;
+      '/api/outreach-queue/add', '/api/outreach-queue/delete', '/api/outreach-queue/clear', '/api/outreach-queue/prepare-drafts', '/api/outreach-queue/gmail-status', '/api/outreach-queue/check-mailbox', '/api/outreach-queue/gmail-draft-status', '/api/outreach-queue/gmail-draft-preview', '/api/outreach-queue/gmail-draft-create', '/api/outreach-queue/draft-one', '/api/outreach-queue/link-and-add', '/api/outreach-queue/message-save','/api/outreach-queue/send-status','/api/outreach-queue/send-prepare','/api/outreach-queue/send-commit','/api/outreach-queue/send-cancel','/api/outreach-queue/send-history','/api/outreach-queue/send-run','/api/outreach-queue/send-run/stop'].includes(route)) return false;
     try {
       const origin = request.headers.origin;
       if (origin && origin !== `http://${request.headers.host}` && origin !== `https://${request.headers.host}`) {
@@ -89,6 +92,9 @@ export function createOutreachHttpHandler({ repository, contactStore, getReview,
       // outreach-send-pilot-v1
       if(request.method==='GET'&&route==='/api/outreach-queue/send-status'){json(response,200,{ok:true,...sends.getStatus()});return true;}
       if(request.method==='POST'&&route==='/api/outreach-queue/send-prepare'){const values=await body(request);assertQueueItemPolished(values?.queueId);json(response,200,{ok:true,...await sends.prepare(values)});return true;}
+      if(request.method==='GET'&&route==='/api/outreach-queue/send-run'){json(response,200,{ok:true,run:sendRun.status()});return true;}
+      if(request.method==='POST'&&route==='/api/outreach-queue/send-run'){const values=await body(request);json(response,200,{ok:true,run:sendRun.start(values||{})});return true;}
+      if(request.method==='POST'&&route==='/api/outreach-queue/send-run/stop'){json(response,200,{ok:true,run:sendRun.stop()});return true;}
       if(request.method==='POST'&&route==='/api/outreach-queue/send-cancel'){json(response,200,{ok:true,...sends.cancel(await body(request))});return true;}
       if(request.method==='POST'&&route==='/api/outreach-queue/send-commit'){
         const result=await sends.commit(await body(request));console.info('[OUTREACH_SEND]\n'+JSON.stringify({sent:result.sent,messageId:result.messageId||null,persistenceConfirmed:result.persistenceConfirmed!==false},null,2));
