@@ -10,15 +10,15 @@ const REPLIES = [
   {messageId: 'm9', threadId: 't2', fromName: 'Andrew Smith', fromAddress: 'andrew@client.test', subject: 'Re: Application', date: 'Tue, 24 Nov 2026 10:00:00 +0000', internalDate: 9, text: 'I am not involved in this requirement, sorry.'},
   {messageId: 'm2', threadId: 't1', fromName: 'Sam Recruiter', fromAddress: 'sam@agency.test', subject: 'Re: Application', date: 'Mon, 23 Nov 2026 10:00:00 +0000', internalDate: 2, text: 'Thanks. Please apply online via our portal.'}];
 const test = base.extend({app: async ({}, use) => {
-  const reviews = reviewFixture(), drafts = [];
+  const reviews = reviewFixture(), drafts = [], reads = [];
   const replyWriter = {available: true, buildRequest: buildReplyApiRequest, async write(request, model) { return {reply: `Hello ${request.recipientName},\n\nThank you. I have applied online.\n\nKind regards,\nTest Candidate`, notes: '', model}; }};
   const server = createLocalServer({applicationReviewStore: reviews, answersStore: createApplicationAnswersStore({filePath: ':memory:'}), replyWriter, replyThreadsStore: createReplyThreadsStore({filePath: ':memory:'}),
-    gmailReplyReader: async () => ({ok: true, mailbox: '', replies: REPLIES}),
+    gmailReplyReader: async args => { reads.push(args); return {ok: true, mailbox: '', replies: REPLIES}; },
     gmailReplyDrafter: async args => { drafts.push(args); return {ok: true, draftId: args.draftId || 'd-1', updated: Boolean(args.draftId), subject: 'Re: Application'}; },
     recruiterContactStore: {async listAll() { return []; }, async listByReview() { return []; }},
     outreachRepository: {list: () => [], listDraftOperations: () => [], listSendAttempts: () => [], listSentEmails: () => [{id: 's1', reviewId: 'r1', status: 'sent', email: 'sam@agency.test', threadId: 't1', messageId: 'm1', sentAt: '2026-11-20T10:00:00Z'}]}});
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
-  try { await use({url: 'http://127.0.0.1:' + server.address().port, drafts}); }
+  try { await use({url: 'http://127.0.0.1:' + server.address().port, drafts, reads}); }
   finally { server.closeAllConnections(); await new Promise(res => server.close(res)); }
 }});
 
@@ -52,3 +52,23 @@ test('answer each reply separately and put the answer in a Gmail draft in their 
   await list.getByRole('listitem').filter({hasText: 'Sam Recruiter'}).click();
   await expect(section.getByRole('textbox', {name: 'Suggested reply (editable)'})).toContainText('I have applied online');
 });
+
+test('their own email address is searched too and remembered for this application', async ({page, app}) => {
+  await page.goto(app.url + '/applications/r1');
+  const section = page.locator('#recruiter-reply');
+  await section.getByRole('heading', {name: 'Reply assistant'}).click();
+  await expect(section.locator('[data-reply-gmail]')).toContainText('sam@agency.test');
+  const address = section.getByLabel('Their email address (optional)');
+  await address.fill('not-an-address');
+  await section.getByRole('button', {name: 'Find their reply in Gmail (read-only)'}).click();
+  await expect(section.locator('[data-reply-gmail]')).toContainText('is not an email address');
+  expect(app.reads).toHaveLength(0);
+  await address.fill('Andrew@Client.test');
+  await section.getByRole('button', {name: 'Find their reply in Gmail (read-only)'}).click();
+  await expect(section.getByRole('list', {name: 'Replies found'}).getByRole('listitem')).toHaveCount(2);
+  expect(app.reads[0].fromAddresses[0]).toBe('andrew@client.test');
+  expect(app.reads[0].fromAddresses).toContain('sam@agency.test');
+  await page.reload();
+  await expect(section.getByLabel('Their email address (optional)')).toHaveValue('Andrew@Client.test');
+});
+

@@ -341,6 +341,26 @@ export const MAINTENANCE_COMMANDS = Object.freeze([
       "directory": "D:\\monorepo\\NewModularProduct"
   },
   {
+      "id": "certifications-list",
+      "title": "Certifications: list saved",
+      "category": "Letters",
+      "command": "node tools/maintenance/owner-certifications.mjs list --state D:\\NewModularProduct-Production\\shared\\data",
+      "purpose": "Lists the certifications saved for every application. Polishing and the strong-fit paragraph use them even when the selected CV lists only some. For development, use --state D:\\monorepo\\NewModularProduct\\output.",
+      "caution": "Read-only.",
+      "effect": "Read-only",
+      "directory": "D:\\monorepo\\NewModularProduct"
+  },
+  {
+      "id": "certifications-add",
+      "title": "Certifications: add new",
+      "category": "Letters",
+      "command": "node tools/maintenance/owner-certifications.mjs add \"Certification name\" --state D:\\NewModularProduct-Production\\shared\\data",
+      "purpose": "Adds one or more certifications (each in its own quotes, for example \"PRINCE2 Practitioner\" \"SAFe SPC\"). Use the exact name on the certificate. No restart needed. To remove one, replace add with remove and give one name. For development, use --state D:\\monorepo\\NewModularProduct\\output.",
+      "caution": "Add only certifications you hold: letters will state them as fact. Writes only owner-certifications-v1.json in the data folder; no database changes.",
+      "effect": "Changes production settings",
+      "directory": "D:\\monorepo\\NewModularProduct"
+  },
+  {
       "id": "recent-app-errors",
       "title": "Recent polishing and letter errors",
       "category": "Performance",

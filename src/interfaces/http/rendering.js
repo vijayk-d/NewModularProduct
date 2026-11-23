@@ -803,6 +803,10 @@ export function renderRefinementPanel({
           <input type="checkbox" name="webSearchEnabled" value="true"${refinementLastAttempt?.webSearchEnabled===false?'':' checked'}>
           Allow web search during polishing
         </label>
+        <label data-early-weeks-choice>
+          <input type="checkbox" name="includeEarlyWeeks" value="true">
+          Also add an early-weeks paragraph (optional; the strong-fit paragraph is always included)
+        </label>
         <fieldset data-scenario-picker data-review-id="${escapeHtml(reviewId)}"><legend>Supporting assignment scenarios (optional)</legend><input type="hidden" name="scenarioSelections" value="${escapeHtml(JSON.stringify(scenarioSelectionReferences))}"><p>Only currently approved wording is eligible. Private source passages, notes and confirmation comments are not sent. Approval is your assessment, not independent verification. Every selected scenario is used; scenarios from the same organisation share one bullet.</p><p data-scenario-status role="status">Loading optional scenario choices…</p><div data-scenario-choices></div><div class="scenario-actions" style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;margin-top:0.5rem"><button type="button" data-scenario-refresh style="width:auto;margin:0">Refresh scenarios</button><button type="button" data-scenario-clear style="width:auto;margin:0">Clear scenarios</button><button type="button" data-scenario-save style="width:auto;margin:0">Save scenario selection</button></div></fieldset>
         <label for="personal-polishing-instructions" style="display:block">Personal polishing instructions (optional)</label>
         <textarea id="personal-polishing-instructions" name="instructions" rows="4" maxlength="4000" style="box-sizing:border-box;width:100%;resize:vertical;padding:0.65rem;font:inherit" placeholder="For example: make the opening more direct, emphasise relevant achievements, and remove repetition.">${escapeHtml(polishingInstructions)}</textarea>

@@ -12,6 +12,8 @@ const el = (doc, tag, props = {}, children = []) => {
 export const SHORTCUTS = Object.freeze([
   {keys: 'Ctrl+B', command: 'bold', label: 'Bold', native: true},
   {keys: 'Ctrl+I', command: 'italic', label: 'Italic', native: true},
+  {keys: 'Ctrl+Z', command: 'undo', label: 'Undo', native: true},
+  {keys: 'Ctrl+Shift+Z', command: 'redo', label: 'Redo', native: true},
   {keys: 'Ctrl+Shift+8', command: 'insertUnorderedList', label: 'Bullet list'},
   {keys: 'Ctrl+Shift+7', command: 'insertOrderedList', label: 'Numbered list'},
   {keys: 'Ctrl+Shift+H', command: 'toggleJobHighlight', label: 'Highlight selected text'},
@@ -59,6 +61,41 @@ export function markTerms(editor, terms) {
   return marked;
 }
 
+// Instant tooltips for toolbar buttons: the browser's own title tooltip appears only after a delay, so the shortcut
+// is easy to miss. One floating label, shown on hover or keyboard focus; the title stays for screen readers and tests
+// but is held back while the instant tooltip is showing, so the two never overlap.
+export function attachInstantTooltips(doc = document) {
+  if (doc.__instantTooltips) return;
+  doc.__instantTooltips = true;
+  const tip = el(doc, 'div', {class: 'toolbar-instant-tip', role: 'tooltip', 'data-instant-tip': '', hidden: ''});
+  Object.assign(tip.style, {position: 'fixed', zIndex: '1000', pointerEvents: 'none', background: '#1e293b', color: '#fff', fontSize: '.8rem', lineHeight: '1.3', padding: '.25rem .5rem', borderRadius: '6px', maxWidth: '18rem', boxShadow: '0 2px 6px rgba(0,0,0,.2)', whiteSpace: 'normal'});
+  doc.body.append(tip);
+  let current = null;
+  const target = node => node?.closest?.('.rich-editor-toolbar button[title], .rich-editor-toolbar button[data-tip]');
+  const show = button => {
+    if (current === button) return;
+    hide();
+    const text = button.getAttribute('title') || button.dataset.tip;
+    if (!text) return;
+    button.dataset.tip = text; button.removeAttribute('title'); current = button;
+    tip.textContent = text; tip.hidden = false;
+    place(button);
+  };
+  const place = button => {
+    const r = button.getBoundingClientRect(), view = doc.defaultView;
+    const width = tip.offsetWidth || 160, left = Math.max(4, Math.min(r.left + r.width / 2 - width / 2, (view?.innerWidth || 1024) - width - 4));
+    const below = r.bottom + 6, height = tip.offsetHeight || 24;
+    tip.style.left = left + 'px'; tip.style.top = (below + height > (view?.innerHeight || 768) ? r.top - height - 6 : below) + 'px';
+  };
+  function hide() { if (current) { current.setAttribute('title', current.dataset.tip); current = null; } tip.hidden = true; tip.textContent = ''; }
+  doc.addEventListener('pointerover', e => { const b = target(e.target); if (b) show(b); else if (current) hide(); });
+  doc.addEventListener('pointerout', e => { if (current && !current.contains(e.relatedTarget)) hide(); });
+  doc.addEventListener('focusin', e => { const b = target(e.target); if (b && b.matches(':focus-visible')) show(b); });
+  doc.addEventListener('focusout', () => hide());
+  doc.addEventListener('mousedown', () => hide(), true);
+  doc.defaultView?.addEventListener('scroll', () => { if (current) place(current); }, true);
+}
+
 const plainText = editor => String(editor.innerText ?? editor.textContent ?? '');
 
 export function attachLetterKeywordControls(doc = document, fetchImpl = fetch, clipboard = globalThis.navigator?.clipboard) {
@@ -72,6 +109,8 @@ export function attachLetterKeywordControls(doc = document, fetchImpl = fetch, c
     const s = SHORTCUTS.find(x => x.command === b.dataset.editorCommand);
     if (s && !String(b.title || '').includes(s.keys)) { b.title = `${b.title || s.label} (${s.keys})`; b.setAttribute('aria-keyshortcuts', s.keys.replace('Ctrl', 'Control')); }
   }
+
+  attachInstantTooltips(doc);
 
   const panels = new Map();
   for (const toolbar of toolbars) {

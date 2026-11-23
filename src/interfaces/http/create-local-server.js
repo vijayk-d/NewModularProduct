@@ -54,7 +54,8 @@ import { createRecruiterReplyHandler } from "./recruiter-reply-http.js";
 import { createLetterKeywordsHandler } from "./letter-keywords-http.js";
 import { createLetterKeywordService } from "../../application/letter-keywords.js";
 import { createFitParagraphService } from "../../application/fit-paragraph.js";
-import { cvFactLines } from "../../domain/cv/cv-facts.js";
+import { factLinesWithCertifications } from "../../domain/cv/cv-facts.js";
+import { normaliseCertifications } from "../../domain/cv/owner-certifications.js";
 import { createRecruiterReplyService } from "../../application/recruiter-reply.js";
 import { readGmailReplies, gmailReplyReadingEnabled } from "../../application/gmail-reply-reader.js";
 import { createGmailReplyDraft } from "../../application/gmail-reply-draft.js";
@@ -238,6 +239,7 @@ export function createLocalServer({
   questionWriter = null,
   replyWriter = null,
   cvTextFor = null,
+  ownerCertifications = () => [],
   gmailReplyReader = undefined,
   gmailReplyDrafter = undefined,
   replyThreadsStore = null,
@@ -475,10 +477,14 @@ export function createLocalServer({
   const letterUpdates=outreachRepository?createUnsentLetterUpdateService({getReview:id=>reviewStore.get(id),repository:outreachRepository,draftUpdates:gmailDraftUpdatePort||createGmailDraftUpdatePort()}):null;
   const handleApplications=createApplicationReviewHandler({outcomeFor:insightsStore?id=>{const o=currentOutcome(insightsStore.history(id));return o?{label:outcomeLabel(o.outcome),occurredOn:o.occurredOn}:null;}:null,store:reviewStore,renderReview:renderCompleteReview,sendJson,sendHtml,sendText,applicationPackExporter,letterUpdates,outputFolder:applicationOutputFolder});
   const handleSystemCheck=createSystemCheckHandler({runCheck:systemCheck,sendJson,sendHtml});
+  // The owner's saved certifications (maintenance command), used by polishing, the strong-fit paragraph and answers.
+  const savedCertifications=()=>{try{return normaliseCertifications(typeof ownerCertifications==='function'?ownerCertifications():[]);}catch{return [];}};
+  // Polishing: the strong-fit paragraph is always requested; the early-weeks paragraph only when ticked.
+  const letterSectionRequest=values=>{const c=savedCertifications();return {...(values.getAll('includeEarlyWeeks').includes('true')?{includeEarlyWeeks:true}:{}),...(c.length?{candidateCertifications:c}:{})};};
   // Application questions: evidence is this application's selected achievements, its latest tailored CV and its approved polishing scenarios.
   const questionsService=answersStore?createApplicationQuestionsService({reviews:reviewStore,store:answersStore,writer:questionWriter,
     tailoredLatest:id=>typeof tailoredCvLatest==='function'?tailoredCvLatest(id):null,
-    cvFacts:async review=>{if(typeof cvTextFor!=='function'||!review?.selectedCvRoleCode)return [];return cvFactLines(await cvTextFor(review.selectedCvRoleCode));},
+    cvFacts:async review=>{const cv=typeof cvTextFor==='function'&&review?.selectedCvRoleCode?await cvTextFor(review.selectedCvRoleCode):'';return factLinesWithCertifications(cv,savedCertifications());},
     scenarioEvidence:review=>{try{const refs=review.polishingScenarios?.references||[];if(!refs.length||!assignmentEvidenceStore)return [];const ev=approvedScenarioRequest(resolveScenarioSelection(assignmentEvidenceStore,JSON.stringify(refs))).approvedScenarioEvidence||[];return ev.map(s=>({text:s.approvedWording,source:'Approved scenario'+(s.organisation?' ('+s.organisation+')':'')}));}catch{return [];}}}):null;
   const handleQuestions=createApplicationQuestionsHandler({service:questionsService,sendJson,sendText});
   // Reply assistant: drafts a reply to a recruiter from the same evidence; never sends.
@@ -1172,7 +1178,7 @@ export function createLocalServer({
           organisationName:review.formData.organisationName,advertiserRelationship:contextMode(review.formData),...(review.formData.professionalValues?{candidateProfessionalValues:review.formData.professionalValues}:{}),organisationUrl:review.formData.organisationUrl,
           researchSources:!usesCandidateValues(review.formData)&&Array.isArray(review.research?.sources)?review.research.sources:[],instructions:personalPolishingInstructions(formBody.values),letterLengthMode:normalizeLengthMode(formBody.values.get('letterLengthMode')||review.letterLengthMode||'standard'),maxWords:coverLetterRefinementMaxWords,
           letterTone:normalizeLetterTone(formBody.values.get('letterTone')||review.letterTone||'professional'),excludedEmployers:['micro1'],
-          webSearchEnabled:formBody.values.getAll('webSearchEnabled').includes('true')};
+          webSearchEnabled:formBody.values.getAll('webSearchEnabled').includes('true'),...letterSectionRequest(formBody.values)};
         const apiBody = buildPolishingApiRequest(requestForEstimate,selectedModel);
         sendJson(response,200,{ok:true,writingReferenceCostProof:writingReferenceCostProof(writingState,review,formBody.values),writingReferenceCount:writingState.examples.length,writingReferenceCharacters:writingState.examples.reduce((n,x)=>n+Array.from(x.excerpt).length,0),scenarioCostProof:scenarioCostProof(scenarioState,review,formBody.values),...estimatePolishingApiRequest(apiBody),letterLengthMode:requestForEstimate.letterLengthMode,fullLetterMaximumWords:lengthPolicy(requestForEstimate.letterLengthMode,coverLetterRefinementMaxWords).maximumWords});
       } catch(error) {
@@ -1336,6 +1342,7 @@ export function createLocalServer({
         ...(formBody.values.has('polishingModel') || review.polishingModel !== DEFAULT_POLISHING_MODEL ? {polishingModel} : {}),
         letterTone,
         excludedEmployers: ['micro1'],
+        ...letterSectionRequest(formBody.values),
         ...(formBody.values.has('webSearchEnabled') ? {
           webSearchEnabled: formBody.values.getAll('webSearchEnabled').includes('true')
         } : {}),
