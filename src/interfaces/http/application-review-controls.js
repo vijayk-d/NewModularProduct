@@ -5,6 +5,8 @@ import './tailored-cv-controls.js';
 import './application-outcome-controls.js';
 import './application-questions-controls.js';
 import './recruiter-reply-controls.js';
+import './letter-keyword-controls.js';
+import './fit-paragraph-controls.js';
 import './letter-gate-controls.js';
 export function attachApplicationSaveControls(doc=document,fetchImpl=fetch){
  const editor=doc.getElementById('cover-letter-draft'),subject=doc.getElementById('current-cover-letter-subject'),id=doc.querySelector('input[name="reviewId"]')?.value;

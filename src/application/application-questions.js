@@ -12,7 +12,8 @@ const OFF = 'Writing answers with AI is off. It uses the same setting as letter 
 
 function lines(value) { return (Array.isArray(value) ? value : []).map(v => String(v || '').trim()).filter(v => v && v.toLowerCase() !== 'null'); }
 
-export function createApplicationQuestionsService({reviews, store, tailoredLatest = () => null, scenarioEvidence = () => [], writer = null}) {
+// cvFacts(review): facts stated in the selected CV's own text (certifications, years), as evidence lines.
+export function createApplicationQuestionsService({reviews, store, tailoredLatest = () => null, scenarioEvidence = () => [], cvFacts = async () => [], writer = null}) {
   if (!reviews || !store) throw new Error('Application questions need reviews and a store.');
   let writing = false;
 
@@ -30,6 +31,7 @@ export function createApplicationQuestionsService({reviews, store, tailoredLates
       for (const role of Array.isArray(t.achievements?.roles) ? t.achievements.roles : []) for (const text of lines(role)) out.push({text, source: 'Tailored CV bullet'});
     }
     for (const s of await scenarioEvidence(r)) if (s?.text) out.push({text: String(s.text), source: s.source || 'Approved scenario'});
+    try { for (const f of await cvFacts(r)) if (f?.text) out.push(f); } catch { /* CV facts are optional */ }
     return out;
   }
 

@@ -210,6 +210,8 @@ const server = createLocalServer({
   evidenceLearning,
   answersStore,
   questionWriter:createQuestionAnswerWriter({apiKey:config.integrations.perplexity.apiKey,enabled:config.features.enableCoverLetterRefinement}),
+  // The selected CV's indexed text, for facts it states (certifications, years of experience).
+  cvTextFor:async code=>{try{return cvLibraryInstance?((await cvLibraryInstance.indexedTexts()).texts[code]||''):'';}catch{return '';}},
   replyWriter:createRecruiterReplyWriter({apiKey:config.integrations.perplexity.apiKey,enabled:config.features.enableCoverLetterRefinement}),
   tailoredCvLatest:cvTailoringStore?id=>cvTailoringStore.latest(id):null,
   relationshipMemory:workflowAutomationStore?{get:key=>workflowAutomationStore.relationshipChoice(key),record:(key,name,relationship)=>workflowAutomationStore.recordRelationshipChoice(key,name,relationship)}:null,
