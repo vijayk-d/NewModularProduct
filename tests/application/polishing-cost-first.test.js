@@ -39,7 +39,7 @@ test('search allowance is reported separately from token estimate',()=>{
 test('paid request uses the same builder budget',async()=>{
   let sent;const adapter=createPerplexityCoverLetterRefinementAdapter({apiKey:'synthetic',async fetchImpl(url,options){sent=JSON.parse(options.body);return {ok:true,status:200,async json(){return {status:'completed',output_parsed:{proposedDraft:'I led delivery.',warnings:[],highlightPhrases:[],appliedResearchPointIds:[],omittedResearchPointIds:[],suggestedResearchPoints:[]}};}};}});
   await adapter.refine({draftPlainText:'Original',maxWords:450,webSearchEnabled:false,polishingModel:DEFAULT_POLISHING_MODEL});
-  assert.equal(sent.max_output_tokens,4096);assert.equal(sent.model,DEFAULT_POLISHING_MODEL);
+  assert.equal(sent.max_output_tokens,8192);assert.equal(sent.model,DEFAULT_POLISHING_MODEL);
 });
 test('incomplete response cannot become a proposal',async()=>{
   const adapter=createPerplexityCoverLetterRefinementAdapter({apiKey:'synthetic',async fetchImpl(){return {ok:true,status:200,async json(){return {status:'incomplete',usage:{cost:{total_cost:0.001}},output_parsed:{proposedDraft:'I led delivery.',warnings:[],highlightPhrases:[]}};}};}});
