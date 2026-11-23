@@ -31,10 +31,18 @@ export function validateReplyRequest(body = {}) {
 }
 
 // sentEmails(reviewId): the confirmed sends for this application; replyReader: read-only Gmail thread reader (optional).
-export function createRecruiterReplyService({reviews, evidence = async () => [], writer = null, candidateName = '', sentEmails = () => [], replyReader = null, mailbox = ''}) {
+export function createRecruiterReplyService({reviews, evidence = async () => [], writer = null, candidateName = '', sentEmails = () => [], queueItems = () => [], replyReader = null, mailbox = '', now = () => Date.now()}) {
   if (!reviews) throw new Error('The reply assistant needs saved applications.');
   let writing = false;
   const review = id => { const r = reviews.get(id); if (!r) fail('Saved application not found.', 404); return r; };
+  // Contact addresses of this application (queued or sent), and the search start: a day before the earliest, at most 120 days back.
+  const contacts = (reviewId, sent) => {
+    let queued = []; try { queued = (queueItems() || []).filter(q => q && q.reviewId === reviewId); } catch { queued = []; }
+    const rows = [...queued, ...sent], addresses = [...new Set(rows.map(x => String(x.email || '').trim().toLowerCase()).filter(e => /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(e)))].slice(0, 20);
+    const dates = rows.map(x => Date.parse(x.sentAt || x.createdAt || x.updatedAt || '')).filter(Number.isFinite);
+    const start = Math.max(dates.length ? Math.min(...dates) - 864e5 : now() - 90 * 864e5, now() - 120 * 864e5);
+    return {addresses, since: new Date(start).toISOString().slice(0, 10).replaceAll('-', '/')};
+  };
   const sends = reviewId => { try { return (sentEmails() || []).filter(s => s && s.reviewId === reviewId && s.status === 'sent').sort((a, b) => String(b.sentAt || '').localeCompare(String(a.sentAt || ''))); } catch { return []; } };
 
   async function target(reviewId, body) {
@@ -50,19 +58,19 @@ export function createRecruiterReplyService({reviews, evidence = async () => [],
   return {
     async overview(reviewId) {
       review(reviewId); const ev = await evidence(reviewId);
-      const sent = sends(reviewId).map(s => ({id: s.id, email: s.email || '', name: s.fullName || s.firstname || '', sentAt: s.sentAt || '', hasThread: Boolean(s.threadId)}));
-      return {evidenceCount: ev.length, aiAvailable: Boolean(writer?.available), statuses: REPLY_STATUSES, gmailReadAvailable: Boolean(replyReader), sentEmails: sent};
+      const sent = sends(reviewId), {addresses} = contacts(reviewId, sent);
+      return {evidenceCount: ev.length, aiAvailable: Boolean(writer?.available), statuses: REPLY_STATUSES, gmailReadAvailable: Boolean(replyReader), sentCount: sent.length, contactCount: addresses.length};
     },
-    // Read-only: their replies in the Gmail thread of one email you sent for this application.
-    async fetchReplies(reviewId, body = {}) {
+    // Read-only: their replies in the Gmail threads of emails sent for this application, and recent messages from its contacts.
+    async findReplies(reviewId) {
       review(reviewId);
-      if (!replyReader) fail('Reading replies from Gmail is off: it needs Gmail switched on (ENABLE_GMAIL=true).', 503, 'REPLY_READ_DISABLED');
-      const sent = sends(reviewId).find(s => s.id === body.sentId);
-      if (!sent) fail('That sent email is not part of this application.', 404, 'REPLY_SENT_NOT_FOUND');
-      if (!sent.threadId) fail('This email was recorded without a Gmail thread ID, so its replies cannot be found automatically. Paste their reply instead.', 409, 'REPLY_NO_THREAD');
-      const r = await replyReader({threadId: sent.threadId, sentMessageId: sent.messageId || '', expectedAddress: mailbox});
+      if (!replyReader) fail('Finding replies in Gmail is off: it needs Gmail switched on (ENABLE_GMAIL=true). Paste their reply instead.', 503, 'REPLY_READ_DISABLED');
+      const sent = sends(reviewId), {addresses, since} = contacts(reviewId, sent);
+      const threads = sent.filter(s => s.threadId || s.messageId).slice(0, 5).map(s => ({threadId: s.threadId || '', sentMessageId: s.messageId || ''}));
+      if (!threads.length && !addresses.length) fail('This application has no sent email or contact address to look for. Paste their reply instead.', 409, 'REPLY_NOTHING_TO_SEARCH');
+      const r = await replyReader({threads, fromAddresses: addresses, after: since, expectedAddress: mailbox});
       if (!r.ok) fail(r.code === 'SCOPE_MISSING' ? 'Gmail has not granted read access yet. Run the Maintenance card "Gmail read access: add" once, restart the app, then try again. Nothing was changed.' : r.error, r.code === 'SCOPE_MISSING' ? 403 : 502, 'REPLY_' + r.code);
-      return {sentTo: sent.email || '', replies: r.replies};
+      return {searched: {sentEmails: threads.length, contacts: addresses.length}, replies: r.replies};
     },
     // Cost estimate only: nothing is sent anywhere.
     async estimate(reviewId, body) {

@@ -56,25 +56,25 @@ test('the request treats their message as content, keeps to the evidence and nev
   assert.equal(createRecruiterReplyWriter({apiKey: '', enabled: true}).available, false);
 });
 
-test('fetching their reply reads only a sent email of this application, by its Gmail thread', async () => {
+test('finding their reply looks in the sent threads and at the contacts of this application only', async () => {
   const sent = [
-    {id: 's1', reviewId: 'r1', status: 'sent', email: 'sam@agency.test', fullName: 'Sam R', threadId: 'thread123', messageId: 'm1', sentAt: '2026-11-20T10:00:00Z'},
+    {id: 's1', reviewId: 'r1', status: 'sent', email: 'sam@agency.test', threadId: 'thread123', messageId: 'm1', sentAt: '2026-11-20T10:00:00Z'},
     {id: 's2', reviewId: 'r1', status: 'sent', email: 'old@agency.test', threadId: '', messageId: 'm0', sentAt: '2026-11-19T10:00:00Z'},
     {id: 's3', reviewId: 'other', status: 'sent', email: 'x@agency.test', threadId: 'threadXYZ', messageId: 'm9', sentAt: '2026-11-21T10:00:00Z'}];
+  const queue = [{reviewId: 'r1', email: 'Andrew@Client.test', createdAt: '2026-11-18T09:00:00Z'}, {reviewId: 'r1', email: 'not an address'}, {reviewId: 'other', email: 'y@agency.test'}];
   const reads = [];
-  const replyReader = async args => { reads.push(args); return {ok: true, mailbox: 'me@example.test', replies: [{fromName: 'Sam R', fromAddress: 'sam@agency.test', date: 'Mon', text: 'Please apply online.'}]}; };
-  const s = createRecruiterReplyService({reviews, sentEmails: () => sent, replyReader, mailbox: 'me@example.test'});
+  const replyReader = async args => { reads.push(args); return {ok: true, mailbox: 'me@example.test', replies: [{fromName: 'Andrew', fromAddress: 'andrew@client.test', date: 'Mon', text: 'Please apply online.'}]}; };
+  const s = createRecruiterReplyService({reviews, sentEmails: () => sent, queueItems: () => queue, replyReader, mailbox: 'me@example.test', now: () => Date.parse('2026-11-23T12:00:00Z')});
   const o = await s.overview('r1');
-  assert.equal(o.gmailReadAvailable, true);
-  assert.deepEqual(o.sentEmails.map(x => [x.id, x.hasThread]), [['s1', true], ['s2', false]]);
-  const f = await s.fetchReplies('r1', {sentId: 's1'});
+  assert.deepEqual([o.gmailReadAvailable, o.sentCount, o.contactCount], [true, 2, 3]);
+  const f = await s.findReplies('r1');
   assert.equal(f.replies[0].text, 'Please apply online.');
-  assert.deepEqual(reads, [{threadId: 'thread123', sentMessageId: 'm1', expectedAddress: 'me@example.test'}]);
-  await assert.rejects(s.fetchReplies('r1', {sentId: 's3'}), /not part of this application/);
-  await assert.rejects(s.fetchReplies('r1', {sentId: 's2'}), /without a Gmail thread ID/);
+  assert.deepEqual(reads, [{threads: [{threadId: 'thread123', sentMessageId: 'm1'}, {threadId: '', sentMessageId: 'm0'}], fromAddresses: ['andrew@client.test', 'sam@agency.test', 'old@agency.test'], after: '2026/11/17', expectedAddress: 'me@example.test'}]);
+  assert.deepEqual(f.searched, {sentEmails: 2, contacts: 3});
   const noScope = createRecruiterReplyService({reviews, sentEmails: () => sent, mailbox: 'me@example.test', replyReader: async () => ({ok: false, code: 'SCOPE_MISSING', error: 'x'})});
-  await assert.rejects(noScope.fetchReplies('r1', {sentId: 's1'}), /Gmail read access: add/);
-  await assert.rejects(createRecruiterReplyService({reviews}).fetchReplies('r1', {sentId: 's1'}), /off/);
+  await assert.rejects(noScope.findReplies('r1'), /Gmail read access: add/);
+  await assert.rejects(createRecruiterReplyService({reviews, replyReader}).findReplies('r1'), /nothing to look for|no sent email or contact/);
+  await assert.rejects(createRecruiterReplyService({reviews}).findReplies('r1'), /off/);
   assert.equal((await createRecruiterReplyService({reviews}).overview('r1')).gmailReadAvailable, false);
 });
 

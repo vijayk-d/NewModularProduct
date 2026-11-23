@@ -48,14 +48,19 @@ test('paste their reply, estimate, write once, edit and copy the suggested reply
   expect(copied).toContain('\n\nKind regards,\nTest Candidate');
 });
 
-test('fetch their reply from the Gmail thread of the email you sent (read-only)', async ({page, app}) => {
+test('find their reply in Gmail (read-only), with a clear three-step layout', async ({page, app}) => {
   await page.goto(app.url + '/applications/r1');
   const section = page.locator('#recruiter-reply');
   await section.getByRole('heading', {name: 'Reply assistant'}).click();
-  await expect(section.getByLabel('Email you sent')).toContainText('sam@agency.test');
-  await section.getByRole('button', {name: 'Fetch their reply from Gmail (read-only)'}).click();
+  for (const legend of ['1. Their reply', '2. Your answer', '3. Draft']) await expect(section.locator('legend', {hasText: legend})).toBeVisible();
+  await expect(section.locator('[data-reply-result]')).toBeHidden();
+  await expect(section.locator('[data-reply-gmail]')).toContainText('1 email sent for this application');
+  await section.getByRole('button', {name: 'Find their reply in Gmail (read-only)'}).click();
   await expect(section.getByLabel('Their reply')).toHaveValue(/please apply online/);
   await expect(section.getByLabel('Their first name (optional)')).toHaveValue('Sam');
-  await expect(section.locator('[data-reply-status]')).toContainText('Nothing in Gmail was changed');
-  expect(app.reads).toEqual([{threadId: 'thread123', sentMessageId: 'm1', expectedAddress: ''}]);
+  await expect(section.locator('[data-reply-source]')).toContainText('From Gmail: Sam Recruiter');
+  await expect(section.locator('[data-reply-gmail]')).toContainText('Nothing in Gmail was changed');
+  expect(app.reads).toEqual([{threads: [{threadId: 'thread123', sentMessageId: 'm1'}], fromAddresses: ['sam@agency.test'], after: '2026/11/19', expectedAddress: ''}]);
+  const field = await section.getByLabel('Their reply').boundingBox(), label = await section.getByText('Their reply', {exact: true}).boundingBox();
+  expect(label.y + label.height).toBeLessThanOrEqual(field.y + 2);
 });
