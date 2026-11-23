@@ -1,6 +1,8 @@
 export const PRICING_CHECKED_AT = '2026-10-13';
 export const DEFAULT_POLISHING_MODEL = 'anthropic/claude-haiku-5-5';
-export const POLISHING_OUTPUT_TOKEN_BUDGET = 4096;
+// Room for the model's reasoning plus the full letter and evidence audit: with 4096, production reasoning used ~3,700
+// tokens and the answer was cut off (REFINEMENT_INCOMPLETE_OUTPUT). Only tokens actually used are billed.
+export const POLISHING_OUTPUT_TOKEN_BUDGET = 8192;
 export const MODEL_REFERENCE_WORKLOAD = Object.freeze({inputTokens:5000,outputTokens:1500});
 const catalog = [
   {id:'anthropic/claude-haiku-5-5',label:'Claude Haiku 5.5',provider:'Anthropic',inputUsdPerMillion:0.10,outputUsdPerMillion:0.50,tierThreshold:100000,highInputUsdPerMillion:0.50,highOutputUsdPerMillion:2.50},
