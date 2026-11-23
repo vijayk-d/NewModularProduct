@@ -16,8 +16,18 @@ export function partitionQueueSelection(items,ids,kind){
  return {eligible,skipped};
 }
 export function shortSendLabel(label){return ({'Send email':'Send','Send draft':'Send draft','Send again':'Send again','Retry send':'Retry'})[label]||'Send';}
-async function executeSendBatch({items,ids,api,save,confirm,onProgress=()=>{},isStopped=()=>false,now=()=>Date.now(),max=25,beforeCommit=async()=>{}}){
- const selected=partitionQueueSelection(items,ids,'send'),results=[...selected.skipped],prepared=[];let halted=false;
+// Approved batch sent by the server (send-run.js); the page only watches. Leaving the page does not stop it.
+export async function runSendInBackground({api,fresh,onProgress=()=>{},shouldStop=()=>false,sleep=ms=>new Promise(r=>setTimeout(r,ms)),pollMs=1000}){
+ let {run}=await api('/api/outreach-queue/send-run',{confirmed:true,items:fresh.map(p=>({ticket:p.prepared.ticket,queueId:p.item.id,email:p.item.email}))});let stopSent=false;
+ while(run&&run.state==='running'){
+  onProgress({stage:'sending',index:Math.min(run.done+1,run.total),total:run.total,email:run.currentEmail||''});
+  if(!stopSent&&shouldStop()){stopSent=true;try{({run}=await api('/api/outreach-queue/send-run/stop',{}));}catch{}}
+  await sleep(pollMs);({run}=await api('/api/outreach-queue/send-run'));
+ }
+ return {results:run?.results||[],halted:run?.state!=='finished'};
+}
+async function executeSendBatch({items,ids,api,save,confirm,onProgress=()=>{},isStopped=()=>false,now=()=>Date.now(),max=25,beforeCommit=async()=>{},runInBackground=null}){
+ const selected=partitionQueueSelection(items,ids,'send'),results=[...selected.skipped],prepared=[],handedOver=new Set();let halted=false;
  if(selected.eligible.length>max)throw new Error(`Select at most ${max} eligible messages per send batch.`);
  try{
   for(const [index,item] of selected.eligible.entries()){
@@ -46,6 +56,7 @@ async function executeSendBatch({items,ids,api,save,confirm,onProgress=()=>{},is
   if(isStopped()||!await confirm({prepared:fresh,results,items,selectedCount:new Set(ids).size})){
    results.push(...fresh.map(p=>({id:p.item.id,email:p.item.email,kind:'cancelled',message:'Nothing sent; confirmation cancelled.'})));return {results,confirmed:false};
   }
+  if(runInBackground){for(const p of fresh)handedOver.add(p.prepared.ticket);const r=await runInBackground({fresh,onProgress});results.push(...r.results);return {results,confirmed:true,halted:r.halted};}
   for(const [index,p] of fresh.entries()){
    if(!halted&&!isStopped())await beforeCommit();
    if(isStopped()||halted){results.push(...fresh.slice(index).map(x=>({id:x.item.id,email:x.item.email,kind:'stopped',message:'Not sent; stopped after the preceding operation.'})));break;}
@@ -64,12 +75,13 @@ async function executeSendBatch({items,ids,api,save,confirm,onProgress=()=>{},is
   return {results,confirmed:true,halted};
  }finally{
   // Cancelling an already consumed ticket only frees cache; it never resets a ledger or retries a send.
-  await Promise.allSettled(prepared.map(p=>api('/api/outreach-queue/send-cancel',{ticket:p.prepared.ticket})));
+  // Tickets handed to a background run belong to the server, which consumes or cancels them itself.
+  await Promise.allSettled(prepared.filter(p=>!handedOver.has(p.prepared.ticket)).map(p=>api('/api/outreach-queue/send-cancel',{ticket:p.prepared.ticket})));
  }
 }
 
 // Selection is independent of the internal preparation/confirmation batch size.
-export async function executeBulkSend({items,ids,api,save,confirm,onProgress=()=>{},isStopped=()=>false,now=()=>Date.now(),max=25,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))}){
+export async function executeBulkSend({items,ids,api,save,confirm,onProgress=()=>{},isStopped=()=>false,now=()=>Date.now(),max=25,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)),runInBackground=null}){
  if(!Number.isInteger(max)||max<1||max>25)throw new Error('Internal batch size must be between 1 and 25.');
  const selected=partitionQueueSelection(items,ids,'send'),results=[...selected.skipped];
  const batchCount=Math.ceil(selected.eligible.length/max);let confirmed=false,previousOperation=false;
@@ -77,7 +89,7 @@ export async function executeBulkSend({items,ids,api,save,confirm,onProgress=()=
   const batchIndex=Math.floor(offset/max)+1,rows=selected.eligible.slice(offset,offset+max);
   if(isStopped()){results.push(...selected.eligible.slice(offset).map(i=>({id:i.id,email:i.email,kind:'stopped',message:'Not sent; run stopped.'})));break;}
   const result=await executeSendBatch({items,ids:rows.map(i=>i.id),api,save,now,max,isStopped,
-   beforeCommit:async()=>{if(previousOperation)await sleep(1000);previousOperation=true;},
+   beforeCommit:async()=>{if(previousOperation)await sleep(1000);previousOperation=true;},runInBackground,
    confirm:data=>confirm({...data,selectedCount:new Set(ids).size,batchIndex,batchCount}),
    onProgress:p=>onProgress({...p,index:offset+p.index,total:selected.eligible.length,batchIndex,batchCount})});
   results.push(...result.results);confirmed=confirmed||result.confirmed;
@@ -115,11 +127,11 @@ function clickedRows(items,ids,account,userInitiated){if(userInitiated!==true)th
 async function freeze(rows,save,loadItems){const frozen=[];for(const r of rows){const p=await save(r.id);if(!p||p.beforeVersion!==r.editVersion||!/^[a-f0-9]{64}$/.test(p.editVersion||''))throw intentError('The reviewed message changed around the Send click. Refresh/review.');frozen.push({...r,editVersion:p.editVersion});}const fresh=await loadItems(),map=new Map(fresh.map(r=>[r.id,r]));for(const r of frozen){const c=map.get(r.id);if(!c||c.editVersion!==r.editVersion||address(c.email)!==address(r.email)||c.subject!==r.subject||c.status!==r.status||c.sendAction?.mode!==r.sendAction?.mode||!c.sendAction?.eligible||String(c.draftId||'')!==String(r.draftId||''))throw intentError('Selected recipients/messages/actions changed. Nothing new prepared; refresh/review.');}return {frozen,fresh};}
 function expected(r,account){return {expectedVersion:r.editVersion,expectedAccount:account,expectedRecipient:r.email,expectedMode:r.sendAction.mode,expectedDraftId:r.draftId||''};}
 function valid(p,r,account,now){if(typeof p?.ticket!=='string'||!p.ticket||!Number.isFinite(p.expiresAt)||p.expiresAt<=now()+10000||p.mode!==r.sendAction.mode||address(p.recipient)!==address(r.email)||address(p.sendingAccount)!==address(account))throw intentError('Prepared sender/recipient/action no longer matches the Send click.');}
-export async function executeOneClickBulkSend({clickedItems,ids,account,userInitiated=false,api,save,loadItems,onProgress=()=>{},isStopped=()=>false,now=()=>Date.now(),sleep,max=25}){
+export async function executeOneClickBulkSend({clickedItems,ids,account,userInitiated=false,api,save,loadItems,onProgress=()=>{},isStopped=()=>false,now=()=>Date.now(),sleep,max=25,runInBackground=null}){
  const rows=clickedRows(clickedItems,ids,account,userInitiated),picked=partitionQueueSelection(rows,ids,'send');if(!picked.eligible.length)return {results:picked.skipped,confirmed:false};
  const {frozen,fresh}=await freeze(picked.eligible,async id=>{const index=picked.eligible.findIndex(r=>r.id===id);onProgress({stage:'saving',index:index+1,total:picked.eligible.length,email:picked.eligible[index].email});return save(id);},loadItems),map=new Map(frozen.map(r=>[r.id,r]));let blocked='';
  const guarded=async(url,v)=>{if(!url.endsWith('send-prepare'))return api(url,v);const r=map.get(v.queueId);if(!r)throw intentError('Unselected row blocked.');let p;try{p=await api(url,{...v,...expected(r,account)});valid(p,r,account,now);return p;}catch(e){if(p?.ticket)try{await api('/api/outreach-queue/send-cancel',{ticket:p.ticket});}catch{}if(e.code==='SEND_INTENT_CHANGED'||e.data?.code==='SEND_INTENT_CHANGED')blocked=e.message;throw e;}};
- const result=await executeBulkSend({items:fresh,ids:frozen.map(r=>r.id),api:guarded,save:async()=>{},confirm:async data=>{if(blocked||isStopped())return false;try{for(const p of data.prepared)valid(p.prepared,map.get(p.item.id),account,now);return true;}catch(e){blocked=e.message;return false;}},onProgress,isStopped:()=>Boolean(blocked)||isStopped(),now,sleep,max});
+ const result=await executeBulkSend({items:fresh,ids:frozen.map(r=>r.id),api:guarded,save:async()=>{},confirm:async data=>{if(blocked||isStopped())return false;try{for(const p of data.prepared)valid(p.prepared,map.get(p.item.id),account,now);return true;}catch(e){blocked=e.message;return false;}},onProgress,isStopped:()=>Boolean(blocked)||isStopped(),now,sleep,max,runInBackground});
  if(blocked)result.results=result.results.map(r=>['cancelled','stopped'].includes(r.kind)?{...r,kind:'stopped',message:blocked}:r);return {...result,results:[...picked.skipped,...result.results]};
 }
 export async function executeOneClickSend({item,account,userInitiated=false,api,save,loadItems,onStage=()=>{},now=()=>Date.now()}){const r=clickedRows([item],[item.id],account,userInitiated)[0];if(!r.sendAction?.eligible||!['new','draft','repeat'].includes(r.sendAction.mode))throw intentError('This row is not eligible for the labelled send action.');const {frozen}=await freeze([r],save,loadItems);let p;try{onStage('preparing');p=await api('/api/outreach-queue/send-prepare',{queueId:r.id,...expected(frozen[0],account)});valid(p,r,account,now);onStage('sending');const result=await api('/api/outreach-queue/send-commit',{ticket:p.ticket,confirmed:true,repeatApproved:r.sendAction.mode==='repeat'});if(result.sent!==true||!result.messageId)throw intentError('No confirmed send receipt. Check Gmail before retrying.');return result;}finally{if(p?.ticket)try{await api('/api/outreach-queue/send-cancel',{ticket:p.ticket});}catch{}}}
