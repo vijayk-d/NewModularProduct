@@ -17,6 +17,7 @@ export const SHORTCUTS = Object.freeze([
   {keys: 'Ctrl+Shift+H', command: 'toggleJobHighlight', label: 'Highlight selected text'},
   {keys: 'Ctrl+K', command: 'createLink', label: 'Add a link'},
   {keys: 'Ctrl+Shift+K', command: 'keywordCheck', label: 'Keywords: highlight and list missing'},
+  {keys: 'Ctrl+Shift+F', command: 'fitParagraph', label: 'Strong-fit paragraph'},
   {keys: 'Ctrl+\\', command: 'removeFormat', label: 'Clear format'},
   {keys: 'Ctrl+/', command: 'shortcutHelp', label: 'Show these shortcuts'}
 ]);
@@ -141,6 +142,7 @@ export function attachLetterKeywordControls(doc = document, fetchImpl = fetch, c
     const panel = panels.get(editor);
     if (s.command === 'keywordCheck') { if (panel) check(editor, panel); return; }
     if (s.command === 'shortcutHelp') { if (panel) showHelp(panel); return; }
+    if (s.command === 'fitParagraph') { editor.dispatchEvent(new (doc.defaultView?.CustomEvent || CustomEvent)('fit-paragraph-open', {bubbles: false})); return; }
     const toolbar = doc.querySelector(`.rich-editor-toolbar[data-editor-target="${editor.id}"]`);
     const button = toolbar?.querySelector(`button[data-editor-command="${s.command}"]`);
     button?.dispatchEvent(new (doc.defaultView?.MouseEvent || Event)('mousedown', {bubbles: true, cancelable: true}));

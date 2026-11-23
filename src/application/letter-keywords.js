@@ -4,10 +4,10 @@ import {extractAtsTerms, matchAtsTerms, termsFoundIn} from '../domain/ats/ats-en
 
 export const KEYWORD_LIMIT = 20;
 // Advert filler the ATS extractor can return as single words; not worth highlighting or adding to a letter.
-const FILLER = new Set(['hiring', 'desirable', 'essential', 'candidate', 'candidates', 'successful', 'opportunity', 'required', 'preferred', 'ideal', 'ideally', 'looking', 'join', 'apply', 'salary', 'benefits', 'experience', 'team', 'teams', 'work', 'working', 'role', 'responsibilities']);
+export const KEYWORD_FILLER = new Set(['hiring', 'desirable', 'essential', 'candidate', 'candidates', 'successful', 'opportunity', 'required', 'preferred', 'ideal', 'ideally', 'looking', 'join', 'apply', 'salary', 'benefits', 'experience', 'team', 'teams', 'work', 'working', 'role', 'responsibilities']);
 
 export function letterKeywordCoverage({jobDescriptionText = '', organisationName = '', letterText = '', evidence = []}) {
-  const terms = extractAtsTerms(String(jobDescriptionText || ''), {limit: KEYWORD_LIMIT + 10, organisationName}).filter(t => !(t.kind === 'word' && FILLER.has(t.term.toLowerCase()))).slice(0, KEYWORD_LIMIT);
+  const terms = extractAtsTerms(String(jobDescriptionText || ''), {limit: KEYWORD_LIMIT + 10, organisationName}).filter(t => !(t.kind === 'word' && KEYWORD_FILLER.has(t.term.toLowerCase()))).slice(0, KEYWORD_LIMIT);
   const match = matchAtsTerms(terms, String(letterText || ''));
   const inLetter = new Set(match.matched), partial = new Set(match.partial);
   const lines = (Array.isArray(evidence) ? evidence : []).filter(e => e && e.text);
