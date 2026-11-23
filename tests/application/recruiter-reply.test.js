@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createRecruiterReplyService, validateReplyRequest, REPLY_STATUSES} from '../../src/application/recruiter-reply.js';
+import {createRecruiterReplyService, validateReplyRequest, REPLY_STATUSES, respondentAddresses} from '../../src/application/recruiter-reply.js';
 import {buildReplyApiRequest, createRecruiterReplyWriter, REPLY_INSTRUCTIONS} from '../../src/infrastructure/refinement/perplexity-recruiter-reply-adapter.js';
 
 const theirs = 'Thank you for your email. Please note we only accept applications through our online portal, so please apply there.';
@@ -70,7 +70,7 @@ test('finding their reply looks in the sent threads and at the contacts of this 
   const f = await s.findReplies('r1');
   assert.equal(f.replies[0].text, 'Please apply online.');
   assert.deepEqual(reads, [{threads: [{threadId: 'thread123', sentMessageId: 'm1'}, {threadId: '', sentMessageId: 'm0'}], fromAddresses: ['andrew@client.test', 'sam@agency.test', 'old@agency.test'], after: '2026/11/17', expectedAddress: 'me@example.test'}]);
-  assert.deepEqual(f.searched, {sentEmails: 2, contacts: 3});
+  assert.deepEqual(f.searched, {sentEmails: 2, contacts: 3, enteredAddresses: 0});
   const noScope = createRecruiterReplyService({reviews, sentEmails: () => sent, mailbox: 'me@example.test', replyReader: async () => ({ok: false, code: 'SCOPE_MISSING', error: 'x'})});
   await assert.rejects(noScope.findReplies('r1'), /Gmail read access: add/);
   await assert.rejects(createRecruiterReplyService({reviews, replyReader}).findReplies('r1'), /nothing to look for|no sent email or contact/);
@@ -93,3 +93,24 @@ test('the Gmail reply reader runs the read-only worker and accepts only a matchi
   assert.equal(gmailReplyReadingEnabled({ENABLE_GMAIL: 'true', GMAIL_FROM_ADDRESS: 'me@example.test', NMP_ENV: 'verification'}), false);
   assert.equal(gmailReplyReadingEnabled({ENABLE_GMAIL: 'false', GMAIL_FROM_ADDRESS: 'me@example.test'}), false);
 });
+
+test('their own email address is searched first, alongside the application contacts; bad addresses are refused', async () => {
+  const reads = [];
+  const replyReader = async args => { reads.push(args); return {ok: true, replies: []}; };
+  const s = createRecruiterReplyService({reviews, sentEmails: () => [], queueItems: () => [{reviewId: 'r1', email: 'sam@agency.test'}], replyReader, now: () => Date.parse('2026-11-23T12:00:00Z')});
+  assert.deepEqual((await s.overview('r1')).contactAddresses, ['sam@agency.test']);
+  const f = await s.findReplies('r1', {theirEmail: ' Jo.Smith@Client.test; <sam@agency.test>'});
+  assert.deepEqual(reads[0].fromAddresses, ['jo.smith@client.test', 'sam@agency.test']);
+  assert.deepEqual(f.searched, {sentEmails: 0, contacts: 2, enteredAddresses: 2});
+  await assert.rejects(s.findReplies('r1', {theirEmail: 'jo@'}), /not an email address/);
+  await assert.rejects(s.findReplies('r1', {theirEmail: 'a@b.co c@d.co e@f.co g@h.co i@j.co k@l.co'}), /at most five/);
+  assert.equal(reads.length, 1);
+  // An application with nothing sent and no contacts can still be searched by the address you enter.
+  const empty = createRecruiterReplyService({reviews, sentEmails: () => [], replyReader});
+  await assert.rejects(empty.findReplies('r1'), /Enter their email address/);
+  await empty.findReplies('r1', {theirEmail: 'jo@client.test'});
+  assert.deepEqual(reads[1].fromAddresses, ['jo@client.test']);
+  assert.deepEqual(respondentAddresses(''), []);
+  assert.deepEqual(respondentAddresses(undefined), []);
+});
+

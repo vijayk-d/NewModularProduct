@@ -47,12 +47,19 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
 
   // Step 1: their reply.
   const find = el(doc, 'button', {type: 'button', text: 'Find their reply in Gmail (read-only)', hidden: ''});
+  // Their own address finds the exact conversation even when they replied from a different address than the one you emailed.
+  const address = el(doc, 'input', {id: 'reply-their-address', type: 'text', inputmode: 'email', maxlength: '400', autocomplete: 'off', spellcheck: 'false', placeholder: 'name@company.com (several: separate with commas)', 'data-reply-address': ''});
+  const addressField = field('Their email address (optional)', address);
+  addressField.hidden = true;
+  const ADDRESS_KEY = 'jobapp.replyAddress.' + reviewId;
+  try { address.value = doc.defaultView?.localStorage?.getItem(ADDRESS_KEY) || ''; } catch {}
+  address.addEventListener('change', () => { try { doc.defaultView?.localStorage?.setItem(ADDRESS_KEY, address.value.trim()); } catch {} });
   const findHint = el(doc, 'p', {class: 'reply-hint', 'data-reply-gmail': ''});
   // Every reply found for this application, newest first, each with its own saved draft and status.
   const repliesList = el(doc, 'div', {class: 'reply-list', role: 'list', 'aria-label': 'Replies found', 'data-reply-list': '', hidden: ''});
   const source = el(doc, 'span', {class: 'reply-source', 'data-reply-source': '', hidden: ''});
   const theirs = el(doc, 'textarea', {id: 'reply-their-message', rows: '7', placeholder: 'Their reply appears here when found in Gmail, or paste it'});
-  const step1 = el(doc, 'fieldset', {class: 'reply-step'}, [el(doc, 'legend', {text: '1. Their reply'}), el(doc, 'div', {class: 'reply-actions'}, [find]), findHint, repliesList, source, field('Their reply', theirs)]);
+  const step1 = el(doc, 'fieldset', {class: 'reply-step'}, [el(doc, 'legend', {text: '1. Their reply'}), addressField, el(doc, 'div', {class: 'reply-actions'}, [find]), findHint, repliesList, source, field('Their reply', theirs)]);
 
   // Step 2: your answer.
   const name = el(doc, 'input', {id: 'reply-recipient-name', type: 'text', maxlength: '80', autocomplete: 'off'});
@@ -92,7 +99,7 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
   const shortDate = value => { const t = Date.parse(value); return Number.isFinite(t) ? new Date(t).toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'}) : String(value || ''); };
 
   // Replies kept with this application: newest first. Choosing one fills their reply, their name and its saved draft.
-  let found = [], selected = null, canDraft = false;
+  let found = [], selected = null, canDraft = false, searchable = false;
   const STATUS_LABEL = {new: 'New', drafted: 'Reply drafted', in_gmail: 'In Gmail drafts'};
   const syncDraftButtons = () => {
     const item = found.find(r => r.messageId === selected);
@@ -126,9 +133,12 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
   const remember = item => { found = found.map(r => r.messageId === item.messageId ? item : r); renderList(); syncDraftButtons(); };
   theirs.addEventListener('input', () => { source.hidden = true; selected = null; renderList(); syncDraftButtons(); });
   find.addEventListener('click', async () => {
+    const typed = address.value.trim();
+    if (!typed && !searchable) { findHint.textContent = 'Enter their email address above first, then find their reply.'; address.focus(); return; }
     find.disabled = true; findHint.textContent = 'Looking in Gmail (read-only)…';
     try {
-      const d = await call('/fetch', {});
+      const d = await call('/fetch', typed ? {theirEmail: typed} : {});
+      try { doc.defaultView?.localStorage?.setItem(ADDRESS_KEY, typed); } catch {}
       found = d.replies;
       if (!found.length) { renderList(); findHint.textContent = 'No reply from them found in Gmail yet. You can paste it below.'; return; }
       useReply(found[0]);
@@ -195,11 +205,13 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
     canDraft = o.gmailDraftAvailable === true;
     found = o.savedReplies || [];
     if (found.length) { renderList(); syncDraftButtons(); }
-    const searchable = o.sentCount + o.contactCount > 0;
-    find.hidden = !o.gmailReadAvailable || !searchable;
+    searchable = o.sentCount + o.contactCount > 0;
+    find.hidden = !o.gmailReadAvailable;
+    addressField.hidden = !o.gmailReadAvailable;
+    const known = (o.contactAddresses || []).slice(0, 3).join(', ') + ((o.contactAddresses || []).length > 3 ? ` and ${o.contactAddresses.length - 3} more` : '');
     findHint.textContent = !o.gmailReadAvailable ? 'Finding replies in Gmail is off in this app (Gmail is switched off). Paste their reply below.'
-      : !searchable ? 'This application has no sent email or contact address yet, so there is nothing to look for in Gmail. Paste their reply below.'
-      : `Looks in the Gmail threads of the ${o.sentCount} email${o.sentCount === 1 ? '' : 's'} sent for this application and at recent messages from its ${o.contactCount} contact${o.contactCount === 1 ? '' : 's'}.`;
+      : !searchable ? 'This application has no sent email or contact address yet. Enter the address they replied from, then find their reply; or paste it below.'
+      : `Looks in the Gmail threads of the ${o.sentCount} email${o.sentCount === 1 ? '' : 's'} sent for this application and at recent messages from ${known || 'its contacts'}. Add their address above if they replied from another one.`;
   }).catch(error => { intro.textContent = error.message; });
   return section;
 }

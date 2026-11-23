@@ -23,6 +23,17 @@ const text = (v, max, label, {required = false, min = 0} = {}) => {
   return s;
 };
 
+// Addresses the owner types in (the person who replied): up to five, separated by commas, semicolons or spaces.
+const EMAIL = /^[^\s@,;<>]+@[^\s@,;<>]+\.[a-z]{2,}$/i;
+export function respondentAddresses(value) {
+  if (value !== undefined && value !== null && typeof value !== 'string') fail('Their email address must be text.');
+  const parts = String(value ?? '').split(/[\s,;]+/).map(s => s.trim().replace(/^<|>$/g, '').toLowerCase()).filter(Boolean);
+  for (const p of parts) if (!EMAIL.test(p) || p.length > 254) fail(`"${p.slice(0, 60)}" is not an email address. Check it and try again; nothing was searched.`, 400, 'REPLY_ADDRESS_INVALID');
+  const unique = [...new Set(parts)];
+  if (unique.length > 5) fail('Give at most five email addresses.', 400, 'REPLY_ADDRESS_INVALID');
+  return unique;
+}
+
 export function validateReplyRequest(body = {}) {
   const status = String(body.applicationStatus || '');
   if (!REPLY_STATUSES[status]) fail('Choose where your online application stands.');
@@ -59,7 +70,7 @@ export function createRecruiterReplyService({reviews, evidence = async () => [],
     async overview(reviewId) {
       review(reviewId); const ev = await evidence(reviewId);
       const sent = sends(reviewId), {addresses} = contacts(reviewId, sent);
-      return {evidenceCount: ev.length, aiAvailable: Boolean(writer?.available), statuses: REPLY_STATUSES, gmailReadAvailable: Boolean(replyReader), gmailDraftAvailable: Boolean(draftWriter && replyStore), savedReplies: replyStore ? replyStore.list(reviewId) : [], sentCount: sent.length, contactCount: addresses.length};
+      return {evidenceCount: ev.length, aiAvailable: Boolean(writer?.available), statuses: REPLY_STATUSES, gmailReadAvailable: Boolean(replyReader), gmailDraftAvailable: Boolean(draftWriter && replyStore), savedReplies: replyStore ? replyStore.list(reviewId) : [], sentCount: sent.length, contactCount: addresses.length, contactAddresses: addresses};
     },
     // Read-only: their replies in the Gmail threads of emails sent for this application, and recent messages from its contacts.
     // Saves the reply drafted for one of their messages (local only).
@@ -88,17 +99,21 @@ export function createRecruiterReplyService({reviews, evidence = async () => [],
         return {reply: replyStore.markGmailDraft(reviewId, item.messageId, r.draftId), updated: r.updated === true, subject: r.subject || '', gmailDraftsUrl: 'https://mail.google.com/mail/u/0/#drafts'};
       } finally { drafting = false; }
     },
-    async findReplies(reviewId) {
+    // body.theirEmail (optional): the respondent's own address(es), searched first, in addition to this application's contacts.
+    async findReplies(reviewId, body = {}) {
       review(reviewId);
       if (!replyReader) fail('Finding replies in Gmail is off: it needs Gmail switched on (ENABLE_GMAIL=true). Paste their reply instead.', 503, 'REPLY_READ_DISABLED');
-      const sent = sends(reviewId), {addresses, since} = contacts(reviewId, sent);
+      const extra = respondentAddresses(body?.theirEmail);
+      const sent = sends(reviewId), known = contacts(reviewId, sent), since = known.since;
+      const addresses = [...new Set([...extra, ...known.addresses])].slice(0, 20);
       const threads = sent.filter(s => s.threadId || s.messageId).slice(0, 5).map(s => ({threadId: s.threadId || '', sentMessageId: s.messageId || ''}));
-      if (!threads.length && !addresses.length) fail('This application has no sent email or contact address to look for. Paste their reply instead.', 409, 'REPLY_NOTHING_TO_SEARCH');
+      if (!threads.length && !addresses.length) fail('This application has no sent email or contact address to look for. Enter their email address, or paste their reply instead.', 409, 'REPLY_NOTHING_TO_SEARCH');
       const r = await replyReader({threads, fromAddresses: addresses, after: since, expectedAddress: mailbox});
       if (!r.ok) fail(r.code === 'SCOPE_MISSING' ? 'Gmail has not granted read access yet. Run the Maintenance card "Gmail read access: add" once, restart the app, then try again. Nothing was changed.' : r.error, r.code === 'SCOPE_MISSING' ? 403 : 502, 'REPLY_' + r.code);
       // Found replies are kept with this application, each with its own draft; finding again never overwrites a draft.
-      if (replyStore) { replyStore.addFound(reviewId, r.replies); return {searched: {sentEmails: threads.length, contacts: addresses.length}, replies: replyStore.list(reviewId)}; }
-      return {searched: {sentEmails: threads.length, contacts: addresses.length}, replies: r.replies};
+      const searched = {sentEmails: threads.length, contacts: addresses.length, enteredAddresses: extra.length};
+      if (replyStore) { replyStore.addFound(reviewId, r.replies); return {searched, replies: replyStore.list(reviewId)}; }
+      return {searched, replies: r.replies};
     },
     // Cost estimate only: nothing is sent anywhere.
     async estimate(reviewId, body) {
