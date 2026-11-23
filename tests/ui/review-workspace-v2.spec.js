@@ -103,3 +103,15 @@ test('the widened rail fits the window without its own scrollbar; sub-sections a
  expect(rows).toBeLessThan(count);
  await page.screenshot({path:'test-results/rail-expanded.png',clip:{x:0,y:0,width:520,height:900}});
 });
+test('sections and their rail groups share a colour by group',async({page,workspaceApp})=>{
+ await page.setViewportSize({width:1440,height:900});const id=await workspaceApp.create();await page.goto(workspaceApp.url+'/applications/'+id);
+ await expect(page.locator('.panel--vacancy')).toHaveAttribute('data-section-group','role');
+ await expect(page.locator('.refinement-panel')).toHaveAttribute('data-section-group','letter');
+ const rail=page.getByRole('navigation',{name:'Application sections'});
+ await expect(rail.getByRole('link',{name:'Polishing',exact:true})).toHaveAttribute('data-group','letter');
+ const edge=await page.locator('.refinement-panel').evaluate(e=>getComputedStyle(e).boxShadow);
+ expect(edge).toContain('rgb(217, 119, 6)');
+ await rail.hover();
+ await expect(rail.locator('.workspace-section-group[data-group="outreach"]')).toHaveCSS('color','rgb(5, 150, 105)');
+ await page.screenshot({path:'test-results/section-colours.png',clip:{x:0,y:80,width:1100,height:700}});
+});
