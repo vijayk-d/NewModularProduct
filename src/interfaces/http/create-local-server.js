@@ -53,6 +53,7 @@ import { createApplicationQuestionsHandler } from "./application-questions-http.
 import { createRecruiterReplyHandler } from "./recruiter-reply-http.js";
 import { createRecruiterReplyService } from "../../application/recruiter-reply.js";
 import { readGmailReplies, gmailReplyReadingEnabled } from "../../application/gmail-reply-reader.js";
+import { createGmailReplyDraft } from "../../application/gmail-reply-draft.js";
 import { createApplicationQuestionsService } from "../../application/application-questions.js";
 import { createInsightsHandler } from "./insights-http.js";
 import { createLetterGateHandler } from "./letter-gate-http.js";
@@ -233,6 +234,8 @@ export function createLocalServer({
   questionWriter = null,
   replyWriter = null,
   gmailReplyReader = undefined,
+  gmailReplyDrafter = undefined,
+  replyThreadsStore = null,
   tailoredCvLatest = null,
   insightsSnapshot = null,
   evidenceLearning = null,
@@ -474,7 +477,8 @@ export function createLocalServer({
   // Reply assistant: drafts a reply to a recruiter from the same evidence; never sends.
   const replyService=createRecruiterReplyService({reviews:reviewStore,writer:replyWriter,candidateName:process.env.CANDIDATE_DISPLAY_NAME||'',evidence:async id=>questionsService?await questionsService.evidenceFor(id):[],
     sentEmails:()=>outreachRepository?.listSentEmails?.()||[],queueItems:()=>outreachRepository?.list?.()||[],mailbox:String(process.env.GMAIL_FROM_ADDRESS||'').trim(),
-    replyReader:gmailReplyReader!==undefined?gmailReplyReader:(gmailReplyReadingEnabled()?args=>readGmailReplies(args):null)});
+    replyReader:gmailReplyReader!==undefined?gmailReplyReader:(gmailReplyReadingEnabled()?args=>readGmailReplies(args):null),
+    replyStore:replyThreadsStore,draftWriter:gmailReplyDrafter!==undefined?gmailReplyDrafter:(gmailReplyReadingEnabled()?args=>createGmailReplyDraft(args):null)});
   const handleReply=createRecruiterReplyHandler({service:replyService,sendJson,sendText});
   const handleLetterGate=createLetterGateHandler({reviewStore,sendJson,sendText});
   const handleInsights=createInsightsHandler({snapshot:insightsSnapshot,learning:evidenceLearning,sendJson,sendHtml});

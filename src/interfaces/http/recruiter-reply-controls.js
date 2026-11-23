@@ -25,6 +25,13 @@ const STYLE = `.recruiter-reply .reply-step{border:1px solid #e2e8f0;border-radi
 .recruiter-reply .reply-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:.6rem 0 0}
 .recruiter-reply .reply-editor{min-height:8rem;border:1px solid #cbd5e1;border-radius:6px;padding:.6rem .8rem;background:#fff}
 .recruiter-reply [hidden]{display:none!important}
+.recruiter-reply .reply-list{display:flex;flex-direction:column;gap:6px;margin:.5rem 0}
+.recruiter-reply .reply-list-item{display:block;width:100%;text-align:left;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:.45rem .7rem;cursor:pointer;font:inherit;color:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.recruiter-reply .reply-list-item[aria-pressed="true"]{border-color:#2563eb;background:#eff6ff}
+.recruiter-reply .reply-status-chip{display:inline-block;border-radius:999px;padding:0 .5rem;font-size:.8rem;background:#f1f5f9;color:#334155}
+.recruiter-reply .reply-status-chip[data-reply-status-chip="drafted"]{background:#fef3c7;color:#92400e}
+.recruiter-reply .reply-status-chip[data-reply-status-chip="in_gmail"]{background:#dcfce7;color:#166534}
+.recruiter-reply .reply-snippet{color:#64748b}
 @media (max-width:700px){.recruiter-reply .reply-grid{grid-template-columns:1fr}}`;
 
 export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard = globalThis.navigator?.clipboard) {
@@ -41,11 +48,11 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
   // Step 1: their reply.
   const find = el(doc, 'button', {type: 'button', text: 'Find their reply in Gmail (read-only)', hidden: ''});
   const findHint = el(doc, 'p', {class: 'reply-hint', 'data-reply-gmail': ''});
-  const replyChoice = el(doc, 'select', {id: 'reply-choice'});
-  const choiceField = field('Replies found', replyChoice); choiceField.hidden = true;
+  // Every reply found for this application, newest first, each with its own saved draft and status.
+  const repliesList = el(doc, 'div', {class: 'reply-list', role: 'list', 'aria-label': 'Replies found', 'data-reply-list': '', hidden: ''});
   const source = el(doc, 'span', {class: 'reply-source', 'data-reply-source': '', hidden: ''});
   const theirs = el(doc, 'textarea', {id: 'reply-their-message', rows: '7', placeholder: 'Their reply appears here when found in Gmail, or paste it'});
-  const step1 = el(doc, 'fieldset', {class: 'reply-step'}, [el(doc, 'legend', {text: '1. Their reply'}), el(doc, 'div', {class: 'reply-actions'}, [find]), findHint, choiceField, source, field('Their reply', theirs)]);
+  const step1 = el(doc, 'fieldset', {class: 'reply-step'}, [el(doc, 'legend', {text: '1. Their reply'}), el(doc, 'div', {class: 'reply-actions'}, [find]), findHint, repliesList, source, field('Their reply', theirs)]);
 
   // Step 2: your answer.
   const name = el(doc, 'input', {id: 'reply-recipient-name', type: 'text', maxlength: '80', autocomplete: 'off'});
@@ -59,8 +66,11 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
   const aiLine = el(doc, 'div', {class: 'reply-actions', hidden: '', 'data-reply-ai': ''});
   const editor = el(doc, 'div', {id: 'reply-editor', class: 'reply-editor', contenteditable: 'true', role: 'textbox', 'aria-multiline': 'true', 'aria-label': 'Suggested reply (editable)'});
   const copy = el(doc, 'button', {type: 'button', text: 'Copy reply'});
+  const save = el(doc, 'button', {type: 'button', text: 'Save reply', hidden: ''});
+  const gmailDraft = el(doc, 'button', {type: 'button', text: 'Create Gmail draft', hidden: '', 'data-reply-gmail-draft': ''});
+  const draftHint = el(doc, 'p', {class: 'reply-hint', 'data-reply-draft-hint': ''});
   const result = el(doc, 'div', {class: 'reply-result', hidden: '', 'data-reply-result': ''}, [el(doc, 'h3', {text: 'Suggested reply'}),
-    el(doc, 'p', {class: 'reply-hint', text: 'Edit it here if you like, then copy it into your Gmail reply. Nothing is sent from this page.'}), editor, el(doc, 'div', {class: 'reply-actions'}, [copy])]);
+    el(doc, 'p', {class: 'reply-hint', text: 'Edit it here if you like. Create a Gmail draft in their conversation, or copy it. Nothing is sent from this page.'}), editor, el(doc, 'div', {class: 'reply-actions'}, [gmailDraft, save, copy]), draftHint]);
   const status = el(doc, 'p', {role: 'status', 'aria-live': 'polite', 'data-reply-status': ''});
   const step3 = el(doc, 'fieldset', {class: 'reply-step'}, [el(doc, 'legend', {text: '3. Draft'}), el(doc, 'div', {class: 'reply-actions'}, [estimate]), aiLine, status, result]);
 
@@ -81,25 +91,68 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
   const spec = () => ({theirMessage: theirs.value, recipientName: name.value, applicationStatus: statusChoice.value, ownerNote: note.value});
   const shortDate = value => { const t = Date.parse(value); return Number.isFinite(t) ? new Date(t).toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'}) : String(value || ''); };
 
-  // Found replies: newest first; choosing one fills their reply and their first name.
-  let found = [];
-  const useReply = r => {
-    theirs.value = r.text;
-    if (r.fromName) name.value = String(r.fromName).trim().split(/\s+/)[0];
-    source.textContent = `From Gmail: ${r.fromName || r.fromAddress}, ${shortDate(r.date)}`; source.hidden = false;
+  // Replies kept with this application: newest first. Choosing one fills their reply, their name and its saved draft.
+  let found = [], selected = null, canDraft = false;
+  const STATUS_LABEL = {new: 'New', drafted: 'Reply drafted', in_gmail: 'In Gmail drafts'};
+  const syncDraftButtons = () => {
+    const item = found.find(r => r.messageId === selected);
+    save.hidden = !item;
+    gmailDraft.hidden = !item || !canDraft;
+    gmailDraft.textContent = item?.gmailDraftId ? 'Update Gmail draft' : 'Create Gmail draft';
+    draftHint.textContent = item ? '' : found.length ? 'Choose one of their replies above to save this reply with it or draft it in Gmail.' : '';
   };
-  replyChoice.addEventListener('change', () => { const r = found[Number(replyChoice.value)]; if (r) useReply(r); });
-  theirs.addEventListener('input', () => { source.hidden = true; });
+  function renderList() {
+    repliesList.hidden = !found.length;
+    repliesList.replaceChildren(...found.map(r => {
+      const b = el(doc, 'button', {type: 'button', role: 'listitem', class: 'reply-list-item', 'data-message-id': r.messageId, 'aria-pressed': String(r.messageId === selected)},
+        [el(doc, 'strong', {text: r.fromName || r.fromAddress}), el(doc, 'span', {text: ' · ' + shortDate(r.date) + ' · '}),
+          el(doc, 'span', {class: 'reply-status-chip', 'data-reply-status-chip': r.status || 'new', text: STATUS_LABEL[r.status] || 'New'}),
+          el(doc, 'span', {class: 'reply-snippet', text: ' ' + String(r.text || '').replace(/\s+/g, ' ').slice(0, 90)})]);
+      b.addEventListener('click', () => useReply(r));
+      return b;
+    }));
+  }
+  const useReply = r => {
+    selected = r.messageId || null;
+    theirs.value = r.text;
+    name.value = r.recipientName || (r.fromName ? String(r.fromName).trim().split(/\s+/)[0] : name.value);
+    if (r.applicationStatus) statusChoice.value = r.applicationStatus;
+    note.value = r.ownerNote || '';
+    source.textContent = `From Gmail: ${r.fromName || r.fromAddress}, ${shortDate(r.date)}`; source.hidden = false;
+    if (r.draftText) { fillEditor(doc, editor, r.draftText); result.hidden = false; status.textContent = 'Your saved reply to this message is shown below.'; }
+    else { editor.replaceChildren(); result.hidden = true; status.textContent = ''; }
+    renderList(); syncDraftButtons();
+  };
+  const remember = item => { found = found.map(r => r.messageId === item.messageId ? item : r); renderList(); syncDraftButtons(); };
+  theirs.addEventListener('input', () => { source.hidden = true; selected = null; renderList(); syncDraftButtons(); });
   find.addEventListener('click', async () => {
     find.disabled = true; findHint.textContent = 'Looking in Gmail (read-only)…';
     try {
       const d = await call('/fetch', {});
       found = d.replies;
-      if (!found.length) { choiceField.hidden = true; findHint.textContent = 'No reply from them found in Gmail yet. You can paste it below.'; return; }
-      replyChoice.replaceChildren(...found.map((r, i) => el(doc, 'option', {value: String(i), text: `${r.fromName || r.fromAddress} · ${shortDate(r.date)} · ${r.text.replace(/\s+/g, ' ').slice(0, 60)}`})));
-      replyChoice.value = '0'; choiceField.hidden = found.length < 2; useReply(found[0]);
-      findHint.textContent = `Found ${found.length} ${found.length === 1 ? 'reply' : 'replies'}${found.length > 1 ? '; the latest is shown, choose another below' : ''}. Nothing in Gmail was changed.`;
+      if (!found.length) { renderList(); findHint.textContent = 'No reply from them found in Gmail yet. You can paste it below.'; return; }
+      useReply(found[0]);
+      findHint.textContent = `Found ${found.length} ${found.length === 1 ? 'reply' : 'replies'}${found.length > 1 ? '; the latest is selected. Choose another to answer it' : ''}. Nothing in Gmail was changed.`;
     } catch (error) { findHint.textContent = error.message; } finally { find.disabled = false; }
+  });
+  const draftBody = () => ({messageId: selected, draftText: editorText(editor), draftHtml: editor.innerHTML, recipientName: name.value, applicationStatus: statusChoice.value, ownerNote: note.value});
+  async function saveSelected(quiet = false) {
+    if (!selected || !editorText(editor)) return null;
+    const d = await call('/save', draftBody());
+    remember(d.reply);
+    if (!quiet) status.textContent = 'Reply saved with their message.';
+    return d.reply;
+  }
+  save.addEventListener('click', async () => { try { await saveSelected(); } catch (error) { status.textContent = error.message; } });
+  gmailDraft.addEventListener('click', async () => {
+    if (!selected) return;
+    gmailDraft.disabled = true; status.textContent = 'Creating the draft in your Gmail (nothing is sent)…';
+    try {
+      const d = await call('/gmail-draft', {messageId: selected, bodyPlainText: editorText(editor), bodyHtml: editor.innerHTML});
+      remember(d.reply);
+      status.replaceChildren(doc.createTextNode(`${d.updated ? 'Gmail draft updated' : 'Gmail draft created'} in their conversation (${d.subject}). Review and send it from Gmail. `),
+        el(doc, 'a', {href: d.gmailDraftsUrl, target: '_blank', rel: 'noopener noreferrer', text: 'Open Gmail drafts'}));
+    } catch (error) { status.textContent = error.message; } finally { gmailDraft.disabled = false; }
   });
 
   estimate.addEventListener('click', async () => {
@@ -117,6 +170,7 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
         try {
           const w = await call('/write', {...spec(), model: e.model, confirmedCostProof: e.costProof});
           fillEditor(doc, editor, w.reply); aiLine.hidden = true; result.hidden = false;
+          try { await saveSelected(true); } catch { /* the reply stays on the page; Save reply can try again */ }
           status.textContent = 'Reply drafted. Read it, edit anything, then copy it.' + (w.unsupportedFigures.length ? ` Check these figures; they are not in your evidence: ${w.unsupportedFigures.join(', ')}.` : '') + (w.notes ? ' Note: ' + w.notes : '');
         } catch (error) { status.textContent = error.message; go.disabled = false; }
       });
@@ -138,6 +192,9 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
     statusChoice.replaceChildren(...Object.entries(o.statuses).map(([value, label]) => el(doc, 'option', {value, text: label})));
     intro.textContent = `Draft a polite answer to a recruiter's reply (for example "please apply online") that confirms your online application and explains why you also emailed. It uses only this application's evidence (${o.evidenceCount} line${o.evidenceCount === 1 ? '' : 's'}).${o.aiAvailable ? ' Drafting is paid, with a free estimate first.' : ' Drafting needs letter polishing switched on.'}`;
     estimate.hidden = !o.aiAvailable;
+    canDraft = o.gmailDraftAvailable === true;
+    found = o.savedReplies || [];
+    if (found.length) { renderList(); syncDraftButtons(); }
     const searchable = o.sentCount + o.contactCount > 0;
     find.hidden = !o.gmailReadAvailable || !searchable;
     findHint.textContent = !o.gmailReadAvailable ? 'Finding replies in Gmail is off in this app (Gmail is switched off). Paste their reply below.'

@@ -19,6 +19,7 @@ import {createSystemCheckProbes} from '../../infrastructure/system-check-probes.
 import {runSystemCheck} from '../../application/system-check.js';
 import {createApplicationInsightsStore} from '../../infrastructure/applications/sqlite-application-insights-store.js';
 import {createApplicationAnswersStore} from '../../infrastructure/applications/sqlite-application-answers-store.js';
+import {createReplyThreadsStore} from '../../infrastructure/applications/sqlite-reply-threads-store.js';
 import {createQuestionAnswerWriter} from '../../infrastructure/refinement/perplexity-question-answer-adapter.js';
 import {createRecruiterReplyWriter} from '../../infrastructure/refinement/perplexity-recruiter-reply-adapter.js';
 import {createInsightsSnapshot} from '../../application/insights-snapshot.js';
@@ -172,6 +173,9 @@ try{insightsStore=createApplicationInsightsStore({filePath:path.join(deployment.
 // Saved portal answers keep their own new database; if it cannot open, the questions helper is simply off.
 let answersStore=null;
 try{answersStore=createApplicationAnswersStore({filePath:path.join(deployment.state,'application-answers-v1.db')});}catch{console.warn('[QUESTIONS] LOCAL_STORE_UNAVAILABLE');}
+// Recruiter replies found in Gmail and the reply drafted for each: a new file, beside the other stores.
+let replyThreadsStore=null;
+try{replyThreadsStore=createReplyThreadsStore({filePath:path.join(deployment.state,'recruiter-replies-v1.db')});}catch{console.warn('[REPLIES] LOCAL_STORE_UNAVAILABLE');}
 
 // Insights phase 2: the feature snapshot, rebuilt in the background from local data only.
 const insightsSnapshot=insightsStore?createInsightsSnapshot({reviews:applicationReviewStore,store:insightsStore,jobImports:jobImportService,
@@ -210,6 +214,7 @@ const server = createLocalServer({
   evidenceLearning,
   answersStore,
   questionWriter:createQuestionAnswerWriter({apiKey:config.integrations.perplexity.apiKey,enabled:config.features.enableCoverLetterRefinement}),
+  replyThreadsStore,
   replyWriter:createRecruiterReplyWriter({apiKey:config.integrations.perplexity.apiKey,enabled:config.features.enableCoverLetterRefinement}),
   tailoredCvLatest:cvTailoringStore?id=>cvTailoringStore.latest(id):null,
   relationshipMemory:workflowAutomationStore?{get:key=>workflowAutomationStore.relationshipChoice(key),record:(key,name,relationship)=>workflowAutomationStore.recordRelationshipChoice(key,name,relationship)}:null,
