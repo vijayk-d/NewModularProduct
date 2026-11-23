@@ -51,6 +51,8 @@ export function createApplicationQuestionsService({reviews, store, tailoredLates
   }
 
   return {
+    // Shared with the reply assistant: the same evidence lines, nothing else.
+    evidenceFor: reviewId => evidence(reviewId),
     async overview(reviewId) {
       const ev = await evidence(reviewId);
       return {evidenceCount: ev.length, sources: [...new Set(ev.map(e => e.source))], aiAvailable: Boolean(writer?.available), saved: store.list(reviewId)};

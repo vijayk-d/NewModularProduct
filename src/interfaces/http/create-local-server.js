@@ -50,6 +50,8 @@ import { createCvTailoringHandler } from "./cv-tailoring-http.js";
 import { createSystemCheckHandler } from "./system-check-http.js";
 import { createApplicationOutcomesHandler } from "./application-outcomes-http.js";
 import { createApplicationQuestionsHandler } from "./application-questions-http.js";
+import { createRecruiterReplyHandler } from "./recruiter-reply-http.js";
+import { createRecruiterReplyService } from "../../application/recruiter-reply.js";
 import { createApplicationQuestionsService } from "../../application/application-questions.js";
 import { createInsightsHandler } from "./insights-http.js";
 import { createLetterGateHandler } from "./letter-gate-http.js";
@@ -228,6 +230,7 @@ export function createLocalServer({
   relationshipMemory = null,
   answersStore = null,
   questionWriter = null,
+  replyWriter = null,
   tailoredCvLatest = null,
   insightsSnapshot = null,
   evidenceLearning = null,
@@ -466,6 +469,9 @@ export function createLocalServer({
     tailoredLatest:id=>typeof tailoredCvLatest==='function'?tailoredCvLatest(id):null,
     scenarioEvidence:review=>{try{const refs=review.polishingScenarios?.references||[];if(!refs.length||!assignmentEvidenceStore)return [];const ev=approvedScenarioRequest(resolveScenarioSelection(assignmentEvidenceStore,JSON.stringify(refs))).approvedScenarioEvidence||[];return ev.map(s=>({text:s.approvedWording,source:'Approved scenario'+(s.organisation?' ('+s.organisation+')':'')}));}catch{return [];}}}):null;
   const handleQuestions=createApplicationQuestionsHandler({service:questionsService,sendJson,sendText});
+  // Reply assistant: drafts a reply to a recruiter from the same evidence; never sends.
+  const replyService=createRecruiterReplyService({reviews:reviewStore,writer:replyWriter,candidateName:process.env.CANDIDATE_DISPLAY_NAME||'',evidence:async id=>questionsService?await questionsService.evidenceFor(id):[]});
+  const handleReply=createRecruiterReplyHandler({service:replyService,sendJson,sendText});
   const handleLetterGate=createLetterGateHandler({reviewStore,sendJson,sendText});
   const handleInsights=createInsightsHandler({snapshot:insightsSnapshot,learning:evidenceLearning,sendJson,sendHtml});
   const handleOutcomes=createApplicationOutcomesHandler({store:insightsStore,getReview:id=>reviewStore.get(id),sendJson,sendText,onChange:()=>insightsSnapshot?.schedule()});
@@ -505,6 +511,7 @@ export function createLocalServer({
     if (await handleSystemCheck(request,response,url)) return;
     if (await handleOutcomes(request,response,url)) return;
     if (await handleQuestions(request,response,url)) return;
+    if (await handleReply(request,response,url)) return;
     if (await handleInsights(request,response,url)) return;
     if (await handleLetterGate(request,response,url)) return;
     if (await handleCvTailoring(request,response,url)) return;

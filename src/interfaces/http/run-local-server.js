@@ -20,6 +20,7 @@ import {runSystemCheck} from '../../application/system-check.js';
 import {createApplicationInsightsStore} from '../../infrastructure/applications/sqlite-application-insights-store.js';
 import {createApplicationAnswersStore} from '../../infrastructure/applications/sqlite-application-answers-store.js';
 import {createQuestionAnswerWriter} from '../../infrastructure/refinement/perplexity-question-answer-adapter.js';
+import {createRecruiterReplyWriter} from '../../infrastructure/refinement/perplexity-recruiter-reply-adapter.js';
 import {createInsightsSnapshot} from '../../application/insights-snapshot.js';
 import {createEvidenceLearning} from '../../application/evidence-learning.js';
 import {attachIndexedText,withoutCvText,describeSections} from '../../application/cv-text-index.js';
@@ -209,6 +210,7 @@ const server = createLocalServer({
   evidenceLearning,
   answersStore,
   questionWriter:createQuestionAnswerWriter({apiKey:config.integrations.perplexity.apiKey,enabled:config.features.enableCoverLetterRefinement}),
+  replyWriter:createRecruiterReplyWriter({apiKey:config.integrations.perplexity.apiKey,enabled:config.features.enableCoverLetterRefinement}),
   tailoredCvLatest:cvTailoringStore?id=>cvTailoringStore.latest(id):null,
   relationshipMemory:workflowAutomationStore?{get:key=>workflowAutomationStore.relationshipChoice(key),record:(key,name,relationship)=>workflowAutomationStore.recordRelationshipChoice(key,name,relationship)}:null,
   // Read-only System check page: data files, CV library and files, documents, services and this PC.
