@@ -1526,9 +1526,12 @@ export function createLocalServer({
       }
 
       let acceptance;
+      // "Use it anyway": a deliberate override of the length limit only; every other check still applies. Recorded in history.
+      let lengthOverride=null;const overrideRequested=formBody.values.get('acceptOverLength')==='true';
 
       try {
-        assertLetterLength(proposedDraftPlainText,{mode:review.refinementProposal.letterLengthMode||'standard',maxWords:coverLetterRefinementMaxWords,advertUrl:review.formData.jobAdvertLink});
+        try{assertLetterLength(proposedDraftPlainText,{mode:review.refinementProposal.letterLengthMode||'standard',maxWords:coverLetterRefinementMaxWords,advertUrl:review.formData.jobAdvertLink});}
+        catch(lengthError){if(lengthError.code!=='REFINEMENT_LENGTH_EXCEEDED'||!overrideRequested)throw lengthError;const q=lengthError.quality||{};lengthOverride={wordCount:q.wordCount,maximumWords:q.maximumWords,mode:q.mode||review.refinementProposal.letterLengthMode||'standard',at:new Date().toISOString()};}
         extractOutreachExperienceBody(proposedDraftPlainText, ['micro1']);
         acceptance = acceptRefinedCoverLetter({
           originalDraftPlainText: review.currentDraftPlainText,
@@ -1556,9 +1559,11 @@ export function createLocalServer({
         currentHighlightPhrases: [],
         currentHighlightSelections:hasEditedProposal?[]:review.refinementProposal.highlightSelections||[],
         refinementProposal: {
-          appliedMessage:
-            'Current draft updated from your approved refinement proposal.'
+          appliedMessage:lengthOverride
+            ? `Current draft updated from your approved refinement proposal. You chose to use it at ${lengthOverride.wordCount} words, over the ${lengthOverride.mode} limit of ${lengthOverride.maximumWords}.`
+            : 'Current draft updated from your approved refinement proposal.'
         },
+        rejectedRefinementProposal: null,
         refinementHistory: [
           ...(Array.isArray(review.refinementHistory)
             ? review.refinementHistory
@@ -1567,6 +1572,7 @@ export function createLocalServer({
             appliedAt,
             ...(review.refinementProposal.writingReferenceSnapshot?{writingReferenceSnapshot:structuredClone(review.refinementProposal.writingReferenceSnapshot)}:{}),
             ...(review.refinementProposal.scenarioEvidenceSnapshot?{scenarioEvidenceSnapshot:structuredClone(review.refinementProposal.scenarioEvidenceSnapshot)}:{}),
+            ...(lengthOverride?{lengthOverride}:{}),
             previousSubject: currentReviewSubject(review),
             appliedSubject: acceptedSubject,
             previousDraft: review.currentDraftPlainText,
@@ -1583,6 +1589,7 @@ export function createLocalServer({
         historyCount: updatedReview.refinementHistory.length,
         previousWordCount: wordCount(review.currentDraftPlainText),
         currentWordCount: wordCount(updatedReview.currentDraftPlainText),
+        lengthOverridden: Boolean(lengthOverride),
         durationMs: Date.now() - actionStartedAt
       });
 
