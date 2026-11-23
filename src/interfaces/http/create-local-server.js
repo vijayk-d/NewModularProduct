@@ -340,7 +340,8 @@ export function createLocalServer({
 
   const writeDiagnostic = createDiagnosticWriter({
     enabled: localDiagnosticsEnabled,
-    writer: diagnosticsWriter
+    writer: diagnosticsWriter,
+    alwaysLogFailures: true
   });
 
 // new changes to be addeduntil here
@@ -1536,25 +1537,12 @@ export function createLocalServer({
         });
       } catch (error) {
         if (isContactStoreLoadError(error)) throw error;
-        if(editedProposalSnapshot){const retained={...review.refinementProposal,proposedDraft:editedProposalSnapshot.bodyPlainText,proposedDraftHtml:editedProposalSnapshot.bodyHtml,highlightPhrases:[],highlightSelections:[],warnings:[...(review.refinementProposal.warnings||[]),formatRefinementFailure(error)]};reviewStore.set(reviewId,{...review,refinementProposal:retained});sendHtml(response,400,await renderCompleteReview({reviewId}));return;}
-        sendHtml(
-          response,
-          400,
-          await renderCompleteReview({
-            formData: review.formData,
-            prepared: review.prepared,
-            reviewId,
-            research: review.research,
-            currentDraftPlainText: review.currentDraftPlainText,
-            refinementProposal: {
-              proposedDraft: '',
-              warnings: [
-                formatRefinementFailure(error)
-              ]
-            }
-          })
-        );
-        return;
+        // Applying never blanks the proposal. Over the length limit: say so plainly and offer the Extended review (no AI call).
+        const lengthFailed=error.code==='REFINEMENT_LENGTH_EXCEEDED',applyMessage=lengthFailed?error.message.replace(' Retain for review; no automatic retry or truncation.','')+' Your current letter is unchanged. Shorten the proposal and apply again, or use "Review retained proposal in Extended mode" (no AI call).':['REFINEMENT_LENGTH_INVALID'].includes(error.code)?error.message:formatRefinementFailure(error);
+        writeDiagnostic('refinement_apply_failed',{requestId,reviewId,...describeRefinementFailure(error)});
+        {const draft=editedProposalSnapshot?editedProposalSnapshot.bodyPlainText:proposedDraftPlainText;const retained={...review.refinementProposal,...(editedProposalSnapshot?{proposedDraft:editedProposalSnapshot.bodyPlainText,proposedDraftHtml:editedProposalSnapshot.bodyHtml,highlightPhrases:[],highlightSelections:[]}:{}),warnings:[...(review.refinementProposal.warnings||[]).filter(w=>!/REFINEMENT_LENGTH_EXCEEDED|limit is \d+/.test(w)),applyMessage]};
+        const rejected=lengthFailed?{...retained,proposedDraft:draft,quality:error.quality,lengthCheckFailed:true,letterLengthMode:review.refinementProposal.letterLengthMode||'standard',warnings:[applyMessage]}:review.rejectedRefinementProposal||null;
+        reviewStore.set(reviewId,{...review,refinementProposal:retained,rejectedRefinementProposal:rejected});sendHtml(response,400,await renderCompleteReview({reviewId}));return;}
       }
 
       const appliedAt = new Date().toISOString();

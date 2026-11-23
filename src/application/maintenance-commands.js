@@ -339,5 +339,15 @@ export const MAINTENANCE_COMMANDS = Object.freeze([
       "caution": "Sign in as the configured sender and allow read-only access. It backs up the file, then replaces only GMAIL_OAUTH_REFRESH_TOKEN; nothing is saved if the mailbox differs or a permission is missing. Restart the app afterwards. Never paste the token into a chat.",
       "effect": "Changes production settings",
       "directory": "D:\\monorepo\\NewModularProduct"
+  },
+  {
+      "id": "recent-app-errors",
+      "title": "Recent polishing and letter errors",
+      "category": "Performance",
+      "command": "Get-ChildItem 'D:\\NewModularProduct-Production\\shared\\logs\\production-*.log' | Sort-Object LastWriteTime -Descending | Select-Object -First 3 | Get-Content | Select-String '\\[APP_ERROR\\]' | Select-Object -Last 20 | ForEach-Object { $_.Line }",
+      "purpose": "Shows the last 20 failures from the production log (letter polishing, applying a proposal, preparing an application), each with its time, error code and provider status. Use it when the app says \"Details: Maintenance, Recent polishing and letter errors\".",
+      "caution": "Read-only. Lines hold codes, statuses and IDs only, never letter or CV text, so they are safe to paste into a support chat.",
+      "effect": "Read-only",
+      "directory": "D:\\monorepo\\NewModularProduct"
   }
 ]);
