@@ -51,6 +51,8 @@ import { createSystemCheckHandler } from "./system-check-http.js";
 import { createApplicationOutcomesHandler } from "./application-outcomes-http.js";
 import { createApplicationQuestionsHandler } from "./application-questions-http.js";
 import { createRecruiterReplyHandler } from "./recruiter-reply-http.js";
+import { createLetterKeywordsHandler } from "./letter-keywords-http.js";
+import { createLetterKeywordService } from "../../application/letter-keywords.js";
 import { createRecruiterReplyService } from "../../application/recruiter-reply.js";
 import { readGmailReplies, gmailReplyReadingEnabled } from "../../application/gmail-reply-reader.js";
 import { createApplicationQuestionsService } from "../../application/application-questions.js";
@@ -476,6 +478,8 @@ export function createLocalServer({
     sentEmails:()=>outreachRepository?.listSentEmails?.()||[],queueItems:()=>outreachRepository?.list?.()||[],mailbox:String(process.env.GMAIL_FROM_ADDRESS||'').trim(),
     replyReader:gmailReplyReader!==undefined?gmailReplyReader:(gmailReplyReadingEnabled()?args=>readGmailReplies(args):null)});
   const handleReply=createRecruiterReplyHandler({service:replyService,sendJson,sendText});
+  // Letter keyword check: the advert's ATS terms against the letter and your evidence; free and local.
+  const handleKeywords=createLetterKeywordsHandler({service:createLetterKeywordService({reviews:reviewStore,evidence:async id=>questionsService?await questionsService.evidenceFor(id):[]}),sendJson,sendText});
   const handleLetterGate=createLetterGateHandler({reviewStore,sendJson,sendText});
   const handleInsights=createInsightsHandler({snapshot:insightsSnapshot,learning:evidenceLearning,sendJson,sendHtml});
   const handleOutcomes=createApplicationOutcomesHandler({store:insightsStore,getReview:id=>reviewStore.get(id),sendJson,sendText,onChange:()=>insightsSnapshot?.schedule()});
@@ -516,6 +520,7 @@ export function createLocalServer({
     if (await handleOutcomes(request,response,url)) return;
     if (await handleQuestions(request,response,url)) return;
     if (await handleReply(request,response,url)) return;
+    if (await handleKeywords(request,response,url)) return;
     if (await handleInsights(request,response,url)) return;
     if (await handleLetterGate(request,response,url)) return;
     if (await handleCvTailoring(request,response,url)) return;
