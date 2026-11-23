@@ -21,7 +21,11 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
   const section = el(doc, 'section', {class: 'review-section recruiter-reply', id: 'recruiter-reply', 'aria-labelledby': 'recruiter-reply-title'});
   const panel = el(doc, 'details', {class: 'questions-panel'});
   const intro = el(doc, 'p', {class: 'questions-note', 'data-reply-intro': '', text: 'Loading…'});
-  const theirs = el(doc, 'textarea', {id: 'reply-their-message', rows: '6', placeholder: 'Paste their email reply here'});
+  const theirs = el(doc, 'textarea', {id: 'reply-their-message', rows: '6', placeholder: 'Paste their email reply here, or fetch it from Gmail above'});
+  // Read-only Gmail fetch: the replies in the thread of an email you sent for this application.
+  const sentChoice = el(doc, 'select', {id: 'reply-sent-choice'}), fetchButton = el(doc, 'button', {type: 'button', text: 'Fetch their reply from Gmail (read-only)'});
+  const replyChoice = el(doc, 'select', {id: 'reply-choice', hidden: ''});
+  const gmailBox = el(doc, 'div', {class: 'reply-gmail', hidden: '', 'data-reply-gmail': ''}, [el(doc, 'label', {for: sentChoice.id, text: 'Email you sent'}), sentChoice, el(doc, 'div', {class: 'actions'}, [fetchButton]), el(doc, 'label', {for: replyChoice.id, class: 'visually-hidden', text: 'Which of their replies'}), replyChoice]);
   const name = el(doc, 'input', {id: 'reply-recipient-name', type: 'text', maxlength: '80', autocomplete: 'off'});
   const statusChoice = el(doc, 'select', {id: 'reply-application-status'});
   const note = el(doc, 'textarea', {id: 'reply-owner-note', rows: '2', placeholder: 'Optional: anything to add, for example the date you applied'});
@@ -35,7 +39,7 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
   try { panel.open = doc.defaultView?.localStorage?.getItem(OPEN_KEY) === 'true'; } catch {}
   panel.addEventListener('toggle', () => { try { doc.defaultView?.localStorage?.setItem(OPEN_KEY, String(panel.open)); } catch {} });
   panel.append(el(doc, 'summary', {}, [el(doc, 'h2', {id: 'recruiter-reply-title', text: 'Reply assistant'})]), intro,
-    el(doc, 'label', {for: theirs.id, text: 'Their reply'}), theirs,
+    gmailBox, el(doc, 'label', {for: theirs.id, text: 'Their reply'}), theirs,
     el(doc, 'label', {for: name.id, text: 'Their first name (optional)'}), name,
     el(doc, 'label', {for: statusChoice.id, text: 'Your online application'}), statusChoice,
     el(doc, 'label', {for: note.id, text: 'Anything to add (optional)'}), note,
@@ -86,7 +90,25 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
     } catch { status.textContent = 'Copy is blocked in this browser: select the reply and press Ctrl+C.'; }
   });
 
+  let fetched = [];
+  const useReply = r => { theirs.value = r.text; if (!name.value.trim() && r.fromName) name.value = String(r.fromName).trim().split(/\s+/)[0]; };
+  replyChoice.addEventListener('change', () => { const r = fetched[Number(replyChoice.value)]; if (r) useReply(r); });
+  fetchButton.addEventListener('click', async () => {
+    fetchButton.disabled = true; status.textContent = 'Reading that Gmail thread (read-only)…';
+    try {
+      const d = await call('/fetch', {sentId: sentChoice.value});
+      fetched = d.replies;
+      if (!fetched.length) { replyChoice.hidden = true; status.textContent = 'No reply from them in that Gmail thread yet.'; return; }
+      const latest = fetched.length - 1;
+      replyChoice.replaceChildren(...fetched.map((r, i) => el(doc, 'option', {value: String(i), text: `${r.fromName || r.fromAddress} · ${r.date}`})));
+      replyChoice.value = String(latest); replyChoice.hidden = fetched.length < 2; useReply(fetched[latest]);
+      status.textContent = `Fetched ${fetched.length} ${fetched.length === 1 ? 'reply' : 'replies'} from ${fetched[latest].fromName || fetched[latest].fromAddress}; the latest is shown. Nothing in Gmail was changed.`;
+    } catch (error) { status.textContent = error.message; } finally { fetchButton.disabled = false; }
+  });
   call('').then(o => {
+    const threads = (o.sentEmails || []).filter(x => x.hasThread);
+    gmailBox.hidden = !o.gmailReadAvailable || !threads.length;
+    sentChoice.replaceChildren(...threads.map(x => el(doc, 'option', {value: x.id, text: `${x.name ? x.name + ' · ' : ''}${x.email} · sent ${String(x.sentAt).slice(0, 10)}`})));
     statusChoice.replaceChildren(...Object.entries(o.statuses).map(([value, label]) => el(doc, 'option', {value, text: label})));
     intro.textContent = `Paste a recruiter's reply (for example "please apply online") to draft a polite answer that confirms your online application and explains why you also emailed. It uses only this application's evidence (${o.evidenceCount} line${o.evidenceCount === 1 ? '' : 's'}).${o.aiAvailable ? ' Drafting is paid, with a free estimate first.' : ' Drafting needs letter polishing switched on.'}`;
     estimate.hidden = !o.aiAvailable;

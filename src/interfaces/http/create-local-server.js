@@ -52,6 +52,7 @@ import { createApplicationOutcomesHandler } from "./application-outcomes-http.js
 import { createApplicationQuestionsHandler } from "./application-questions-http.js";
 import { createRecruiterReplyHandler } from "./recruiter-reply-http.js";
 import { createRecruiterReplyService } from "../../application/recruiter-reply.js";
+import { readGmailReplies, gmailReplyReadingEnabled } from "../../application/gmail-reply-reader.js";
 import { createApplicationQuestionsService } from "../../application/application-questions.js";
 import { createInsightsHandler } from "./insights-http.js";
 import { createLetterGateHandler } from "./letter-gate-http.js";
@@ -231,6 +232,7 @@ export function createLocalServer({
   answersStore = null,
   questionWriter = null,
   replyWriter = null,
+  gmailReplyReader = undefined,
   tailoredCvLatest = null,
   insightsSnapshot = null,
   evidenceLearning = null,
@@ -470,7 +472,9 @@ export function createLocalServer({
     scenarioEvidence:review=>{try{const refs=review.polishingScenarios?.references||[];if(!refs.length||!assignmentEvidenceStore)return [];const ev=approvedScenarioRequest(resolveScenarioSelection(assignmentEvidenceStore,JSON.stringify(refs))).approvedScenarioEvidence||[];return ev.map(s=>({text:s.approvedWording,source:'Approved scenario'+(s.organisation?' ('+s.organisation+')':'')}));}catch{return [];}}}):null;
   const handleQuestions=createApplicationQuestionsHandler({service:questionsService,sendJson,sendText});
   // Reply assistant: drafts a reply to a recruiter from the same evidence; never sends.
-  const replyService=createRecruiterReplyService({reviews:reviewStore,writer:replyWriter,candidateName:process.env.CANDIDATE_DISPLAY_NAME||'',evidence:async id=>questionsService?await questionsService.evidenceFor(id):[]});
+  const replyService=createRecruiterReplyService({reviews:reviewStore,writer:replyWriter,candidateName:process.env.CANDIDATE_DISPLAY_NAME||'',evidence:async id=>questionsService?await questionsService.evidenceFor(id):[],
+    sentEmails:()=>outreachRepository?.listSentEmails?.()||[],mailbox:String(process.env.GMAIL_FROM_ADDRESS||'').trim(),
+    replyReader:gmailReplyReader!==undefined?gmailReplyReader:(gmailReplyReadingEnabled()?args=>readGmailReplies(args):null)});
   const handleReply=createRecruiterReplyHandler({service:replyService,sendJson,sendText});
   const handleLetterGate=createLetterGateHandler({reviewStore,sendJson,sendText});
   const handleInsights=createInsightsHandler({snapshot:insightsSnapshot,learning:evidenceLearning,sendJson,sendHtml});

@@ -10,10 +10,13 @@ const test = base.extend({app: async ({}, use) => {
   const reviews = reviewFixture(), r = reviews.get('r1'), calls = [];
   reviews.set('r1', {...r, formData: {...r.formData, cvHighlights: ['At SKY, I facilitated PI planning for five squads.']}});
   const replyWriter = {available: true, buildRequest: buildReplyApiRequest, async write(request, model) { calls.push(request); return {reply: REPLY, notes: '', model}; }};
-  const server = createLocalServer({applicationReviewStore: reviews, answersStore: createApplicationAnswersStore({filePath: ':memory:'}), replyWriter,
-    recruiterContactStore: {async listAll() { return []; }, async listByReview() { return []; }}, outreachRepository: {list: () => [], listDraftOperations: () => [], listSendAttempts: () => [], listSentEmails: () => []}});
+  const sent = [{id: 's1', reviewId: 'r1', status: 'sent', email: 'sam@agency.test', fullName: 'Sam Recruiter', threadId: 'thread123', messageId: 'm1', sentAt: '2026-11-20T10:00:00Z'}], reads = [];
+  const gmailReplyReader = async args => { reads.push(args); return {ok: true, mailbox: 'me@example.test', replies: [
+    {fromName: 'Sam Recruiter', fromAddress: 'sam@agency.test', date: 'Mon, 23 Nov 2026', text: 'Thanks for your email. We only accept applications through our portal, so please apply online.'}]}; };
+  const server = createLocalServer({applicationReviewStore: reviews, answersStore: createApplicationAnswersStore({filePath: ':memory:'}), replyWriter, gmailReplyReader,
+    recruiterContactStore: {async listAll() { return []; }, async listByReview() { return []; }}, outreachRepository: {list: () => [], listDraftOperations: () => [], listSendAttempts: () => [], listSentEmails: () => sent}});
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
-  try { await use({url: 'http://127.0.0.1:' + server.address().port, calls}); }
+  try { await use({url: 'http://127.0.0.1:' + server.address().port, calls, reads}); }
   finally { server.closeAllConnections(); await new Promise(res => server.close(res)); }
 }});
 
@@ -43,4 +46,16 @@ test('paste their reply, estimate, write once, edit and copy the suggested reply
   const copied = await page.evaluate(() => window.__copied);
   expect(copied).toContain('Hello Sam, (edited)');
   expect(copied).toContain('\n\nKind regards,\nTest Candidate');
+});
+
+test('fetch their reply from the Gmail thread of the email you sent (read-only)', async ({page, app}) => {
+  await page.goto(app.url + '/applications/r1');
+  const section = page.locator('#recruiter-reply');
+  await section.getByRole('heading', {name: 'Reply assistant'}).click();
+  await expect(section.getByLabel('Email you sent')).toContainText('sam@agency.test');
+  await section.getByRole('button', {name: 'Fetch their reply from Gmail (read-only)'}).click();
+  await expect(section.getByLabel('Their reply')).toHaveValue(/please apply online/);
+  await expect(section.getByLabel('Their first name (optional)')).toHaveValue('Sam');
+  await expect(section.locator('[data-reply-status]')).toContainText('Nothing in Gmail was changed');
+  expect(app.reads).toEqual([{threadId: 'thread123', sentMessageId: 'm1', expectedAddress: ''}]);
 });

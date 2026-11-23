@@ -1,7 +1,7 @@
 // Reply assistant routes. Local same-origin only; only "write" makes a paid call, after a confirmed estimate. Nothing is sent by email.
 import {readFile} from 'node:fs/promises';
 
-const ROUTE = /^\/api\/reviews\/([A-Za-z0-9_-]{1,100})\/reply(?:\/(estimate|write))?$/;
+const ROUTE = /^\/api\/reviews\/([A-Za-z0-9_-]{1,100})\/reply(?:\/(estimate|write|fetch))?$/;
 
 async function jsonBody(req) {
   if (!String(req.headers['content-type'] || '').startsWith('application/json')) throw Object.assign(new Error('JSON required.'), {statusCode: 415});
@@ -26,7 +26,8 @@ export function createRecruiterReplyHandler({service, sendJson, sendText}) {
       if ((origin && origin !== `http://${req.headers.host}` && origin !== `https://${req.headers.host}`) || req.headers['sec-fetch-site'] === 'cross-site') { sendJson(res, 403, {ok: false, error: 'Cross-origin access is not allowed.'}); return true; }
       if (!service) { sendJson(res, 503, {ok: false, error: 'The reply assistant is unavailable in this configuration.'}); return true; }
       if (method === 'GET') { sendJson(res, 200, {ok: true, ...(await service.overview(reviewId))}); return true; }
-      sendJson(res, 200, {ok: true, ...(await service[action](reviewId, await jsonBody(req)))});
+      const method_ = action === 'fetch' ? 'fetchReplies' : action;
+      sendJson(res, 200, {ok: true, ...(await service[method_](reviewId, await jsonBody(req)))});
       return true;
     } catch (error) {
       sendJson(res, error.statusCode || 503, {ok: false, code: error.code || 'REPLY_FAILED', error: error.statusCode ? error.message : 'The reply assistant is unavailable. Nothing was changed.'});
