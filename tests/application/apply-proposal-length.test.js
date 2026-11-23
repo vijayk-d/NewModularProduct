@@ -54,3 +54,34 @@ test('after reviewing it in Extended mode (no AI call) the proposal applies and 
   assert.equal(response.status, 200, (await response.text()).slice(0, 400));
   assert.match(f.store.get('r').currentDraftPlainText, /programme 19/);
 });
+
+test('"Use it anyway" applies an over-length proposal after a refusal, and records the override', async t => {
+  const f = await fixture(t);
+  const first = await (await apply(f)).text();
+  assert.match(first, /name="acceptOverLength" value="true"> Use it anyway: I have checked the length \(\d+ words; the standard limit is 400\)\./);
+  const response = await apply(f, {acceptOverLength: 'true'});
+  const page = await response.text();
+  assert.equal(response.status, 200, page.slice(0, 300));
+  const saved = f.store.get('r');
+  assert.match(saved.currentDraftPlainText, /programme 19/);
+  const last = saved.refinementHistory.at(-1);
+  assert.equal(last.lengthOverride.maximumWords, 400);
+  assert.equal(last.lengthOverride.mode, 'standard');
+  assert.ok(last.lengthOverride.wordCount > 400);
+  assert.equal(saved.rejectedRefinementProposal, null);
+  assert.match(page, /You chose to use it at \d+ words, over the standard limit of 400\./);
+});
+
+test('the override never bypasses other checks, and is not recorded when the letter is within the limit', async t => {
+  const f = await fixture(t), before = f.store.get('r').currentDraftPlainText;
+  const stale = await apply(f, {acceptOverLength: 'true', proposalBodyVersion: 'a'.repeat(64)});
+  assert.equal(stale.status, 409);
+  assert.equal(f.store.get('r').currentDraftPlainText, before);
+  const firstPage = await (await fetch(f.url + '/applications/r')).text();
+  assert.doesNotMatch(firstPage, /data-length-override/, 'no tick box before any refusal');
+  const short = 'Dear {{firstname}},\n\nI am applying for the Agile Coach opportunity.\n\nShort and clear.\n\nWarm regards,\nTest Candidate';
+  f.store.set('r', {...f.store.get('r'), refinementProposal: {proposedDraft: short, letterLengthMode: 'standard'}});
+  const ok = await fetch(f.url + '/cover-letter-refinement/apply', {method: 'POST', body: new URLSearchParams({reviewId: 'r', proposalBodyVersion: createHash('sha256').update(short).digest('hex'), acceptOverLength: 'true'})});
+  assert.equal(ok.status, 200);
+  assert.equal(f.store.get('r').refinementHistory.at(-1).lengthOverride, undefined);
+});

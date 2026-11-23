@@ -866,6 +866,7 @@ export function renderRefinementPanel({
         }
         <form id="apply-refinement-form" method="post" action="/cover-letter-refinement/apply">
           <input type="hidden" name="reviewId" value="${escapeHtml(reviewId)}"><input type="hidden" name="proposalBodyVersion" value="${crypto.createHash('sha256').update(String(refinementProposal.proposedDraft||'')).digest('hex')}">
+          ${rejectedRefinementProposal?.lengthCheckFailed ? (() => { const q = rejectedRefinementProposal.quality || {}; return `<label class="length-override" data-length-override><input type="checkbox" name="acceptOverLength" value="true"> Use it anyway: I have checked the length${Number.isFinite(q.wordCount) && Number.isFinite(q.maximumWords) ? ` (${q.wordCount} words; the ${escapeHtml(q.mode || 'selected')} limit is ${q.maximumWords})` : ''}.</label>`; })() : ''}
           <button type="submit">Use proposal as current draft</button>
         </form>
       </section>
