@@ -319,5 +319,25 @@ export const MAINTENANCE_COMMANDS = Object.freeze([
       "caution": "Read-only: opens every database read-only and reads counts and sizes, never contents. Safe to paste the output into a support chat.",
       "effect": "Read-only",
       "directory": "D:\\monorepo\\NewModularProduct"
+  },
+  {
+      "id": "gmail-read-access-check",
+      "title": "Gmail read access: check",
+      "category": "Production",
+      "command": "python tools/maintenance/gmail_read_access.py check --env D:\\NewModularProduct-Production\\shared\\config\\production.env",
+      "purpose": "Lists the permissions the app's Gmail token has and says whether the Reply assistant can fetch replies from Gmail. For development, use --env D:\\monorepo\\NewModularProduct\\.env.",
+      "caution": "Read-only. Prints permission names only, never a token.",
+      "effect": "Read-only",
+      "directory": "D:\\monorepo\\NewModularProduct"
+  },
+  {
+      "id": "gmail-read-access-add",
+      "title": "Gmail read access: add (one-time)",
+      "category": "Production",
+      "command": "python tools/maintenance/gmail_read_access.py authorise --env D:\\NewModularProduct-Production\\shared\\config\\production.env",
+      "purpose": "Opens Google sign-in for the configured sender and adds read-only Gmail access on top of the existing permissions, so the Reply assistant can fetch replies. Drafting and sending keep working. For development, use --env D:\\monorepo\\NewModularProduct\\.env.",
+      "caution": "Sign in as the configured sender and allow read-only access. It backs up the file, then replaces only GMAIL_OAUTH_REFRESH_TOKEN; nothing is saved if the mailbox differs or a permission is missing. Restart the app afterwards. Never paste the token into a chat.",
+      "effect": "Changes production settings",
+      "directory": "D:\\monorepo\\NewModularProduct"
   }
 ]);
