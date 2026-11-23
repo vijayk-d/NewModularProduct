@@ -14,3 +14,4 @@ test('performance commands read the logs only; only the resume command changes p
  const resume=byId('prod-resume-paused');assert.equal(resume.effect,'Changes production');assert.equal(resume.category,'Recovery');assert.match(resume.command,/-ne 'paused'.*nothing to resume/);assert.match(resume.command,/paused=\$false/);
  assert.ok(MAINTENANCE_COMMANDS.filter(c=>c.category==='Performance').length>=4);
 });
+test('database size report card is read-only and points at the production data folder',()=>{const c=MAINTENANCE_COMMANDS.find(x=>x.id==='database-size-report');assert.equal(c.effect,'Read-only');assert.equal(c.category,'Performance');assert.ok(c.command.endsWith('database_size_report.py --data D:'+String.fromCharCode(92)+'NewModularProduct-Production'+String.fromCharCode(92)+'shared'+String.fromCharCode(92)+'data'),c.command);});

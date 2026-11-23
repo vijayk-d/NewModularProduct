@@ -309,5 +309,15 @@ export const MAINTENANCE_COMMANDS = Object.freeze([
       "caution": "Use only when no ship is running. It changes no data or release; if health still fails, close the production window with Ctrl+C and start it again.",
       "effect": "Changes production",
       "directory": "D:\\monorepo\\NewModularProduct"
+  },
+  {
+      "id": "database-size-report",
+      "title": "Database sizes: files, tables and reclaimable space",
+      "category": "Performance",
+      "command": "python tools/maintenance/database_size_report.py --data D:\\NewModularProduct-Production\\shared\\data",
+      "purpose": "Lists each production database, largest first: file size, space a compaction could reclaim, and per table the rows and stored data size. Shows where the growth is before deciding on archiving.",
+      "caution": "Read-only: opens every database read-only and reads counts and sizes, never contents. Safe to paste the output into a support chat.",
+      "effect": "Read-only",
+      "directory": "D:\\monorepo\\NewModularProduct"
   }
 ]);
