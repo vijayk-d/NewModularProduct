@@ -90,3 +90,16 @@ test('rail links for Application questions and Outcome open and focus those sect
  await rail.getByRole('link',{name:'Outcome',exact:true}).click();
  await expect.poll(()=>page.evaluate(()=>document.activeElement?.id)).toBe('outcome-choice');
 });
+test('the widened rail fits the window without its own scrollbar; sub-sections are compact chips',async({page,workspaceApp})=>{
+ await page.setViewportSize({width:1440,height:900});const id=await workspaceApp.create();await page.goto(workspaceApp.url+'/applications/'+id);
+ const rail=page.getByRole('navigation',{name:'Application sections'});
+ await rail.getByRole('link',{name:'Polishing',exact:true}).click();
+ await rail.hover();
+ await expect(rail.getByRole('link',{name:'Polishing: Tone',exact:true})).toBeVisible();
+ await expect(rail.getByRole('link',{name:'Reply assistant',exact:true})).toHaveCount(1);
+ expect(await rail.evaluate(n=>n.scrollHeight<=n.clientHeight+1)).toBe(true);
+ const rows=await page.locator('.workspace-subsections[data-parent="polishing"] a').evaluateAll(as=>new Set(as.map(a=>Math.round(a.getBoundingClientRect().top))).size);
+ const count=await page.locator('.workspace-subsections[data-parent="polishing"] a').count();
+ expect(rows).toBeLessThan(count);
+ await page.screenshot({path:'test-results/rail-expanded.png',clip:{x:0,y:0,width:520,height:900}});
+});

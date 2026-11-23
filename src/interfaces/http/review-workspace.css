@@ -287,3 +287,15 @@ html.review-workspace #polishing-model[data-workspace-choice-carrier],html.revie
 .letter-gate label{font-size:.92em}
 
 .outreach-skip-reasons{margin:.4rem 0 0;padding:.4rem .6rem;border-left:3px solid #b45309;background:#fff7ed;color:#7c2d12;font-size:.9rem}
+
+/* Compact section rail: fits typical windows without its own scrollbar, even when widened. Sub-sections are small chips. */
+.workspace-section-nav{gap:.15rem;max-height:calc(100vh - 6.5rem);scrollbar-width:thin;scrollbar-gutter:auto;overscroll-behavior:contain}
+.workspace-section-nav a{min-height:2.05rem}
+@media(min-width:1101px){
+ .workspace-section-nav:hover,.workspace-section-nav:focus-within{width:15rem}
+ .workspace-section-nav:hover a,.workspace-section-nav:focus-within a{min-height:1.85rem}
+ .workspace-section-nav:hover .workspace-section-group,.workspace-section-nav:focus-within .workspace-section-group{margin:.4rem .45rem .05rem}
+ .workspace-section-nav:hover .workspace-subsections[data-current="true"],.workspace-section-nav:focus-within .workspace-subsections[data-current="true"]{flex-direction:row;flex-wrap:wrap;gap:.25rem;margin:.05rem 0 .35rem 2.35rem;padding:0;border:0}
+ .workspace-section-nav .workspace-subsections a.workspace-subsection{min-height:1.4rem;padding:0 .55rem;font-size:.75rem;line-height:1.4rem;background:#f1f5f9;border-radius:999px;max-width:100%}
+ .workspace-section-nav .workspace-subsections a.workspace-subsection:hover{background:#dbeafe}
+}
