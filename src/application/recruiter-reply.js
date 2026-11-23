@@ -31,9 +31,9 @@ export function validateReplyRequest(body = {}) {
 }
 
 // sentEmails(reviewId): the confirmed sends for this application; replyReader: read-only Gmail thread reader (optional).
-export function createRecruiterReplyService({reviews, evidence = async () => [], writer = null, candidateName = '', sentEmails = () => [], queueItems = () => [], replyReader = null, mailbox = '', now = () => Date.now()}) {
+export function createRecruiterReplyService({reviews, evidence = async () => [], writer = null, candidateName = '', sentEmails = () => [], queueItems = () => [], replyReader = null, replyStore = null, draftWriter = null, mailbox = '', now = () => Date.now()}) {
   if (!reviews) throw new Error('The reply assistant needs saved applications.');
-  let writing = false;
+  let writing = false, drafting = false;
   const review = id => { const r = reviews.get(id); if (!r) fail('Saved application not found.', 404); return r; };
   // Contact addresses of this application (queued or sent), and the search start: a day before the earliest, at most 120 days back.
   const contacts = (reviewId, sent) => {
@@ -59,9 +59,35 @@ export function createRecruiterReplyService({reviews, evidence = async () => [],
     async overview(reviewId) {
       review(reviewId); const ev = await evidence(reviewId);
       const sent = sends(reviewId), {addresses} = contacts(reviewId, sent);
-      return {evidenceCount: ev.length, aiAvailable: Boolean(writer?.available), statuses: REPLY_STATUSES, gmailReadAvailable: Boolean(replyReader), sentCount: sent.length, contactCount: addresses.length};
+      return {evidenceCount: ev.length, aiAvailable: Boolean(writer?.available), statuses: REPLY_STATUSES, gmailReadAvailable: Boolean(replyReader), gmailDraftAvailable: Boolean(draftWriter && replyStore), savedReplies: replyStore ? replyStore.list(reviewId) : [], sentCount: sent.length, contactCount: addresses.length};
     },
     // Read-only: their replies in the Gmail threads of emails sent for this application, and recent messages from its contacts.
+    // Saves the reply drafted for one of their messages (local only).
+    saveDraft(reviewId, body = {}) {
+      review(reviewId);
+      if (!replyStore) fail('Saving replies is unavailable in this configuration.', 503, 'REPLY_STORE_OFF');
+      const saved = replyStore.saveDraft(reviewId, String(body.messageId || ''), {draftText: text(body.draftText, 20000, 'The reply'), draftHtml: String(body.draftHtml || '').slice(0, 60000),
+        recipientName: text(body.recipientName, 80, 'Their name'), applicationStatus: REPLY_STATUSES[body.applicationStatus] ? body.applicationStatus : '', ownerNote: text(body.ownerNote, 1000, 'Your note')});
+      if (!saved) fail('That reply is not saved with this application. Find it in Gmail first.', 404, 'REPLY_NOT_FOUND');
+      return {reply: saved};
+    },
+    // Creates (or updates) a Gmail DRAFT in their thread with your reply. Never sends: you send it from Gmail.
+    async createGmailDraft(reviewId, body = {}) {
+      review(reviewId);
+      if (!draftWriter || !replyStore) fail('Creating Gmail drafts is off: it needs Gmail switched on.', 503, 'REPLY_DRAFT_DISABLED');
+      const item = replyStore.get(reviewId, String(body.messageId || ''));
+      if (!item) fail('That reply is not saved with this application. Find it in Gmail first.', 404, 'REPLY_NOT_FOUND');
+      if (!item.threadId || !item.fromAddress) fail('This reply has no Gmail thread or address, so it cannot be drafted there. Copy the reply instead.', 409, 'REPLY_NO_THREAD');
+      const plain = text(body.bodyPlainText, 20000, 'The reply', {required: true}), html = String(body.bodyHtml || '').slice(0, 60000) || plain.split(/\n\s*\n/).map(p => '<p>' + p.replace(/[&<>]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'}[c])).replace(/\n/g, '<br>') + '</p>').join('');
+      if (drafting) fail('A Gmail draft is already being created. Wait for it to finish.', 409, 'REPLY_DRAFT_BUSY');
+      drafting = true;
+      try {
+        replyStore.saveDraft(reviewId, item.messageId, {...item, draftText: plain, draftHtml: html});
+        const r = await draftWriter({threadId: item.threadId, replyToMessageId: item.messageId, to: item.fromAddress, bodyPlainText: plain, bodyHtml: html, draftId: item.gmailDraftId, expectedAddress: mailbox});
+        if (!r.ok) fail(r.code === 'SCOPE_MISSING' ? 'Gmail has not granted the access needed. Run the Maintenance card "Gmail read access: add", restart the app, then try again.' : r.error, r.code === 'SCOPE_MISSING' ? 403 : 502, 'REPLY_' + r.code);
+        return {reply: replyStore.markGmailDraft(reviewId, item.messageId, r.draftId), updated: r.updated === true, subject: r.subject || '', gmailDraftsUrl: 'https://mail.google.com/mail/u/0/#drafts'};
+      } finally { drafting = false; }
+    },
     async findReplies(reviewId) {
       review(reviewId);
       if (!replyReader) fail('Finding replies in Gmail is off: it needs Gmail switched on (ENABLE_GMAIL=true). Paste their reply instead.', 503, 'REPLY_READ_DISABLED');
@@ -70,6 +96,8 @@ export function createRecruiterReplyService({reviews, evidence = async () => [],
       if (!threads.length && !addresses.length) fail('This application has no sent email or contact address to look for. Paste their reply instead.', 409, 'REPLY_NOTHING_TO_SEARCH');
       const r = await replyReader({threads, fromAddresses: addresses, after: since, expectedAddress: mailbox});
       if (!r.ok) fail(r.code === 'SCOPE_MISSING' ? 'Gmail has not granted read access yet. Run the Maintenance card "Gmail read access: add" once, restart the app, then try again. Nothing was changed.' : r.error, r.code === 'SCOPE_MISSING' ? 403 : 502, 'REPLY_' + r.code);
+      // Found replies are kept with this application, each with its own draft; finding again never overwrites a draft.
+      if (replyStore) { replyStore.addFound(reviewId, r.replies); return {searched: {sentEmails: threads.length, contacts: addresses.length}, replies: replyStore.list(reviewId)}; }
       return {searched: {sentEmails: threads.length, contacts: addresses.length}, replies: r.replies};
     },
     // Cost estimate only: nothing is sent anywhere.
