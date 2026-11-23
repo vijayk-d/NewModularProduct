@@ -26,7 +26,7 @@ export function createRecruiterReplyHandler({service, sendJson, sendText}) {
       if ((origin && origin !== `http://${req.headers.host}` && origin !== `https://${req.headers.host}`) || req.headers['sec-fetch-site'] === 'cross-site') { sendJson(res, 403, {ok: false, error: 'Cross-origin access is not allowed.'}); return true; }
       if (!service) { sendJson(res, 503, {ok: false, error: 'The reply assistant is unavailable in this configuration.'}); return true; }
       if (method === 'GET') { sendJson(res, 200, {ok: true, ...(await service.overview(reviewId))}); return true; }
-      const method_ = action === 'fetch' ? 'fetchReplies' : action;
+      const method_ = action === 'fetch' ? 'findReplies' : action;
       sendJson(res, 200, {ok: true, ...(await service[method_](reviewId, await jsonBody(req)))});
       return true;
     } catch (error) {

@@ -1,8 +1,8 @@
-"""Read-only: fetch the replies in one Gmail thread, by the thread ID stored when the application email was sent.
+"""Read-only: find the replies to an application email: in the threads of the emails you sent, and recent messages from its contacts.
 
-Reads only that thread. Never sends, drafts, labels, archives or marks anything as read (threads.get does not change
+Reads only those threads and messages. Never sends, drafts, labels, archives or marks anything as read (threads.get does not change
 read state). Needs the gmail.readonly permission; without it the result says SCOPE_MISSING and nothing else happens.
-Input (stdin JSON): {"action": "read_replies", "threadId": "...", "expectedAddress": "...", "sentMessageId": "..."}.
+Input (stdin JSON): {"action": "find_replies", "expectedAddress": "...", "threads": [{"threadId", "sentMessageId"}], "fromAddresses": [...], "after": "YYYY/MM/DD"}.
 """
 import base64
 import html
@@ -96,31 +96,82 @@ def _status(error):
     return getattr(getattr(error, 'resp', None), 'status', None) or getattr(error, 'status_code', None)
 
 
+EMAIL = re.compile(r'[^\s@<>()"]+@[^\s@<>()"]+\.[A-Za-z]{2,}')
+MAX_THREADS, MAX_ADDRESSES, MAX_FOUND = 5, 20, 10
+
+
+def _reply(m, own):
+    headers = (m.get('payload') or {}).get('headers')
+    name, address = parseaddr(_header(headers, 'From'))
+    if not address or address.lower() == own:
+        return None
+    text = without_quoted(body_text(m.get('payload') or {}))[:MAX_BODY]
+    return {'messageId': m.get('id', ''), 'threadId': m.get('threadId', ''), 'internalDate': int(m.get('internalDate') or 0), 'fromName': name, 'fromAddress': address,
+            'date': _header(headers, 'Date'), 'subject': _header(headers, 'Subject'), 'text': text or str(m.get('snippet', ''))[:MAX_BODY]}
+
+
 def process_request(request, service_factory=None, env=os.environ):
-    if not isinstance(request, dict) or request.get('action') != 'read_replies':
+    """find_replies: replies in the threads of emails you sent (by thread ID, or found from the sent message ID), plus
+    recent messages from this application's contact addresses. Read-only; at most MAX_FOUND replies, newest first."""
+    if not isinstance(request, dict) or request.get('action') != 'find_replies':
         return {'ok': False, 'code': 'INVALID_REQUEST', 'error': 'Only reading replies is allowed.'}
     expected = str(request.get('expectedAddress', '')).strip()
     if not expected or expected.lower() != str(env.get('GMAIL_FROM_ADDRESS', '')).strip().lower():
         return {'ok': False, 'code': 'SENDER_MISMATCH', 'error': 'The configured Gmail address does not match.'}
-    thread_id = str(request.get('threadId', ''))
-    if not re.fullmatch(r'[A-Za-z0-9]{6,40}', thread_id):
-        return {'ok': False, 'code': 'INVALID_THREAD', 'error': 'This sent email has no Gmail thread ID.'}
-    sent_id = str(request.get('sentMessageId', '') or '')
+    threads = [t for t in (request.get('threads') or []) if isinstance(t, dict)][:MAX_THREADS]
+    for t in threads:
+        if t.get('threadId') and not re.fullmatch(r'[A-Za-z0-9]{1,40}', str(t['threadId'])):
+            return {'ok': False, 'code': 'INVALID_THREAD', 'error': 'A Gmail thread ID is not valid.'}
+        if t.get('sentMessageId') and not re.fullmatch(r'[A-Za-z0-9]{1,40}', str(t['sentMessageId'])):
+            return {'ok': False, 'code': 'INVALID_THREAD', 'error': 'A Gmail message ID is not valid.'}
+    addresses = sorted({a.lower() for a in (request.get('fromAddresses') or []) if isinstance(a, str) and EMAIL.fullmatch(a.strip())})[:MAX_ADDRESSES]
+    after = str(request.get('after', '') or '')
+    if after and not re.fullmatch(r'\d{4}/\d{2}/\d{2}', after):
+        return {'ok': False, 'code': 'INVALID_REQUEST', 'error': 'Invalid search date.'}
+    if not threads and not addresses:
+        return {'ok': False, 'code': 'NOTHING_TO_SEARCH', 'error': 'This application has no sent email or contact address to look for.'}
+    own, found, seen = expected.lower(), [], set()
     try:
         service = (service_factory or _service)()
         mailbox = str(service.users().getProfile(userId='me').execute().get('emailAddress', ''))
-        if mailbox.lower() != expected.lower():
+        if mailbox.lower() != own:
             return {'ok': False, 'code': 'SENDER_MISMATCH', 'error': 'The authorised Gmail mailbox is not the configured sender.'}
-        thread = service.users().threads().get(userId='me', id=thread_id, format='full').execute()
+        for t in threads:
+            thread_id, sent_id = str(t.get('threadId') or ''), str(t.get('sentMessageId') or '')
+            try:
+                if not thread_id and sent_id:
+                    thread_id = str(service.users().messages().get(userId='me', id=sent_id, format='minimal').execute().get('threadId', ''))
+                if not thread_id:
+                    continue
+                thread = service.users().threads().get(userId='me', id=thread_id, format='full').execute()
+            except Exception as error:
+                if _status(error) == 404:
+                    continue
+                raise
+            messages = sorted(thread.get('messages') or [], key=lambda m: int(m.get('internalDate') or 0))
+            ids = [m.get('id') for m in messages]
+            start = ids.index(sent_id) + 1 if sent_id in ids else 0
+            for m in messages[start:]:
+                m.setdefault('threadId', thread_id)
+                r = _reply(m, own)
+                if r and r['messageId'] not in seen:
+                    seen.add(r['messageId']); found.append(r)
+        if addresses:
+            q = 'from:(' + ' OR '.join(addresses) + ')' + (' after:' + after if after else '')
+            listed = service.users().messages().list(userId='me', q=q, maxResults=MAX_FOUND).execute().get('messages') or []
+            for item in listed:
+                if item.get('id') in seen:
+                    continue
+                r = _reply(service.users().messages().get(userId='me', id=item['id'], format='full').execute(), own)
+                if r:
+                    seen.add(r['messageId']); found.append(r)
     except Exception as error:
-        status = _status(error)
-        text = str(error)
+        status, text = _status(error), str(error)
         if status == 403 or 'insufficient' in text.lower() or 'scope' in text.lower():
             return {'ok': False, 'code': 'SCOPE_MISSING', 'error': 'Gmail has not granted read access. Re-authorise Gmail with read-only access first.'}
-        if status == 404:
-            return {'ok': False, 'code': 'THREAD_NOT_FOUND', 'error': 'That Gmail thread was not found (it may have been deleted).'}
         return {'ok': False, 'code': 'READ_FAILED', 'error': 'Gmail could not be read. Nothing was changed.'}
-    return {'ok': True, 'mailbox': mailbox, 'replies': replies_in_thread(thread, expected, sent_id)}
+    found.sort(key=lambda r: -r['internalDate'])
+    return {'ok': True, 'mailbox': mailbox, 'replies': found[:MAX_FOUND]}
 
 
 def main():

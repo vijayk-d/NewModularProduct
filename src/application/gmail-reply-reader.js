@@ -1,11 +1,11 @@
-// Read-only: asks the Python worker for the replies in one Gmail thread (by the thread ID stored with the sent email).
+// Read-only: asks the Python worker for replies: in the threads of emails you sent, and recent messages from the contacts.
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
 export const gmailReplyReadingEnabled = (env = process.env) => String(env.ENABLE_GMAIL || '').trim().toLowerCase() === 'true'
   && Boolean(String(env.GMAIL_FROM_ADDRESS || '').trim()) && (env.NMP_ENV || 'development') !== 'verification';
 
-export function readGmailReplies({threadId, sentMessageId = '', expectedAddress, env = process.env, spawnImpl = spawn, timeoutMs = 60000}) {
+export function readGmailReplies({threads = [], fromAddresses = [], after = '', expectedAddress, env = process.env, spawnImpl = spawn, timeoutMs = 60000}) {
   return new Promise(resolve => {
     let child, out = '', done = false, timer;
     const finish = value => { if (done) return; done = true; clearTimeout(timer); resolve(value); };
@@ -28,6 +28,6 @@ export function readGmailReplies({threadId, sentMessageId = '', expectedAddress,
         else throw new Error();
       } catch { failed('READ_FAILED', 'Gmail could not be read. Nothing was changed.'); }
     });
-    child.stdin.end(JSON.stringify({action: 'read_replies', threadId, sentMessageId, expectedAddress}), 'utf8');
+    child.stdin.end(JSON.stringify({action: 'find_replies', threads, fromAddresses, after, expectedAddress}), 'utf8');
   });
 }

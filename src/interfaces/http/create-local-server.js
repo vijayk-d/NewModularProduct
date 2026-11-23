@@ -473,7 +473,7 @@ export function createLocalServer({
   const handleQuestions=createApplicationQuestionsHandler({service:questionsService,sendJson,sendText});
   // Reply assistant: drafts a reply to a recruiter from the same evidence; never sends.
   const replyService=createRecruiterReplyService({reviews:reviewStore,writer:replyWriter,candidateName:process.env.CANDIDATE_DISPLAY_NAME||'',evidence:async id=>questionsService?await questionsService.evidenceFor(id):[],
-    sentEmails:()=>outreachRepository?.listSentEmails?.()||[],mailbox:String(process.env.GMAIL_FROM_ADDRESS||'').trim(),
+    sentEmails:()=>outreachRepository?.listSentEmails?.()||[],queueItems:()=>outreachRepository?.list?.()||[],mailbox:String(process.env.GMAIL_FROM_ADDRESS||'').trim(),
     replyReader:gmailReplyReader!==undefined?gmailReplyReader:(gmailReplyReadingEnabled()?args=>readGmailReplies(args):null)});
   const handleReply=createRecruiterReplyHandler({service:replyService,sendJson,sendText});
   const handleLetterGate=createLetterGateHandler({reviewStore,sendJson,sendText});
