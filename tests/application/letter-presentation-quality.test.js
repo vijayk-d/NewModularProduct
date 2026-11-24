@@ -33,7 +33,7 @@ test('reported mixed-language warning is rejected rather than silently stripped'
 test('English warnings retain currency and prompt restricts evidence attribution',async()=>{
   const capture={};
   const result=await fakeAdapter(['Check £1.8M source attribution.'],capture).refine(req);
-  assert.deepEqual(result.warnings,['Check £1.8M source attribution.']);
+  assert.deepEqual(result.warnings.filter(w=>!/strong-fit paragraph/.test(w)),['Check £1.8M source attribution.']);
   const system=capture.request.input[0].content[0].text;
   assert.ok(system.includes('Write every response field in English'));
   assert.ok(system.includes('Never assign a summary-level claim'));
