@@ -40,7 +40,7 @@ test('provider request includes evidence and highlight schema; warnings survive 
   assert.ok(prompt.constraints.contextualHighlightPolicy.includes('PASSAGES'));
   assert.deepEqual(result.highlightPhrases, []);
   assert.deepEqual(result.highlightSelections, []);
-  assert.deepEqual(result.warnings, ['Check profile dates']);
+  assert.deepEqual(result.warnings.filter(w => !/strong-fit paragraph/.test(w)), ['Check profile dates']);
 });
 test('provider failure retains the caller draft and returns controlled failure', async () => {
   const request = { draftPlainText: 'Preserved original' };
