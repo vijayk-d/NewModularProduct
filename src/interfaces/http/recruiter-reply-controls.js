@@ -132,10 +132,18 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
   };
   const remember = item => { found = found.map(r => r.messageId === item.messageId ? item : r); renderList(); syncDraftButtons(); };
   theirs.addEventListener('input', () => { source.hidden = true; selected = null; renderList(); syncDraftButtons(); });
-  find.addEventListener('click', async () => {
+  // Opening the Reply assistant looks in Gmail by itself once per page (read-only and free); the button searches again.
+  let autoTried = false, overviewLoaded = false;
+  const autoFind = () => {
+    if (autoTried || !overviewLoaded || !panel.open || find.hidden || find.disabled || (!searchable && !address.value.trim())) return;
+    autoTried = true; findReplies(true);
+  };
+  panel.addEventListener('toggle', autoFind);
+  find.addEventListener('click', () => findReplies(false));
+  async function findReplies(auto) {
     const typed = address.value.trim();
     if (!typed && !searchable) { findHint.textContent = 'Enter their email address above first, then find their reply.'; address.focus(); return; }
-    find.disabled = true; findHint.textContent = 'Looking in Gmail (read-only)…';
+    find.disabled = true; findHint.textContent = auto ? 'Looking in Gmail for their reply automatically (read-only)…' : 'Looking in Gmail (read-only)…';
     try {
       const d = await call('/fetch', typed ? {theirEmail: typed} : {});
       try { doc.defaultView?.localStorage?.setItem(ADDRESS_KEY, typed); } catch {}
@@ -144,7 +152,7 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
       useReply(found[0]);
       findHint.textContent = `Found ${found.length} ${found.length === 1 ? 'reply' : 'replies'}${found.length > 1 ? '; the latest is selected. Choose another to answer it' : ''}. Nothing in Gmail was changed.`;
     } catch (error) { findHint.textContent = error.message; } finally { find.disabled = false; }
-  });
+  }
   const draftBody = () => ({messageId: selected, draftText: editorText(editor), draftHtml: editor.innerHTML, recipientName: name.value, applicationStatus: statusChoice.value, ownerNote: note.value});
   async function saveSelected(quiet = false) {
     if (!selected || !editorText(editor)) return null;
@@ -212,6 +220,7 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
     findHint.textContent = !o.gmailReadAvailable ? 'Finding replies in Gmail is off in this app (Gmail is switched off). Paste their reply below.'
       : !searchable ? 'This application has no sent email or contact address yet. Enter the address they replied from, then find their reply; or paste it below.'
       : `Looks in the Gmail threads of the ${o.sentCount} email${o.sentCount === 1 ? '' : 's'} sent for this application and at recent messages from ${known || 'its contacts'}. Add their address above if they replied from another one.`;
+    overviewLoaded = true; autoFind();
   }).catch(error => { intro.textContent = error.message; });
   return section;
 }

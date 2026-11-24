@@ -502,25 +502,31 @@ function attachEditableEmailDomainListener() {
 
   if (!input || !button || !status) return;
 
+  // A typed or pasted domain saves itself when you leave the field or press Enter; a new domain replaces the old one.
+  let lastSaved = input.dataset.manual === "true" ? input.value.trim().toLowerCase() : "";
   input.addEventListener("input", () => {
     input.dataset.manual = "true";
-    status.textContent = "Unsaved domain edit. Click Save domain.";
+    status.textContent = "Domain edited: it saves when you leave the field or press Enter.";
   });
-
-  button.addEventListener("click", async () => {
+  async function save(auto) {
+    const value = input.value.trim();
+    if (auto && (!value || value.toLowerCase() === lastSaved)) return;
     button.disabled = true;
-
     try {
-      const saved = await saveEmailDomain(button.dataset.reviewId, input.value);
-      status.textContent = saved.contactsRefreshed
-        ? "Domain saved for this active review."
-        : "Domain saved, but contacts could not refresh. Click Refresh contacts.";
+      const saved = await saveEmailDomain(button.dataset.reviewId, value);
+      lastSaved = saved.emailDomain;
+      status.textContent = (auto ? "Domain saved automatically: " + saved.emailDomain + "." : "Domain saved for this active review.") +
+        (saved.contactsRefreshed ? "" : " Contacts could not refresh. Click Refresh contacts.");
     } catch (error) {
       status.textContent = error.message || "Unable to save domain.";
     } finally {
       button.disabled = false;
     }
-  });
+  }
+  // Leaving the field saves, except when you are clicking Save itself (that click saves once).
+  input.addEventListener("blur", event => { if (event.relatedTarget === button) return; save(true); });
+  input.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); save(true); } });
+  button.addEventListener("click", () => save(false));
 }
 
 // Saves the domain for the review, shows it in the field, copies it to the browser and refreshes contacts.
@@ -727,11 +733,79 @@ function attachSearchTabButtons() {
     });
   }
 }
+// Returning to this tab (for example after the LinkedIn tabs imported contacts) refreshes the contact tables.
+// Free and local; skipped while you are typing in a contact table, and at most once every few seconds.
+export function attachContactRefreshOnReturn(doc = document, refresh = refreshImportedContacts, now = () => Date.now()) {
+  const button = doc.querySelector('.refresh-imported-contacts-button');
+  const reviewId = button?.dataset.reviewId;
+  if (!reviewId || doc.__contactRefreshOnReturn) return false;
+  doc.__contactRefreshOnReturn = true;
+  let last = now(), busy = false;
+  doc.addEventListener('visibilitychange', async () => {
+    if (doc.visibilityState !== 'visible' || busy || now() - last < 4000) return;
+    if (doc.activeElement?.closest?.('.contact-editor-table, .contact-edit-scroll')) return;
+    const body = doc.querySelector('.available-imported-contacts-body');
+    const before = body ? body.rows.length : 0;
+    busy = true; last = now();
+    try {
+      await refresh(reviewId);
+      const after = body ? body.rows.length : 0;
+      const status = doc.querySelector('.simple-contact-status');
+      if (status && after !== before) status.textContent = `Contacts refreshed when you returned to this tab: ${after} available row${after === 1 ? '' : 's'}.`;
+    } catch { /* the Refresh contacts button still works */ } finally { busy = false; }
+  });
+  return true;
+}
+// When organisation research found no email domain and none is saved, Find email domain starts by itself once per
+// application in this browser (one paid lookup, never repeated or retried automatically).
+export const AUTO_DOMAIN_LOOKUP_PREFIX = 'nmp.autoDomainLookup.';
+export function startAutomaticDomainLookup(doc = document, storage = globalThis.localStorage) {
+  const button = doc.querySelector('.find-email-domain-button[data-auto-find="true"]');
+  const input = doc.getElementById('email-domain-input');
+  if (!button || button.disabled || (input && input.value.trim())) return false;
+  const key = AUTO_DOMAIN_LOOKUP_PREFIX + button.dataset.reviewId;
+  try { if (storage?.getItem(key)) return false; storage?.setItem(key, new Date().toISOString()); } catch { return false; }
+  button.click();
+  const status = doc.getElementById('email-domain-status');
+  if (status) status.textContent = 'Research found no email domain, so Find email domain started automatically (one paid lookup)…';
+  return true;
+}
+// Optional: right after polishing, a proposal that needs no human look is used as the current draft automatically.
+// Off by default; each proposal is tried once, so a refusal from the server is never resubmitted.
+export const AUTO_APPLY_PROPOSAL_KEY = 'nmp.autoApplyProposal';
+export const AUTO_APPLIED_NOTICE_KEY = 'nmp.autoAppliedNotice';
+export function attachAutoApplyProposal(doc = document, storage = globalThis.localStorage, session = globalThis.sessionStorage) {
+  for (const box of doc.querySelectorAll('[data-auto-apply-proposal]')) {
+    if (box.dataset.choiceAttached) continue; box.dataset.choiceAttached = 'true';
+    try { box.checked = storage?.getItem(AUTO_APPLY_PROPOSAL_KEY) === 'true'; } catch {}
+    box.addEventListener('change', () => { try { storage?.setItem(AUTO_APPLY_PROPOSAL_KEY, String(box.checked)); } catch {} });
+  }
+  try {
+    if (session?.getItem(AUTO_APPLIED_NOTICE_KEY)) {
+      session.removeItem(AUTO_APPLIED_NOTICE_KEY);
+      const editor = doc.getElementById('cover-letter-draft');
+      if (editor && !doc.getElementById('apply-refinement-form')) {
+        const note = doc.createElement('p'); note.setAttribute('role', 'status'); note.dataset.autoAppliedNotice = '';
+        note.textContent = 'The polished proposal was within the word limit with no warnings, so it is now the current draft. Read it before you send.';
+        editor.before(note);
+      }
+    }
+  } catch {}
+  const form = doc.getElementById('apply-refinement-form');
+  let on = false; try { on = storage?.getItem(AUTO_APPLY_PROPOSAL_KEY) === 'true'; } catch {}
+  if (!on || !form || form.dataset.autoApplyEligible !== 'true') return false;
+  if (doc.defaultView?.location?.pathname !== '/cover-letter-refinement') return false; // only straight after polishing
+  const version = form.querySelector('[name="proposalBodyVersion"]')?.value || '';
+  const key = 'nmp.autoApplied.' + version;
+  try { if (!version || session?.getItem(key)) return false; session?.setItem(key, '1'); session?.setItem(AUTO_APPLIED_NOTICE_KEY, '1'); } catch { return false; }
+  form.requestSubmit();
+  return true;
+}
 function publishSavedDomainOnLoad() {
   const input = document.getElementById('email-domain-input');
   if (input && input.dataset.manual === 'true' && input.value.trim()) publishEmailDomain(input.value);
 }
 if (typeof document !== 'undefined') {
-  const start = () => { attachSearchTabButtons(); attachAutoImportChoice(); publishSavedDomainOnLoad(); };
+  const start = () => { attachSearchTabButtons(); attachAutoImportChoice(); publishSavedDomainOnLoad(); attachContactRefreshOnReturn(); attachAutoApplyProposal(); setTimeout(() => startAutomaticDomainLookup(), 0); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();
 }

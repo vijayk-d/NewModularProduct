@@ -370,6 +370,11 @@ export function createLocalServer({
   }
 
   async function renderCompleteReview(options) {
+    // An application researched before domains were saved automatically: save the researched domain now (only when
+    // none is saved, so opening a page never replaces a domain you chose).
+    { const before = reviewStore.get(options.reviewId);
+      if (before && !String(before.formData?.emailDomain || '').trim() && normaliseBusinessDomain(before.research?.emailDomainResearch?.emailDomain)) {
+        try { await adoptFoundEmailDomain(options.reviewId); } catch (error) { if (isContactStoreLoadError(error)) throw error; console.warn('[EMAIL_DOMAIN] RESEARCHED_DOMAIN_NOT_SAVED'); } } }
     const stored = reviewStore.get(options.reviewId);
     const roleState=stored?.formData?.jobTitle?inspectApplicationRole(stored.formData):null;
     const roleCsrfToken=roleState&&(roleState.conflict||roleState.staleConfirmation)?issueRoleTicket(options.reviewId,roleState.version):'';
