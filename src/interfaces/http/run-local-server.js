@@ -23,6 +23,8 @@ import {createReplyThreadsStore} from '../../infrastructure/applications/sqlite-
 import {createOwnerCertificationsReader} from '../../infrastructure/owner-certifications-file.js';
 import {createQuestionAnswerWriter} from '../../infrastructure/refinement/perplexity-question-answer-adapter.js';
 import {createRecruiterReplyWriter} from '../../infrastructure/refinement/perplexity-recruiter-reply-adapter.js';
+import {createAdvertRequirementsReader} from '../../infrastructure/refinement/perplexity-advert-requirements-adapter.js';
+import {createAdvertRequirementsFileStore} from '../../infrastructure/advert-requirements-file.js';
 import {createInsightsSnapshot} from '../../application/insights-snapshot.js';
 import {createEvidenceLearning} from '../../application/evidence-learning.js';
 import {attachIndexedText,withoutCvText,describeSections} from '../../application/cv-text-index.js';
@@ -217,6 +219,9 @@ const server = createLocalServer({
   questionWriter:createQuestionAnswerWriter({apiKey:config.integrations.perplexity.apiKey,enabled:config.features.enableCoverLetterRefinement}),
   // The selected CV's indexed text, for facts it states (certifications, years of experience).
   ownerCertifications:createOwnerCertificationsReader(deployment.state),
+  // Keywords: one small AI reading per advert (saved in its own file), with the built-in reader as the fallback.
+  advertRequirementsReader:createAdvertRequirementsReader({apiKey:config.integrations.perplexity.apiKey,enabled:config.features.enableCoverLetterRefinement}),
+  advertRequirementsStore:createAdvertRequirementsFileStore(deployment.state),
   cvTextFor:async code=>{try{return cvLibraryInstance?((await cvLibraryInstance.indexedTexts()).texts[code]||''):'';}catch{return '';}},
   replyThreadsStore,
   replyWriter:createRecruiterReplyWriter({apiKey:config.integrations.perplexity.apiKey,enabled:config.features.enableCoverLetterRefinement}),

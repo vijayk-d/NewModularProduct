@@ -145,6 +145,7 @@ function buildPrompt(request) {
     candidateLinkedInText: normalizeText(request.candidateLinkedInText),
     candidateLinkedInUrl: normalizeText(request.candidateLinkedInUrl),
     ...(Array.isArray(request.candidateCertifications)&&request.candidateCertifications.length?{candidateCertifications:request.candidateCertifications}:{}),
+    ...(Array.isArray(request.priorityKeywords)&&request.priorityKeywords.length?{priorityKeywords:request.priorityKeywords}:{}),
     candidateDisplayName: normalizeText(request.candidateDisplayName),
     candidateProfessionalValues:normalizeText(request.candidateProfessionalValues),
     organisationName: normalizeText(request.organisationName),
