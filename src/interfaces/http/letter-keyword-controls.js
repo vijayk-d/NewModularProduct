@@ -1,6 +1,7 @@
-// Letter toolbar extras: a Keywords check (highlights the advert's key terms the letter uses, lists the missing ones and
-// whether your evidence supports them) and keyboard shortcuts for every toolbar button. Free and local; nothing is saved
-// except through the letter's normal autosave.
+// Letter toolbar extras: a Keywords check (the advert's requirements, Essential or Desirable, against this letter and your
+// evidence: what it covers, what to add and where, and what not to claim) and keyboard shortcuts for every toolbar button.
+// The advert is read once per application (AI when available); the check itself is free and nothing is saved except
+// through the letter's normal autosave.
 const el = (doc, tag, props = {}, children = []) => {
   const node = doc.createElement(tag);
   for (const [k, v] of Object.entries(props)) { if (k === 'text') node.textContent = v; else if (k === 'class') node.className = v; else node.setAttribute(k, v); }
@@ -115,7 +116,7 @@ export function attachLetterKeywordControls(doc = document, fetchImpl = fetch, c
   for (const toolbar of toolbars) {
     const editor = doc.getElementById(toolbar.dataset.editorTarget);
     if (!editor || !reviewId) continue;
-    const button = el(doc, 'button', {type: 'button', 'data-keyword-check': '', title: 'Highlight the advert\'s keywords in this letter and list the missing ones (Ctrl+Shift+K)', 'aria-keyshortcuts': 'Control+Shift+K', text: 'Keywords'});
+    const button = el(doc, 'button', {type: 'button', 'data-keyword-check': '', title: 'Check this letter against what the advert asks for: highlights what it covers and says what to add (Ctrl+Shift+K)', 'aria-keyshortcuts': 'Control+Shift+K', text: 'Keywords'});
     const help = el(doc, 'button', {type: 'button', 'data-shortcut-help': '', title: 'Keyboard shortcuts (Ctrl+/)', 'aria-keyshortcuts': 'Control+/', text: 'Shortcuts'});
     toolbar.append(button, help);
     const panel = el(doc, 'div', {class: 'keyword-panel', hidden: '', role: 'region', 'aria-label': 'Keywords for this letter', 'data-keyword-panel': editor.id});
@@ -130,37 +131,49 @@ export function attachLetterKeywordControls(doc = document, fetchImpl = fetch, c
 
   function chip(text, colour) { const c = el(doc, 'button', {type: 'button', class: 'keyword-chip', text}); Object.assign(c.style, {border: '1px solid #cbd5e1', borderRadius: '999px', padding: '.1rem .6rem', margin: '.15rem .25rem .15rem 0', background: colour, cursor: 'pointer', fontSize: '.85rem'}); return c; }
 
-  async function check(editor, panel) {
-    panel.hidden = false; panel.replaceChildren(el(doc, 'p', {text: 'Checking the advert\'s keywords…'}));
+  async function check(editor, panel, {mark = true} = {}) {
+    panel.hidden = false; panel.replaceChildren(el(doc, 'p', {text: 'Reading what the advert asks for…'}));
     try {
       const r = await fetchImpl('/api/reviews/' + encodeURIComponent(reviewId) + '/keywords', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({letterText: plainText(editor)})});
       const data = await r.json();
       if (!r.ok || !data.ok) throw new Error(data.error || 'The keyword check failed.');
-      const used = data.terms.filter(t => t.inLetter), backed = data.terms.filter(t => !t.inLetter && t.supported), unbacked = data.terms.filter(t => !t.inLetter && !t.supported);
-      const marked = markTerms(editor, used);
+      const g = data.groups, s = data.summary;
+      const marked = mark ? markTerms(editor, g.inLetter) : 0;
       if (marked) editor.dispatchEvent(new (doc.defaultView?.InputEvent || doc.defaultView?.Event || Event)('input', {bubbles: true}));
       const detail = el(doc, 'p', {class: 'keyword-evidence', 'data-keyword-evidence': '', hidden: ''});
-      const parts = [el(doc, 'p', {'data-keyword-summary': '', text: `${used.length} of ${data.terms.length} key terms from the advert are in this letter${marked ? `; ${marked} newly highlighted` : ''}. Keyword match: ${data.score}%.`})];
-      if (backed.length) {
-        const row = el(doc, 'div', {'data-keyword-missing-backed': ''}, [el(doc, 'strong', {text: 'Missing, backed by your evidence: '})]);
-        for (const t of backed) {
-          const c = chip(t.term, '#ecfdf5');
-          c.addEventListener('click', () => {
-            detail.hidden = false; detail.replaceChildren(el(doc, 'span', {text: `${t.evidence.source}: “${t.evidence.text}” `}));
-            const copy = el(doc, 'button', {type: 'button', text: 'Copy line'});
-            copy.addEventListener('click', async () => { try { await clipboard.writeText(t.evidence.text); copy.textContent = 'Copied'; } catch { copy.textContent = 'Copy blocked'; } });
-            detail.append(copy);
-          });
-          row.append(c);
+      const reading = data.source === 'ai' ? 'Requirements read from the advert by AI (saved for this application).' : 'Requirements from the built-in advert reader.';
+      const parts = [el(doc, 'p', {'data-keyword-summary': '', text: `Essential: ${s.essentialInLetter} of ${s.essentialTotal} in this letter · ${s.inLetter} of ${s.total} requirements overall${marked ? `; ${marked} newly highlighted` : ''}${!mark && g.inLetter.length ? '. Click Keywords to highlight them' : ''}.`}),
+        el(doc, 'p', {class: 'keyword-source', 'data-keyword-source': data.source, text: reading + (data.note ? ' ' + data.note : '')})];
+      if (data.nextSteps.length) parts.push(el(doc, 'ul', {'data-keyword-next': ''}, data.nextSteps.map(t => el(doc, 'li', {text: t}))));
+      const label = t => t.term + (t.priority === 'essential' ? '' : ' (desirable)');
+      const tip = t => `${t.category}, ${t.priority}` + (t.aliases.length ? ` · also written as: ${t.aliases.slice(0, 4).join(', ')}` : '');
+      const show = (...nodes) => { detail.hidden = false; detail.replaceChildren(...nodes); };
+      const row = (attr, heading, list, colour, onClick) => {
+        if (!list.length) return null;
+        const box = el(doc, 'div', {[attr]: ''}, [el(doc, 'strong', {text: heading + ' '})]);
+        for (const t of list) {
+          const c = chip(label(t), colour); c.title = tip(t); if (t.priority === 'essential') c.style.fontWeight = '600';
+          if (onClick) c.addEventListener('click', () => onClick(t)); else { c.disabled = true; c.style.cursor = 'default'; c.style.color = '#64748b'; }
+          box.append(c);
         }
-        parts.push(row, detail);
+        return box;
+      };
+      const rows = [
+        row('data-keyword-in-letter', 'In the letter:', g.inLetter, '#f0fdf4', t => show(el(doc, 'span', {text: `${t.term}: written as “${t.writtenAs}”.`}))),
+        row('data-keyword-missing-backed', 'Missing, backed by your evidence:', g.missingBacked, '#ecfdf5', t => {
+          const copy = el(doc, 'button', {type: 'button', text: 'Copy line'});
+          copy.addEventListener('click', async () => { try { await clipboard.writeText(t.evidence.text); copy.textContent = 'Copied'; } catch { copy.textContent = 'Copy blocked'; } });
+          show(el(doc, 'span', {text: `Best place: ${t.fits}. ${t.evidence.source}: “${t.evidence.text}” `}), copy);
+        }),
+        row('data-keyword-missing-unbacked', 'Essential, not in your evidence (add only if true):', g.missingUnbacked, '#fff', null)
+      ].filter(Boolean);
+      parts.push(...rows, detail);
+      if (g.lowValue.length) {
+        const low = el(doc, 'details', {'data-keyword-low-value': ''}, [el(doc, 'summary', {text: `Not worth adding (${g.lowValue.length}): desirable, with no evidence`})]);
+        low.append(el(doc, 'p', {text: g.lowValue.map(t => t.term).join(', ')}));
+        parts.push(low);
       }
-      if (unbacked.length) {
-        const row = el(doc, 'div', {'data-keyword-missing-unbacked': ''}, [el(doc, 'strong', {text: 'Missing, not in your evidence (add only if true): '})]);
-        for (const t of unbacked) { const c = chip(t.term, '#fff'); c.disabled = true; c.style.cursor = 'default'; c.style.color = '#64748b'; row.append(c); }
-        parts.push(row);
-      }
-      if (!backed.length && !unbacked.length) parts.push(el(doc, 'p', {text: 'Every key term from the advert is already in this letter.'}));
+      if (!g.missingBacked.length && !g.missingUnbacked.length) parts.push(el(doc, 'p', {text: 'Every Essential requirement from the advert is already in this letter.'}));
       panel.replaceChildren(...parts);
     } catch (error) { panel.replaceChildren(el(doc, 'p', {text: error.message})); }
   }
@@ -184,6 +197,10 @@ export function attachLetterKeywordControls(doc = document, fetchImpl = fetch, c
     const button = toolbar?.querySelector(`button[data-editor-command="${s.command}"]`);
     button?.dispatchEvent(new (doc.defaultView?.MouseEvent || Event)('mousedown', {bubbles: true, cancelable: true}));
   });
+
+  // Straight after polishing, the proposal is checked automatically (free); it highlights only when you click Keywords.
+  const proposal = doc.getElementById('proposed-cover-letter');
+  if (proposal && panels.has(proposal) && doc.defaultView?.location?.pathname === '/cover-letter-refinement') check(proposal, panels.get(proposal), {mark: false});
 }
 
 if (typeof document !== 'undefined') {

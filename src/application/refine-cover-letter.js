@@ -105,7 +105,8 @@ function normalizeRefinementRequest({
   letterLengthMode = 'standard',
   maxWords = 500,
   includeEarlyWeeks = false,
-  candidateCertifications = []
+  candidateCertifications = [],
+  priorityKeywords = []
 } = {}) {
   const writingExamples=normalizeWritingReferenceExamples(writingReferenceExamples);
   const draft = normalizeString(draftPlainText);
@@ -143,8 +144,21 @@ function normalizeRefinementRequest({
     letterLengthMode:normalizeLengthMode(letterLengthMode),
     maxWords: normalizeMaxWords(maxWords,letterLengthMode),
     ...(includeEarlyWeeks === true ? {includeEarlyWeeks: true} : {}),
-    ...(normalizeCertifications(candidateCertifications).length ? {candidateCertifications: normalizeCertifications(candidateCertifications)} : {})
+    ...(normalizeCertifications(candidateCertifications).length ? {candidateCertifications: normalizeCertifications(candidateCertifications)} : {}),
+    ...(normalizePriorityKeywords(priorityKeywords).length ? {priorityKeywords: normalizePriorityKeywords(priorityKeywords)} : {})
   };
+}
+
+// Evidence-backed Essential advert terms from the Keywords check: at most five, short, plain text.
+export function normalizePriorityKeywords(value) {
+  if (!Array.isArray(value)) return [];
+  const out = [];
+  for (const item of value) {
+    const term = String(item?.term ?? '').replace(/\s+/g, ' ').trim().slice(0, 60), evidence = String(item?.evidence ?? '').replace(/\s+/g, ' ').trim().slice(0, 400);
+    if (term && evidence && !/[<>{}]/.test(term) && !out.some(x => x.term.toLowerCase() === term.toLowerCase())) out.push({term, evidence});
+    if (out.length === 5) break;
+  }
+  return out;
 }
 
 function normalizeReview(value = {}) {

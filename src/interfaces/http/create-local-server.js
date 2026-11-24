@@ -239,6 +239,8 @@ export function createLocalServer({
   replyWriter = null,
   cvTextFor = null,
   ownerCertifications = () => [],
+  advertRequirementsReader = null,
+  advertRequirementsStore = null,
   gmailReplyReader = undefined,
   gmailReplyDrafter = undefined,
   replyThreadsStore = null,
@@ -499,7 +501,10 @@ export function createLocalServer({
   const handleReply=createRecruiterReplyHandler({service:replyService,sendJson,sendText});
   // Letter keyword check: the advert's ATS terms against the letter and your evidence; free and local.
   const letterEvidence=async id=>questionsService?await questionsService.evidenceFor(id):[];
-  const handleKeywords=createLetterKeywordsHandler({service:createLetterKeywordService({reviews:reviewStore,evidence:letterEvidence}),sendJson,sendText});
+  const keywordService=createLetterKeywordService({reviews:reviewStore,evidence:letterEvidence,reader:advertRequirementsReader,store:advertRequirementsStore});
+  const handleKeywords=createLetterKeywordsHandler({service:keywordService,sendJson,sendText});
+  // Polishing gets the missing Essential advert terms your evidence backs. The estimate never pays for an advert reading.
+  const priorityKeywordRequest=async(reviewId,draft,allowPaid)=>{const list=await keywordService.priorityKeywords(reviewId,draft,{allowPaid});return list.length?{priorityKeywords:list}:{};};
   const handleLetterGate=createLetterGateHandler({reviewStore,sendJson,sendText});
   const handleInsights=createInsightsHandler({snapshot:insightsSnapshot,learning:evidenceLearning,sendJson,sendHtml});
   const handleOutcomes=createApplicationOutcomesHandler({store:insightsStore,getReview:id=>reviewStore.get(id),sendJson,sendText,onChange:()=>insightsSnapshot?.schedule()});
@@ -1182,7 +1187,7 @@ export function createLocalServer({
           organisationName:review.formData.organisationName,advertiserRelationship:contextMode(review.formData),...(review.formData.professionalValues?{candidateProfessionalValues:review.formData.professionalValues}:{}),organisationUrl:review.formData.organisationUrl,
           researchSources:!usesCandidateValues(review.formData)&&Array.isArray(review.research?.sources)?review.research.sources:[],instructions:personalPolishingInstructions(formBody.values),letterLengthMode:normalizeLengthMode(formBody.values.get('letterLengthMode')||review.letterLengthMode||'standard'),maxWords:coverLetterRefinementMaxWords,
           letterTone:normalizeLetterTone(formBody.values.get('letterTone')||review.letterTone||'professional'),excludedEmployers:['micro1'],
-          webSearchEnabled:formBody.values.getAll('webSearchEnabled').includes('true'),...letterSectionRequest(formBody.values)};
+          webSearchEnabled:formBody.values.getAll('webSearchEnabled').includes('true'),...letterSectionRequest(formBody.values),...(await priorityKeywordRequest(reviewId,review.currentDraftPlainText,false))};
         const apiBody = buildPolishingApiRequest(requestForEstimate,selectedModel);
         sendJson(response,200,{ok:true,writingReferenceCostProof:writingReferenceCostProof(writingState,review,formBody.values),writingReferenceCount:writingState.examples.length,writingReferenceCharacters:writingState.examples.reduce((n,x)=>n+Array.from(x.excerpt).length,0),scenarioCostProof:scenarioCostProof(scenarioState,review,formBody.values),...estimatePolishingApiRequest(apiBody),letterLengthMode:requestForEstimate.letterLengthMode,fullLetterMaximumWords:lengthPolicy(requestForEstimate.letterLengthMode,coverLetterRefinementMaxWords).maximumWords});
       } catch(error) {
@@ -1347,6 +1352,7 @@ export function createLocalServer({
         letterTone,
         excludedEmployers: ['micro1'],
         ...letterSectionRequest(formBody.values),
+        ...(await priorityKeywordRequest(reviewId,review.currentDraftPlainText,true)),
         ...(formBody.values.has('webSearchEnabled') ? {
           webSearchEnabled: formBody.values.getAll('webSearchEnabled').includes('true')
         } : {}),

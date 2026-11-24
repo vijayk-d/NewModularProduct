@@ -733,3 +733,15 @@ test("a proposal with quality warnings is not applied automatically even with th
   await expect(page.locator("#apply-refinement-form")).not.toHaveAttribute("data-auto-apply-eligible", "true");
   await expect(page.locator("[data-auto-apply-proposal]")).toBeChecked();
 });
+
+test("straight after polishing, the proposal is checked against the advert without adding highlights", async ({ page, app }) => {
+  await prepare(page, app);
+  await Promise.all([page.waitForNavigation(), page.getByRole("button", { name: "Research organisation", exact: true }).click()]);
+  page.once("dialog", d => d.accept());
+  await Promise.all([page.waitForNavigation(), page.getByRole("button", { name: "Polish cover letter", exact: true }).click()]);
+  const panel = page.locator('[data-keyword-panel="proposed-cover-letter"]');
+  await expect(panel.locator("[data-keyword-summary]")).toContainText("Essential: 0 of 1 in this letter");
+  await expect(panel.locator("[data-keyword-missing-unbacked]")).toContainText("Project management");
+  await expect(page.locator("#proposed-cover-letter mark")).toHaveCount(0);
+  await expect(page.locator('[data-keyword-panel="cover-letter-draft"]')).toBeHidden();
+});
