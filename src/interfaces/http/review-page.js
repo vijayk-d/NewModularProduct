@@ -502,25 +502,31 @@ function attachEditableEmailDomainListener() {
 
   if (!input || !button || !status) return;
 
+  // A typed or pasted domain saves itself when you leave the field or press Enter; a new domain replaces the old one.
+  let lastSaved = input.dataset.manual === "true" ? input.value.trim().toLowerCase() : "";
   input.addEventListener("input", () => {
     input.dataset.manual = "true";
-    status.textContent = "Unsaved domain edit. Click Save domain.";
+    status.textContent = "Domain edited: it saves when you leave the field or press Enter.";
   });
-
-  button.addEventListener("click", async () => {
+  async function save(auto) {
+    const value = input.value.trim();
+    if (auto && (!value || value.toLowerCase() === lastSaved)) return;
     button.disabled = true;
-
     try {
-      const saved = await saveEmailDomain(button.dataset.reviewId, input.value);
-      status.textContent = saved.contactsRefreshed
-        ? "Domain saved for this active review."
-        : "Domain saved, but contacts could not refresh. Click Refresh contacts.";
+      const saved = await saveEmailDomain(button.dataset.reviewId, value);
+      lastSaved = saved.emailDomain;
+      status.textContent = (auto ? "Domain saved automatically: " + saved.emailDomain + "." : "Domain saved for this active review.") +
+        (saved.contactsRefreshed ? "" : " Contacts could not refresh. Click Refresh contacts.");
     } catch (error) {
       status.textContent = error.message || "Unable to save domain.";
     } finally {
       button.disabled = false;
     }
-  });
+  }
+  // Leaving the field saves, except when you are clicking Save itself (that click saves once).
+  input.addEventListener("blur", event => { if (event.relatedTarget === button) return; save(true); });
+  input.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); save(true); } });
+  button.addEventListener("click", () => save(false));
 }
 
 // Saves the domain for the review, shows it in the field, copies it to the browser and refreshes contacts.

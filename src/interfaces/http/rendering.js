@@ -2100,8 +2100,8 @@ export function renderEmailDomainResolution(
         ${savedDomain
           ? "Saved for this active review."
           : researchedDomain
-            ? "Found during organisation research. Edit if needed, then save."
-            : "No domain found yet. Research the organisation or enter one manually."}
+            ? "Found during organisation research. Edit it if needed: it saves automatically."
+            : "No domain found yet. Find it, or type one: it saves when you leave the field or press Enter."}
       </p>
 
       ${researchedDomain

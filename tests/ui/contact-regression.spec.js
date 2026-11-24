@@ -57,10 +57,11 @@ const test = base.extend({
 
     const cv = { role_code: "PM", role_name: "Project Manager", local_path: "PM/fixture.pdf" };
     const outreachRepository=createOutreachRepository({filePath:":memory:"});
+    const reviews=createDurableReviewStore(createMemoryReviewRepository());
     const server = createLocalServer({
       recruiterContactStore: store,
       outreachRepository,
-      applicationReviewStore:createDurableReviewStore(createMemoryReviewRepository()),
+      applicationReviewStore:reviews,
       prepareApplication: async () => ({
         jobDescription: { role: "Project Manager", location: "London" },
         recommendation: {
@@ -101,7 +102,7 @@ const test = base.extend({
     const baseUrl = `http://127.0.0.1:${server.address().port}`;
 
     try {
-      await use({ baseUrl, store });
+      await use({ baseUrl, store, reviews });
     } finally {
       server.closeAllConnections();
       await new Promise((resolve, reject) =>
@@ -633,3 +634,26 @@ test("permanent delete requires confirmation and removes selected old-linked rec
   expect((await app.store.listAll()).length).toBe(3);
   expect((await app.store.listByReview("old-application")).length).toBe(0);
 });
+
+test("a typed domain saves itself on Enter or when leaving the field; a researched domain is saved on opening", async ({ page, app }) => {
+  const reviewId = await prepare(page, app);
+  await Promise.all([page.waitForNavigation(), page.getByRole("button", { name: "Research organisation", exact: true }).click()]);
+  const input = page.locator("#email-domain-input"), status = page.locator("#email-domain-status");
+  await input.fill("typed-company.test");
+  await expect(status).toHaveText("Domain edited: it saves when you leave the field or press Enter.");
+  await input.press("Enter");
+  await expect(status).toHaveText("Domain saved automatically: typed-company.test.");
+  expect(app.reviews.get(reviewId).formData.emailDomain).toBe("typed-company.test");
+  await input.fill("left-company.test");
+  await page.locator("#cover-letter-draft").click();
+  await expect(status).toHaveText("Domain saved automatically: left-company.test.");
+  expect(app.reviews.get(reviewId).formData.emailDomain).toBe("left-company.test");
+  // An application researched before automatic saving: opening it saves the researched domain.
+  const r = app.reviews.get(reviewId);
+  app.reviews.set(reviewId, { ...r, formData: { ...r.formData, emailDomain: "" } });
+  await page.reload();
+  await expect(input).toHaveValue("twinstream.com");
+  await expect(status).toHaveText("Saved for this active review.");
+  expect(app.reviews.get(reviewId).formData.emailDomain).toBe("twinstream.com");
+});
+
