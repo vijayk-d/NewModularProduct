@@ -30,7 +30,7 @@ const test = base.extend({
       firstName: "Test",
       lastName: id,
       fullName: `Test ${id}`,
-      role: "Recruitment Manager",
+      role: "Delivery Consultant", // not a suggested role, so nothing is ticked for you in these selection tests
       linkedinUrl: `https://www.linkedin.com/in/browser-${id}`,
       source: "linkedin-visible",
       emailDomain: "twinstream.com",
@@ -58,6 +58,7 @@ const test = base.extend({
     const cv = { role_code: "PM", role_name: "Project Manager", local_path: "PM/fixture.pdf" };
     const outreachRepository=createOutreachRepository({filePath:":memory:"});
     const reviews=createDurableReviewStore(createMemoryReviewRepository());
+    const proposal={draft:"Proposed browser regression draft."};
     const server = createLocalServer({
       recruiterContactStore: store,
       outreachRepository,
@@ -91,7 +92,7 @@ const test = base.extend({
       }),
       coverLetterRefinementPort: {
         refine: async () => ({
-          proposedDraft: "Proposed browser regression draft.",
+          proposedDraft: proposal.draft,
           warnings: []
         })
       }
@@ -102,7 +103,7 @@ const test = base.extend({
     const baseUrl = `http://127.0.0.1:${server.address().port}`;
 
     try {
-      await use({ baseUrl, store, reviews });
+      await use({ baseUrl, store, reviews, proposal });
     } finally {
       server.closeAllConnections();
       await new Promise((resolve, reject) =>
@@ -657,3 +658,78 @@ test("a typed domain saves itself on Enter or when leaving the field; a research
   expect(app.reviews.get(reviewId).formData.emailDomain).toBe("twinstream.com");
 });
 
+test("decision-maker and recruiter contacts are ticked for you, and your own untick is kept", async ({ page, app }) => {
+  await prepare(page, app);
+  const show = () => page.evaluate(() => document.dispatchEvent(new CustomEvent("outreach-contacts-refreshed", {detail: {linkedContacts: [], unlinkedContacts: [
+    {id: "head", fullName: "Alex Morgan", firstName: "Alex", lastName: "Morgan", role: "Head of Talent Acquisition", selectedEmail: "alex.morgan@twinstream.com", emailCandidates: ["a.morgan@twinstream.com"]},
+    {id: "engineer", fullName: "Sam Patel", firstName: "Sam", lastName: "Patel", role: "Software Engineer", selectedEmail: "sam.patel@twinstream.com", emailCandidates: []}]}})));
+  await show();
+  const boxes = id => page.locator(`.available-imported-contacts-body tr[data-contact-id="${id}"] input[type=checkbox]`);
+  await expect(boxes("head")).toHaveCount(2);
+  await expect(boxes("head").first()).toBeChecked();
+  await expect(boxes("head").nth(1)).not.toBeChecked();
+  await expect(boxes("engineer")).not.toBeChecked();
+  await expect(page.locator(".contact-suggestion-note")).toContainText("1 contact with a director, head, talent or recruiter role is ticked for you");
+  await expect(page.getByRole("button", {name: /^Link and add selected to queue/})).toHaveText("Link and add selected to queue (1)");
+  await boxes("head").first().uncheck();
+  await show();
+  await expect(boxes("head").first()).not.toBeChecked();
+});
+
+test("returning to the tab refreshes the contact tables", async ({ page, app }) => {
+  await prepare(page, app);
+  let refreshes = 0;
+  page.on("request", r => { if (r.url().includes("/api/recruiter-contacts/linking")) refreshes++; });
+  const returnToTab = () => page.evaluate(() => { Object.defineProperty(document, "visibilityState", {value: "visible", configurable: true}); document.dispatchEvent(new Event("visibilitychange")); });
+  await page.waitForTimeout(4200);
+  await returnToTab();
+  await expect.poll(() => refreshes).toBe(1);
+  await returnToTab(); // within a few seconds: not again
+  await page.waitForTimeout(300);
+  expect(refreshes).toBe(1);
+});
+
+test("when research found no domain, Find email domain starts by itself once for that application", async ({ page, app }) => {
+  const reviewId = await prepare(page, app);
+  await Promise.all([page.waitForNavigation(), page.getByRole("button", { name: "Research organisation", exact: true }).click()]);
+  const r = app.reviews.get(reviewId);
+  app.reviews.set(reviewId, { ...r, formData: { ...r.formData, emailDomain: "" }, research: { ...r.research, emailDomainResearch: { emailDomain: null, confidence: "low", reasoning: "none", evidence: [] } } });
+  let lookups = 0;
+  page.on("request", q => { if (q.method() === "POST" && q.url().endsWith("/resolve-email-domain")) lookups++; });
+  await page.goto(app.baseUrl + "/applications/" + reviewId);
+  await expect(page.locator(".find-email-domain-button")).toHaveAttribute("data-auto-find", "true");
+  await expect.poll(() => lookups).toBe(1);
+  await page.goto(app.baseUrl + "/applications/" + reviewId);
+  await expect(page.locator("#email-domain-input")).toBeVisible();
+  await page.waitForTimeout(300);
+  expect(lookups).toBe(1);
+});
+
+test("with the choice ticked, a clean proposal is used as the current draft straight after polishing", async ({ page, app }) => {
+  const words = n => Array.from({length: n}, (_, i) => "word" + i).join(" ") + ".";
+  app.proposal.draft = ["Dear {{firstname}},", words(90), words(90), words(90), words(70), "Warm regards,\nTest Candidate"].join("\n\n");
+  await prepare(page, app);
+  await Promise.all([page.waitForNavigation(), page.getByRole("button", { name: "Research organisation", exact: true }).click()]);
+  // First polish: the choice is off, so the proposal waits for you.
+  page.once("dialog", d => d.accept());
+  await Promise.all([page.waitForNavigation(), page.getByRole("button", { name: "Polish cover letter", exact: true }).click()]);
+  await expect(page.locator("#apply-refinement-form")).toHaveAttribute("data-auto-apply-eligible", "true");
+  await page.locator("[data-auto-apply-proposal]").check();
+  // Polishing again now applies it by itself.
+  page.once("dialog", d => d.accept());
+  await page.getByRole("button", { name: "Polish cover letter", exact: true }).click();
+  await expect(page.locator("[data-auto-applied-notice]")).toContainText("it is now the current draft");
+  await expect(page.locator("#apply-refinement-form")).toHaveCount(0);
+  await expect(page.locator("#cover-letter-draft")).toContainText("word89");
+});
+
+test("a proposal with quality warnings is not applied automatically even with the choice ticked", async ({ page, app }) => {
+  await prepare(page, app);
+  await page.evaluate(() => localStorage.setItem("nmp.autoApplyProposal", "true"));
+  await Promise.all([page.waitForNavigation(), page.getByRole("button", { name: "Research organisation", exact: true }).click()]);
+  page.once("dialog", d => d.accept());
+  await Promise.all([page.waitForNavigation(), page.getByRole("button", { name: "Polish cover letter", exact: true }).click()]);
+  await expect(page.locator("#apply-refinement-form")).toBeVisible();
+  await expect(page.locator("#apply-refinement-form")).not.toHaveAttribute("data-auto-apply-eligible", "true");
+  await expect(page.locator("[data-auto-apply-proposal]")).toBeChecked();
+});

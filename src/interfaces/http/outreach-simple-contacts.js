@@ -1,5 +1,5 @@
 import {createLinkedInIcon} from './contact-history-display.js';
-import {businessDomain,resolveEmailRow,resolveEmailRows,queueReceipt,receiptText,renderQueueReceipt} from './contact-workflow-policy.js';
+import {businessDomain,isSuggestedContactRole,resolveEmailRow,resolveEmailRows,queueReceipt,receiptText,renderQueueReceipt} from './contact-workflow-policy.js';
 import { refreshImportedContacts } from './review-page.js';
 export function emailCandidateRows(contacts=[]) {
  return contacts.flatMap(c=>{
@@ -22,7 +22,8 @@ export function attachSimpleContacts(){
  form.dataset.simpleAttached='true';form.noValidate=true;
  const reviewId=form.querySelector('[name="reviewId"]')?.value,available=document.querySelector('.available-imported-contacts-body'),linked=document.querySelector('.linked-imported-contacts-body'),organisation=document.querySelector('.organisation-contact-summary-body');
  const submit=form.querySelector('[type="submit"]'),edits=new Map(),manual=[];let busy=false;
- const hint=document.createElement('p');hint.textContent='Queueing applies each selected contact’s name and the configured candidate signoff, keeping the experience text and formatting. Existing attempts are not overwritten.';form.prepend(hint);
+ const suggestion=document.createElement('p');suggestion.className='contact-suggestion-note';suggestion.setAttribute('role','status');let suggestedNow=null;
+ const hint=document.createElement('p');hint.textContent='Queueing applies each selected contact’s name and the configured candidate signoff, keeping the experience text and formatting. Existing attempts are not overwritten.';form.prepend(hint);hint.after(suggestion);
  const status=document.createElement('p');status.setAttribute('role','status');status.setAttribute('aria-live','polite');status.className='simple-contact-status';if(submit?.parentNode)submit.after(status);else form.appendChild(status);// beside the button, so a refusal (for example an unpolished letter) is seen where you clicked
  const makeButton=(label,fn)=>{const b=document.createElement('button');b.type='button';b.textContent=label;
   if(label==='Suggest email'){
@@ -40,6 +41,8 @@ export function attachSimpleContacts(){
   const tr=body.insertRow(),value=resolveEmailRow(data,edits.get(rowKey(body,data.key)),document.getElementById('email-domain-input')?.value||'');tr.dataset.candidateKey=rowKey(body,data.key);tr.dataset.contactId=data.contactId||'';tr.dataset.clientKey=data.clientKey||'';tr.dataset.emailVerified=value.verified?'true':'false';
   const box=document.createElement('input');box.type='checkbox';box.name='contactIds';box.value=data.contactId||data.clientKey;box.checked=Boolean(value.checked);
   box.className=body===organisation?'organisation-contact-checkbox':isLinked?'linked-contact-checkbox':'contact-link-checkbox';box.setAttribute('aria-label',`Select ${value.firstName||'custom contact'} ${value.email||''}`);tr.insertCell().appendChild(box);
+  // A new decision-maker or recruiter row (first address per person, with an address) is ticked for you; your own ticks and unticks are kept.
+  if(suggestedNow&&body===available&&data.contactId&&!edits.has(rowKey(body,data.key))&&!suggestedNow.has(data.contactId)&&value.email&&isSuggestedContactRole(value.role)){suggestedNow.add(data.contactId);box.checked=true;tr.dataset.suggestedContact='true';box.title='Ticked for you: decision-maker or recruiter role';}
   box.addEventListener('change',()=>{remember(tr);count();});
   for(const [key,cls,label] of [['firstName','candidate-first','First name'],['lastName','candidate-last','Last name'],['email','candidate-email','Email'],['role','candidate-role','Role']]){
    const td=tr.insertCell(),input=document.createElement('input');input.type=key==='email'?'email':'text';input.className=cls;input.value=value[key]||'';if(key==='email')input.title=input.value;input.setAttribute('aria-label',label);td.appendChild(input);
@@ -54,6 +57,7 @@ export function attachSimpleContacts(){
    });
   }
   applyEmailSourcePresentation(tr);
+  if(tr.dataset.suggestedContact==='true')remember(tr);
   const cells=[...tr.cells];cells[1].className='candidate-person';const names=document.createElement('div');names.className='candidate-name-fields';names.append(cells[1].firstElementChild,cells[2].firstElementChild);cells[1].replaceChildren(names);cells[2].remove();
   for(const [i,label] of ['Select','Person','Email candidate','Role'].entries())tr.cells[i].dataset.label=label;
   const actionCell=tr.insertCell();actionCell.dataset.label='Actions';const actions=document.createElement('div');actions.className='contact-row-actions';actionCell.appendChild(actions);
@@ -73,7 +77,10 @@ export function attachSimpleContacts(){
   head.innerHTML='<tr><th>Select</th><th>Person</th><th>Email candidate</th><th>Role</th><th>Actions</th></tr>';
   const master=document.createElement('input');master.type='checkbox';master.id=body===organisation?'select-all-organisation-contacts':isLinked?'select-all-linked-contacts':'select-all-contact-links';master.setAttribute('aria-label','Select all contact candidates');head.querySelector('th').appendChild(master);
   master.addEventListener('change',()=>{for(const tr of body.rows){tr.querySelector('[type="checkbox"]').checked=master.checked;remember(tr);}count();});
-  body.replaceChildren();for(const data of resolveEmailRows(emailCandidateRows(contacts),document.getElementById('email-domain-input')?.value||'',edits,v=>rowKey(body,v.key)))row(body,data,isLinked);if(!isLinked)for(const data of manual)row(body,data,false);count();
+  if(body===available)suggestedNow=new Set();
+  body.replaceChildren();for(const data of resolveEmailRows(emailCandidateRows(contacts),document.getElementById('email-domain-input')?.value||'',edits,v=>rowKey(body,v.key)))row(body,data,isLinked);if(!isLinked)for(const data of manual)row(body,data,false);
+  if(body===available){const n=suggestedNow.size;suggestedNow=null;if(n)suggestion.textContent=`${n} contact${n===1?'':'s'} with a director, head, talent or recruiter role ${n===1?'is':'are'} ticked for you. Untick anyone you do not want, then link and add.`;else if(!available.querySelector('[data-suggested-contact]'))suggestion.textContent='';}
+  count();
  }
  document.addEventListener('outreach-contacts-refreshed',event=>{render(available,event.detail.unlinkedContacts,false);render(linked,event.detail.linkedContacts,true);render(organisation,event.detail.linkedContacts,true);});
  const baseQueueStatus=status;

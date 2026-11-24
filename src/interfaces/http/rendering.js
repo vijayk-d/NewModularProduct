@@ -713,6 +713,14 @@ function renderPolishingAttempt(attempt) {
   </dl></section>`;
 }
 
+// A proposal may be applied automatically (only when the owner ticked that choice) when nothing needs a human look:
+// no proposal warnings, no length override, and the letter-quality check reports no warnings and is within the limit.
+export function proposalAutoApplyEligible(proposal,rejected,maxWords=500){
+ if(!proposal?.proposedDraft||rejected?.lengthCheckFailed)return false;
+ if(Array.isArray(proposal.warnings)&&proposal.warnings.length)return false;
+ const q=assessLetterQuality(proposal.proposedDraft,{mode:proposal.letterLengthMode||'standard',maxWords,advertUrl:proposal.qualityAdvertUrl||''});
+ return q.withinLimit&&!q.warnings.length;
+}
 function qualityMarkup(text,editor,{mode='standard',maxWords=500,advertUrl=''}={}){
  const q=assessLetterQuality(text,{mode,maxWords,advertUrl});
  return `<p data-letter-quality-for="${escapeHtml(editor)}" data-quality-mode="${escapeHtml(q.mode)}" data-quality-cap="${escapeHtml(String(maxWords))}" data-advert-url="${escapeHtml(advertUrl)}" role="status" aria-live="polite">${q.wordCount} words · ${q.label} target ${q.targetMinimum}–${q.maximumWords} · ${q.narrativeParagraphs} narrative paragraphs. ${escapeHtml(q.warnings.join(' '))} Page fit not checked. Subject and Gmail signature excluded.</p>`;
@@ -868,11 +876,15 @@ export function renderRefinementPanel({
             ? `<h3>Warnings</h3><ul>${refinementProposal.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul>`
             : ''
         }
-        <form id="apply-refinement-form" method="post" action="/cover-letter-refinement/apply">
+        <form id="apply-refinement-form" method="post" action="/cover-letter-refinement/apply"${proposalAutoApplyEligible(refinementProposal,rejectedRefinementProposal,qualityMaximumWords)?' data-auto-apply-eligible="true"':''}>
           <input type="hidden" name="reviewId" value="${escapeHtml(reviewId)}"><input type="hidden" name="proposalBodyVersion" value="${crypto.createHash('sha256').update(String(refinementProposal.proposedDraft||'')).digest('hex')}">
           ${rejectedRefinementProposal?.lengthCheckFailed ? (() => { const q = rejectedRefinementProposal.quality || {}; return `<label class="length-override" data-length-override><input type="checkbox" name="acceptOverLength" value="true"> Use it anyway: I have checked the length${Number.isFinite(q.wordCount) && Number.isFinite(q.maximumWords) ? ` (${q.wordCount} words; the ${escapeHtml(q.mode || 'selected')} limit is ${q.maximumWords})` : ''}.</label>`; })() : ''}
           <button type="submit">Use proposal as current draft</button>
         </form>
+        <label data-auto-apply-choice title="Off by default. Remembered in this browser.">
+          <input type="checkbox" data-auto-apply-proposal>
+          Next time, use the proposal automatically straight after polishing when it is within the word limit and has no warnings
+        </label>
       </section>
     `
     : '';
@@ -2119,7 +2131,7 @@ export function renderEmailDomainResolution(
         <button
           type="button"
           class="find-email-domain-button"
-          data-review-id="${escapeHtml(reviewId)}"
+          data-review-id="${escapeHtml(reviewId)}"${research && !savedDomain && !researchedDomain ? ' data-auto-find="true"' : ""}
         >Find email domain</button>
       </div>
 

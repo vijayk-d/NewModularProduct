@@ -54,13 +54,19 @@ test('find their reply in Gmail (read-only), with a clear three-step layout', as
   await section.getByRole('heading', {name: 'Reply assistant'}).click();
   for (const legend of ['1. Their reply', '2. Your answer', '3. Draft']) await expect(section.locator('legend', {hasText: legend})).toBeVisible();
   await expect(section.locator('[data-reply-result]')).toBeHidden();
-  await expect(section.locator('[data-reply-gmail]')).toContainText('1 email sent for this application');
-  await section.getByRole('button', {name: 'Find their reply in Gmail (read-only)'}).click();
+  // Opening the Reply assistant searches Gmail by itself (read-only); no click needed.
   await expect(section.getByLabel('Their reply')).toHaveValue(/please apply online/);
   await expect(section.getByLabel('Their first name (optional)')).toHaveValue('Sam');
   await expect(section.locator('[data-reply-source]')).toContainText('From Gmail: Sam Recruiter');
   await expect(section.locator('[data-reply-gmail]')).toContainText('Nothing in Gmail was changed');
   expect(app.reads).toEqual([{threads: [{threadId: 'thread123', sentMessageId: 'm1'}], fromAddresses: ['sam@agency.test'], after: '2026/11/19', expectedAddress: ''}]);
+  // Closing and reopening does not search again; the button does.
+  await section.getByRole('heading', {name: 'Reply assistant'}).click();
+  await section.getByRole('heading', {name: 'Reply assistant'}).click();
+  await page.waitForTimeout(200);
+  expect(app.reads).toHaveLength(1);
+  await section.getByRole('button', {name: 'Find their reply in Gmail (read-only)'}).click();
+  await expect.poll(() => app.reads.length).toBe(2);
   const field = await section.getByLabel('Their reply').boundingBox(), label = await section.getByText('Their reply', {exact: true}).boundingBox();
   expect(label.y + label.height).toBeLessThanOrEqual(field.y + 2);
 });

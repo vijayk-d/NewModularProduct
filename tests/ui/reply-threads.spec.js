@@ -57,17 +57,21 @@ test('their own email address is searched too and remembered for this applicatio
   await page.goto(app.url + '/applications/r1');
   const section = page.locator('#recruiter-reply');
   await section.getByRole('heading', {name: 'Reply assistant'}).click();
-  await expect(section.locator('[data-reply-gmail]')).toContainText('sam@agency.test');
+  // Opening searched automatically with the known contact address.
+  await expect(section.locator('[data-reply-gmail]')).toContainText('Nothing in Gmail was changed');
+  expect(app.reads).toHaveLength(1);
+  expect(app.reads[0].fromAddresses).toContain('sam@agency.test');
   const address = section.getByLabel('Their email address (optional)');
   await address.fill('not-an-address');
   await section.getByRole('button', {name: 'Find their reply in Gmail (read-only)'}).click();
   await expect(section.locator('[data-reply-gmail]')).toContainText('is not an email address');
-  expect(app.reads).toHaveLength(0);
+  expect(app.reads).toHaveLength(1);
   await address.fill('Andrew@Client.test');
   await section.getByRole('button', {name: 'Find their reply in Gmail (read-only)'}).click();
   await expect(section.getByRole('list', {name: 'Replies found'}).getByRole('listitem')).toHaveCount(2);
-  expect(app.reads[0].fromAddresses[0]).toBe('andrew@client.test');
-  expect(app.reads[0].fromAddresses).toContain('sam@agency.test');
+  await expect.poll(() => app.reads.length).toBe(2);
+  expect(app.reads[1].fromAddresses[0]).toBe('andrew@client.test');
+  expect(app.reads[1].fromAddresses).toContain('sam@agency.test');
   await page.reload();
   await expect(section.getByLabel('Their email address (optional)')).toHaveValue('Andrew@Client.test');
 });
