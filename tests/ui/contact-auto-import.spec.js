@@ -38,6 +38,7 @@ test('on the app, clicking a search-tab button remembers those tabs for automati
   expect(stored.origin).toBe(site);
   expect(stored.entries.map(e => e.url)).toHaveLength(2);
   expect(stored.entries.every(e => e.used === false)).toBe(true);
+  await expect(page.locator('#nmp-bridge-toast')).toContainText('the 2 LinkedIn tab(s) just opened will import their contacts into this app');
 });
 
 test('a tab opened by the app imports its visible contacts into that app automatically', async ({page, site}) => {
