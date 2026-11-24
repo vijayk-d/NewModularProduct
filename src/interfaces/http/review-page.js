@@ -707,6 +707,16 @@ export function openSearchTabsStep(button, openImpl) {
   button.textContent = `${title}: open ${label} (${next + 1} of ${urls.length})`;
   return { opened, remaining: urls.length - next, message: `Opened ${opened} tab${opened === 1 ? '' : 's'}; the browser blocked the rest. Click the button again to open ${label}, or allow pop-ups for this site to open all at once.` };
 }
+// The automatic-import choice for the search tabs, remembered in this browser (development and production separately).
+// The Tampermonkey contact bridge reads the tick box when a search-tab button is clicked.
+export const AUTO_IMPORT_TABS_KEY = 'nmp.autoImportTabs';
+export function attachAutoImportChoice(doc = document, storage = globalThis.localStorage) {
+  for (const box of doc.querySelectorAll('[data-auto-import-tabs]')) {
+    if (box.dataset.choiceAttached) continue; box.dataset.choiceAttached = 'true';
+    try { const saved = storage?.getItem(AUTO_IMPORT_TABS_KEY); if (saved === 'false' || saved === 'true') box.checked = saved === 'true'; } catch {}
+    box.addEventListener('change', () => { try { storage?.setItem(AUTO_IMPORT_TABS_KEY, String(box.checked)); } catch {} });
+  }
+}
 function attachSearchTabButtons() {
   for (const button of document.querySelectorAll('[data-open-search-tabs]')) {
     if (button.dataset.tabsAttached) continue; button.dataset.tabsAttached = 'true';
@@ -722,6 +732,6 @@ function publishSavedDomainOnLoad() {
   if (input && input.dataset.manual === 'true' && input.value.trim()) publishEmailDomain(input.value);
 }
 if (typeof document !== 'undefined') {
-  const start = () => { attachSearchTabButtons(); publishSavedDomainOnLoad(); };
+  const start = () => { attachSearchTabButtons(); attachAutoImportChoice(); publishSavedDomainOnLoad(); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();
 }
