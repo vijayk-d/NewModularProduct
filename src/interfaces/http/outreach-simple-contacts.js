@@ -1,5 +1,5 @@
 import {createLinkedInIcon} from './contact-history-display.js';
-import {businessDomain,isSuggestedContactRole,resolveEmailRow,resolveEmailRows,queueReceipt,receiptText,renderQueueReceipt} from './contact-workflow-policy.js';
+import {businessDomain,isSuggestedContactRole,resolveEmailRow,resolveEmailRows,queueReceipt,receiptRows,receiptText,renderQueueReceipt} from './contact-workflow-policy.js';
 import { refreshImportedContacts } from './review-page.js';
 export function emailCandidateRows(contacts=[]) {
  return contacts.flatMap(c=>{
@@ -98,7 +98,7 @@ export function attachSimpleContacts(){
    const keys=new Set(rows.filter(v=>!v.contactId).map(v=>v.clientKey));for(let i=manual.length-1;i>=0;i--)if(keys.has(manual[i].clientKey))manual.splice(i,1);
    const accounting=queueReceipt(rows,result);status.textContent=receiptText(accounting);status.dataset.queueAccounting=JSON.stringify(accounting);renderQueueReceipt(status,rows,result,document);
    const focusOwner=document.activeElement;const canMoveQueueFocus=focusOwner===document.body||Boolean(focusOwner?.closest?.('.organisation-contact-actions'));
-   document.dispatchEvent(new CustomEvent('outreach-queue-changed',{detail:{reviewId,focusQueue:body===organisation&&canMoveQueueFocus&&accounting.unaccounted===0&&(accounting.added+accounting.updated+accounting.duplicates)>0}}));
+   document.dispatchEvent(new CustomEvent('outreach-queue-changed',{detail:{reviewId,queuedIds:receiptRows(rows,result).map(r=>r.queueId).filter(Boolean),focusQueue:body===organisation&&canMoveQueueFocus&&accounting.unaccounted===0&&(accounting.added+accounting.updated+accounting.duplicates)>0}}));
    try{await refreshImportedContacts(reviewId);}catch{status.textContent+=' Saved, but contacts could not refresh.';}
   }catch(error){status.textContent=error.message;}finally{busy=false;if(submit)submit.disabled=false;document.querySelectorAll('.organisation-contact-actions button').forEach(b=>b.disabled=false);count();}
  }
