@@ -64,11 +64,12 @@ function startOutreachQueue() {
     return result;
   }
   window.addEventListener('pagehide',()=>{leaving=true;refreshGeneration++;stopBulk=true;});
-  async function refresh() {
+  // select: queue item ids to tick (the rows you have just queued), on top of what was already ticked.
+  async function refresh(select = []) {
     const generation=++refreshGeneration;
     const { items } = await request(queueListUrl);
     if(leaving||generation!==refreshGeneration||(!standalone&&document.querySelector('input[name="reviewId"]')?.value!==scopeReviewId))return 0;
-    const previousSelection=new Set([...tbody.querySelectorAll('.outreach-queue-checkbox:checked')].map(b=>b.value));
+    const previousSelection=new Set([...[...tbody.querySelectorAll('.outreach-queue-checkbox:checked')].map(b=>b.value),...select.map(String)]);
     bulkQueueItems=items;
     tbody.replaceChildren();
     for (const item of items) {
@@ -210,7 +211,9 @@ function startOutreachQueue() {
   document.addEventListener('outreach-queue-changed',event=>{
    const wantsFocus=event.detail?.focusQueue===true&&event.detail.reviewId===scopeReviewId;
    const owner=document.activeElement;
-   refresh().then(count=>{
+   const queuedIds=Array.isArray(event.detail?.queuedIds)?event.detail.queuedIds:[];
+   refresh(queuedIds).then(count=>{
+    if(queuedIds.length)try{syncBulkControls();}catch{}
     if(!wantsFocus||!count||leaving||!section.isConnected||document.querySelector('input[name="reviewId"]')?.value!==scopeReviewId)return;
     const currentFocus=document.activeElement;
     if(currentFocus!==owner&&currentFocus!==document.body)return;

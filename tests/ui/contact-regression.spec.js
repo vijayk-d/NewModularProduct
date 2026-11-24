@@ -296,6 +296,9 @@ test("link selected moves only the checked row and retains the page sections", a
   await page.getByRole('button',{name:/^Link and add selected to queue/}).click();
   expect((await queued).status()).toBe(200);
   await expect(page.locator('.simple-contact-status')).toContainText('1 new;');
+  // The row just added to the outreach queue arrives ticked, ready for Draft, Send or Schedule.
+  await expect(page.locator('.outreach-queue-checkbox')).toHaveCount(1);
+  await expect(page.locator('.outreach-queue-checkbox')).toBeChecked();
 
   await expect(availableRow(page, "selected")).toHaveCount(0);
   await expect(availableRow(page, "unselected")).toBeVisible();
