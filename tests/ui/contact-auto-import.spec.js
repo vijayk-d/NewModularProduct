@@ -1,14 +1,14 @@
-// Experimental Tampermonkey contact bridge v0.7.0: automatic import only for tabs the app opened.
+// Tampermonkey contact bridge v0.8.0: automatic import only for tabs the app opened, when the app's tick box is ticked.
 // Runs the real userscript on local stand-in pages with stubbed GM_* functions; nothing reaches LinkedIn.
 import {test as base, expect} from '@playwright/test';
 import {createServer} from 'node:http';
 import {once} from 'node:events';
 import {readFileSync} from 'node:fs';
 
-const SCRIPT = readFileSync(new URL('../../tampermonkey/Clean-LinkedIn-Contact-Bridge-v0.7.0-auto-import-experiment.user.js', import.meta.url), 'utf8');
+const SCRIPT = readFileSync(new URL('../../tampermonkey/Clean-LinkedIn-Contact-Bridge-v0.8.0-dual-port.user.js', import.meta.url), 'utf8');
 const card = (name, role) => `<li><a href="https://www.linkedin.com/in/${name.toLowerCase().replace(/\s+/g, '-')}/" aria-label="View ${name} profile"><span>${name}</span></a><div>${role}</div><div>London, United Kingdom</div></li>`;
 const PEOPLE = `<!doctype html><html><body><main><ul>${card('Alex Morgan', 'Head of Talent Acquisition at Acme')}${card('Sam Patel', 'Engineering Director at Acme')}</ul></main></body></html>`;
-const APP = `<!doctype html><html><body><nav><button type="button" data-open-search-tabs='["https://www.linkedin.com/company/acme/people/?keywords=talent","https://www.linkedin.com/search/results/people/?keywords=director&currentCompany=%5B%22123%22%5D"]'>Open tabs</button></nav></body></html>`;
+const APP = `<!doctype html><html><body><nav><label><input type="checkbox" data-auto-import-tabs checked> Import contacts automatically from these tabs</label><button type="button" data-open-search-tabs='["https://www.linkedin.com/company/acme/people/?keywords=talent","https://www.linkedin.com/search/results/people/?keywords=director&currentCompany=%5B%22123%22%5D"]'>Open tabs</button></nav></body></html>`;
 
 const test = base.extend({site: async ({}, use) => {
   const server = createServer((req, res) => { res.writeHead(200, {'content-type': 'text/html; charset=utf-8'}); res.end(req.url.startsWith('/app') ? APP : PEOPLE); });
@@ -38,6 +38,7 @@ test('on the app, clicking a search-tab button remembers those tabs for automati
   expect(stored.origin).toBe(site);
   expect(stored.entries.map(e => e.url)).toHaveLength(2);
   expect(stored.entries.every(e => e.used === false)).toBe(true);
+  expect(stored.auto).toBe(true);
   await expect(page.locator('#nmp-bridge-toast')).toContainText('the 2 LinkedIn tab(s) just opened will import their contacts into this app');
 });
 
@@ -75,3 +76,21 @@ test('without a saved domain, automatic import explains itself and sends nothing
   await page.locator('[data-nmp-auto-switch]').uncheck();
   expect(await page.evaluate(() => window.__gm.autoImport)).toBe(false);
 });
+
+test('unticking the app box makes the opened tabs wait for the Import button', async ({page, site}) => {
+  await load(page, site + '/app', {hostname: '127.0.0.1'});
+  await page.evaluate(() => { window.open = () => null; });
+  await page.locator('[data-auto-import-tabs]').uncheck();
+  await page.getByRole('button', {name: 'Open tabs'}).click();
+  expect(await page.evaluate(() => window.__gm.pendingAutoTabs.auto)).toBe(false);
+  await expect(page.locator('#nmp-bridge-toast')).toContainText('automatic import is unticked on this page');
+});
+
+test('a tab opened while the app box was unticked does not import', async ({page, site}) => {
+  const store = pending('https://www.linkedin.com/company/acme/people/?keywords=talent'); store.pendingAutoTabs.auto = false;
+  await load(page, site + '/company/acme/people/?keywords=talent', {store});
+  await page.waitForTimeout(800);
+  expect(await page.evaluate(() => window.__requests.length)).toBe(0);
+  await expect(page.getByRole('button', {name: 'Import clean LinkedIn contacts'})).toBeVisible();
+});
+

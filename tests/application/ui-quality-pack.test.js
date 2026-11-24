@@ -43,3 +43,12 @@ test('search tab button opens all tabs, or continues one per click when pop-ups 
   r = openSearchTabsStep(blocked, oneAllowed());
   assert.equal(r.remaining, 0); assert.deepEqual(seen, ['u1','u2','u3','u4']); assert.equal(blocked.textContent, 'Company People tab');
 });
+test('the automatic-import tick box remembers its choice in this browser', async () => {
+  const {attachAutoImportChoice, AUTO_IMPORT_TABS_KEY} = await import('../../src/interfaces/http/review-page.js');
+  const store = new Map([[AUTO_IMPORT_TABS_KEY, 'false']]), storage = {getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v)};
+  let onChange; const box = {checked: true, dataset: {}, addEventListener: (_, f) => { onChange = f; }};
+  attachAutoImportChoice({querySelectorAll: () => [box]}, storage);
+  assert.equal(box.checked, false);
+  box.checked = true; onChange();
+  assert.equal(store.get(AUTO_IMPORT_TABS_KEY), 'true');
+});

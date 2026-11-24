@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         New Modular Product - Clean LinkedIn Contact Bridge (auto-import experiment)
+// @name         New Modular Product - Clean LinkedIn Contact Bridge
 // @namespace    local.new-modular-product
-// @version      0.7.1
-// @description  EXPERIMENT. As v0.6.1, plus: tabs opened by the app's search-tab buttons import their visible contacts automatically into the app that opened them. Reads one page only: no scrolling, paging or clicking on LinkedIn. Disable v0.6.1 while this is enabled.
+// @version      0.8.0
+// @description  Review clean LinkedIn People contacts and import to production (3100), development (3000), or both. Tabs opened by the app's search-tab buttons import automatically when the app's tick box "Import contacts automatically from these tabs" is ticked; reads one page only, no scrolling, paging or clicking.
 // @match        https://www.linkedin.com/company/*/people/*
 // @match        https://www.linkedin.com/search/results/people/*
 // @match        http://127.0.0.1:3000/*
@@ -24,7 +24,7 @@
   const DOMAIN_KEY="nmp.lastSavedEmailDomain";
   // Tabs opened from the app's search-tab buttons, remembered briefly so only those tabs import automatically.
   const PENDING_KEY="pendingAutoTabs",PENDING_TTL_MS=3*60*1000;
-  const VERSION="0.7.1";
+  const VERSION="0.8.0";
   const HOSTNAME=String(window.__nmpTestHostname||location.hostname);
   console.info(`[NMP contact bridge ${VERSION}] running on ${HOSTNAME}${location.pathname}`);
   // A short visible message, so you can see the script is running and what it will do.
@@ -39,12 +39,14 @@
       const button=event.target?.closest?.("[data-open-search-tabs]");if(!button)return;
       let urls=[];try{urls=JSON.parse(button.dataset.openSearchTabs||"[]").filter(u=>typeof u==="string"&&/^https:\/\/www\.linkedin\.com\//.test(u)).slice(0,12);}catch{urls=[];}
       if(!urls.length)return;
+      // The app's tick box decides (missing on an older app: automatic); the panel switch is a master off.
+      const box=button.closest("nav")?.querySelector("[data-auto-import-tabs]"),appChoice=box?box.checked:true,master=GM_getValue("autoImport",true)!==false;
       const previous=GM_getValue(PENDING_KEY,null),fresh=previous&&Date.now()-previous.createdAt<PENDING_TTL_MS&&previous.origin===location.origin?previous.entries:[];
       const entries=[...fresh.filter(e=>!urls.includes(e.url)),...urls.map(url=>({url,used:false}))].slice(-24);
-      GM_setValue(PENDING_KEY,{origin:location.origin,createdAt:Date.now(),entries});
-      const auto=GM_getValue("autoImport",true)!==false;
-      toast(auto?`Contact bridge ${VERSION}: the ${urls.length} LinkedIn tab(s) just opened will import their contacts into this app (${location.port}) automatically, for the next 3 minutes.`
-        :`Contact bridge ${VERSION}: automatic import is switched off, so use the Import button on each LinkedIn tab.`);
+      GM_setValue(PENDING_KEY,{origin:location.origin,createdAt:Date.now(),entries,auto:appChoice&&master});
+      toast(appChoice&&master?`Contact bridge ${VERSION}: the ${urls.length} LinkedIn tab(s) just opened will import their contacts into this app (${location.port}) automatically, for the next 3 minutes.`
+        :!appChoice?`Contact bridge ${VERSION}: automatic import is unticked on this page, so use the Import button on each LinkedIn tab.`
+        :`Contact bridge ${VERSION}: automatic import is switched off in the LinkedIn import panel, so use the Import button on each LinkedIn tab.`);
     },true);
     const sync=()=>{try{const v=JSON.parse(localStorage.getItem(DOMAIN_KEY)||"null");if(v&&typeof v.domain==="string"&&v.domain.trim())GM_setValue("emailDomain",{domain:v.domain.trim().toLowerCase(),organisation:String(v.organisation||""),savedAt:String(v.savedAt||""),port:location.port});}catch{}};
     sync();document.addEventListener("nmp-email-domain-saved",sync);window.addEventListener("storage",event=>{if(event.key===DOMAIN_KEY)sync();});
@@ -66,7 +68,7 @@
   // for its name in the path, so entries match on page kind and search words, and on the path when it is unchanged.
   function claimPendingTab(href=location.href){
     const pending=GM_getValue(PENDING_KEY,null);
-    if(!pending||!Array.isArray(pending.entries)||Date.now()-pending.createdAt>PENDING_TTL_MS)return null;
+    if(!pending||pending.auto===false||!Array.isArray(pending.entries)||Date.now()-pending.createdAt>PENDING_TTL_MS)return null;
     let here;try{here=searchKey(new URL(href));}catch{return null;}
     if(!here.kind)return null;
     const same=(e,strict)=>{let k;try{k=searchKey(new URL(e.url));}catch{return false;}return k.kind===here.kind&&k.keywords===here.keywords&&(here.kind==="search"?(!k.company||!here.company||k.company===here.company):true)&&(!strict||k.path===here.path);};
@@ -282,7 +284,7 @@
     const label=document.createElement("label");Object.assign(label.style,{display:"block",margin:"4px 0 8px"});
     const box=document.createElement("input");box.type="checkbox";box.checked=autoEnabled();box.setAttribute("data-nmp-auto-switch","");
     box.addEventListener("change",()=>GM_setValue("autoImport",box.checked));
-    label.append(box," Import automatically from tabs opened by the app's search buttons (experiment)");return label;
+    label.append(box," Allow automatic import from tabs opened by the app (the app's tick box chooses each time)");return label;
   }
   function notice(message){
     document.getElementById(PANEL_ID)?.remove();
