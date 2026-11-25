@@ -60,13 +60,26 @@ export function shellEnvironment(env = process.env) {
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const isCurrent = (item, path) => (item.match ? item.match(path) : path === item.href || path.startsWith(item.href + '/'));
-const link = (item, path, cls) => `<a class="${cls}" href="${item.href}" title="${esc(item.label)}"${isCurrent(item, path) ? ' aria-current="page"' : ''}>${icon(item.icon)}<span>${esc(item.label)}</span></a>`;
+// Each rail item: icon, a label that appears beside it on hover or focus (and is its accessible name), and an
+// optional status light in the corner. Colour is never the only signal: the label says the status too.
+const light = (level) => (level ? `<span class="nmp-shell__dot nmp-shell__light" data-next-level="${esc(level)}" aria-hidden="true"></span>` : '');
+const link = (item, path, cls, status = null) => `<a class="${cls}" href="${item.href}"${status?.level ? ` data-light="${esc(status.level)}"` : ''}${isCurrent(item, path) ? ' aria-current="page"' : ''}>${icon(item.icon)}<span class="nmp-shell__label">${esc(item.label)}${status?.text ? ` — ${esc(status.text)}` : ''}</span>${light(status?.level)}</a>`;
 
-// The next-step pill (Green / Amber / Red) and, on an application page, that application's next step.
-const LEVEL_TEXT = { red: 'Act now', amber: 'Next step ready', green: 'Nothing to do' };
+// The next-step light (Green / Amber / Red) and, on an application page, that application's next step.
+const LEVEL_TEXT = { red: 'act now', amber: 'a next step is ready', green: 'nothing to do' };
+const FLAG = 'M4 22V4 M4 4h12l-2 4 2 4H4';
+const BOLT = 'M13 2 3 14h9l-1 8 10-12h-9z';
 function nextPill(next) {
   if (!next) return '';
-  return `<a class="nmp-shell__next" data-next-level="${esc(next.level)}" href="/next-steps" title="${esc(LEVEL_TEXT[next.level] || '')}: what to do next across your applications"><span class="nmp-shell__dot" aria-hidden="true"></span><span>${esc(next.label)}</span></a>`;
+  return `<a class="nmp-shell__link nmp-shell__next" data-next-level="${esc(next.level)}" href="/next-steps">${icon(FLAG)}<span class="nmp-shell__label">Next steps: ${esc(next.label)} (${esc(LEVEL_TEXT[next.level] || '')})</span>${light(next.level)}</a>`;
+}
+// The Outreach queue light: red when a send is uncertain or failed, amber when emails are queued but not sent.
+export function outreachStatus(next) {
+  const steps = (next?.steps || []).filter((s) => s.href === '/outreach-queue');
+  if (!steps.length) return null;
+  const red = steps.filter((s) => s.level === 'red').length, amber = steps.filter((s) => s.level === 'amber').length;
+  return red ? { level: 'red', text: `${red} application${red === 1 ? '' : 's'} with an uncertain or failed send` }
+    : amber ? { level: 'amber', text: `${amber} application${amber === 1 ? '' : 's'} with emails queued, not sent` } : null;
 }
 export function renderNextStrip(step) {
   if (!step) return '';
@@ -74,29 +87,28 @@ export function renderNextStrip(step) {
 }
 const applicationId = (pathname) => { const m = /^\/applications\/([A-Za-z0-9_-]{1,100})$/.exec(String(pathname)); return m ? m[1] : ''; };
 
-// Slow tasks: amber while running, green when finished and not yet seen, red when failed. Always rendered (hidden when
-// empty) so the refresh script can fill it in.
+// Slow tasks: the Activity item at the top of the rail. Its light pulses amber while a task runs, turns green when it
+// finishes (until you look) and red when it fails. Always present so the refresh script can update it.
 export function renderActivityPill(activity) {
   const items = activity?.items || [];
-  if (!items.length) return '<span class="nmp-shell__activity" data-activity-pill data-activity-state="none" hidden></span>';
+  if (!items.length) return `<a class="nmp-shell__link nmp-shell__activity" data-activity-pill data-activity-state="none" href="/next-steps">${icon(BOLT)}<span class="nmp-shell__label">Activity: nothing running</span></a>`;
   const top = items[0], more = items.length - 1;
-  const text = `${top.label}${top.name ? ': ' + top.name : ''}${top.state === 'running' ? '…' : top.state === 'done' ? ' ✓' : ''}`;
-  const title = top.state === 'running' ? 'Still running: you can work elsewhere; this turns green when it finishes.' : top.state === 'done' ? 'Finished: click to see the result.' : 'Failed: click to see why. ' + top.error;
-  return `<a class="nmp-shell__next nmp-shell__activity" data-activity-pill data-activity-state="${esc(top.state)}" data-next-level="${esc(top.level)}" href="/activity/open?id=${encodeURIComponent(top.id)}" title="${esc(title)}"><span class="nmp-shell__dot" aria-hidden="true"></span><span>${esc(text)}${more > 0 ? ` (+${more})` : ''}</span></a>`;
+  const text = `${top.label}${top.name ? ': ' + top.name : ''}${top.state === 'running' ? '… (still running; this turns green when it finishes)' : top.state === 'done' ? ' ✓ (click to see it)' : ` (click to see why${top.error ? ': ' + top.error : ''})`}`;
+  return `<a class="nmp-shell__link nmp-shell__activity" data-activity-pill data-activity-state="${esc(top.state)}" data-next-level="${esc(top.level)}" href="/activity/open?id=${encodeURIComponent(top.id)}">${icon(BOLT)}<span class="nmp-shell__label">${esc(text)}${more > 0 ? ` (+${more} more)` : ''}</span>${light(top.level)}</a>`;
 }
 
 export function renderShell(pathname = '/', env = process.env, next = null, activity = null) {
   const e = shellEnvironment(env);
   const other = e.id === 'production' ? { label: 'Development', url: 'http://127.0.0.1:3000' + pathname } : e.id === 'development' ? { label: 'Production', url: 'http://127.0.0.1:3100' + pathname } : null;
   const groups = NAV_GROUPS.map(g => ({ ...g, items: g.items.filter(i => !i.feature || featureEnabled(i.feature, env)) })).map((g) => {
-    if (g.primary) return `<div class="nmp-shell__group" role="group" aria-label="${esc(g.label)}">${g.items.map((i) => link(i, pathname, 'nmp-shell__link')).join('')}</div>`;
+    if (g.primary) return `<div class="nmp-shell__group" role="group" aria-label="${esc(g.label)}">${g.items.map((i) => link(i, pathname, 'nmp-shell__link', i.href === '/outreach-queue' ? outreachStatus(next) : null)).join('')}</div>`;
     const active = g.items.some((i) => isCurrent(i, pathname));
-    return `<div class="nmp-shell__menu${active ? ' is-active' : ''}"><button type="button" class="nmp-shell__link nmp-shell__menu-button" aria-haspopup="true">${icon(g.icon)}<span>${esc(g.label)}</span>${icon(I.chevron)}</button><div class="nmp-shell__dropdown" role="group" aria-label="${esc(g.label)}">${g.items.map((i) => link(i, pathname, 'nmp-shell__item')).join('')}</div></div>`;
+    return `<div class="nmp-shell__menu${active ? ' is-active' : ''}"><button type="button" class="nmp-shell__link nmp-shell__menu-button" aria-haspopup="true">${icon(g.icon)}<span class="nmp-shell__label">${esc(g.label)}</span></button><div class="nmp-shell__dropdown" role="group" aria-label="${esc(g.label)}">${g.items.map((i) => link(i, pathname, 'nmp-shell__item')).join('')}</div></div>`;
   }).join('');
   const badge = `<span class="nmp-shell__env" title="${esc(e.label)} environment on port ${esc(e.port)}${e.release ? ', release ' + esc(e.release) : ''}"><strong class="nmp-shell__env-long">${esc(e.label)}</strong><strong class="nmp-shell__env-short">${esc(e.short)}</strong><span class="nmp-shell__env-port"> · ${esc(e.port)}</span></span>`;
-  const switcher = other ? `<a class="nmp-shell__switch" href="${esc(other.url)}" title="Open the same page in ${esc(other.label)}">${esc(other.label)} ↗</a>` : '';
+  const switcher = other ? `<a class="nmp-shell__link nmp-shell__switch" href="${esc(other.url)}"><span aria-hidden="true">↗</span><span class="nmp-shell__label">Open this page in ${esc(other.label)}</span></a>` : '';
   const id = applicationId(pathname), step = next && id ? next.steps?.find((s) => s.reviewId === id) : null;
-  return `<header class="nmp-shell" data-nmp-shell="v1">${renderActivityPill(activity)}${nextPill(next)}<nav class="nmp-shell__nav" aria-label="Main">${groups}</nav><div class="nmp-shell__right">${badge}${switcher}</div></header><div class="nmp-shell-spacer" aria-hidden="true"></div>${renderNextStrip(step)}`;
+  return `<header class="nmp-shell nmp-shell--rail" data-nmp-shell="v1">${renderActivityPill(activity)}${nextPill(next)}<nav class="nmp-shell__nav" aria-label="Main">${groups}</nav><div class="nmp-shell__right">${badge}${switcher}</div></header><div class="nmp-shell-spacer" aria-hidden="true"></div>${renderNextStrip(step)}`;
 }
 
 const call = (fn) => { try { return typeof fn === 'function' ? fn() : null; } catch { return null; } };
