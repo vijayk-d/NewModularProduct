@@ -29,6 +29,18 @@ test('the top bar stays as it was; the floating section rail stays on the left a
   await expect(page.locator('[data-next-strip]')).toHaveCount(0);
 });
 
+test('every top bar link fits on the bar at common window widths', async ({page, app}) => {
+  for (const width of [1024, 1280, 1366, 1440, 1536, 1600, 1641, 1920, 2560]) {
+    await page.setViewportSize({width, height: 800});
+    await page.goto(app.url + '/applications/r1');
+    const fit = await page.locator('header.nmp-shell').evaluate(h => ({scroll: h.scrollWidth, client: h.clientWidth, right: h.querySelector('.nmp-shell__right').getBoundingClientRect().right, edge: h.getBoundingClientRect().right}));
+    expect(fit.scroll, `bar overflows at ${width}px`).toBeLessThanOrEqual(fit.client);
+    expect(fit.right, `badge cut off at ${width}px`).toBeLessThanOrEqual(fit.edge);
+  }
+  await page.locator('header.nmp-shell').getByRole('button', {name: 'Insights'}).hover();
+  await expect(page.locator('header.nmp-shell').getByRole('link', {name: 'Evidence learning'})).toBeVisible();
+});
+
 test('a slow task lights its section on the rail: amber while running, green by itself when it finishes', async ({page, app}) => {
   await page.goto(app.url + '/applications/r1');
   const polishing = railLink(page, 'Polishing');
