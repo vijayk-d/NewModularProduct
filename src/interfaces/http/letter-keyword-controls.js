@@ -37,26 +37,133 @@ export function termPattern(stems) {
 }
 
 // Greeting and sign-off lines are never highlighted ("Dear Hiring Manager" is not a keyword).
-const GREETING = /^(?:Dear\b|Hello\b|Hi\b|Kind regards|Warm regards|Best regards|Regards|Sincerely|Yours)/i;
-// Marks the first use of each term as an automatic highlight (the same kind "Clear automatic highlights" removes).
-export function markTerms(editor, terms) {
-  const doc = editor.ownerDocument;
-  let marked = 0;
-  for (const t of terms) {
-    const pattern = termPattern(t.stems);
-    if (!pattern) continue;
-    const walker = doc.createTreeWalker(editor, 4);
-    let node, done = false;
-    while (!done && (node = walker.nextNode())) {
-      if (node.parentElement?.closest('mark,a,[data-highlight-origin]') || GREETING.test(node.data.trim())) continue;
-      const m = pattern.exec(node.data);
-      if (!m) continue;
-      const after = node.splitText(m.index), rest = after.splitText(m[0].length);
-      const mark = doc.createElement('mark');
-      mark.style.backgroundColor = '#fff2a8'; mark.dataset.highlightOrigin = 'auto'; mark.dataset.jobAligned = 'true'; mark.dataset.highlight = 'true'; mark.dataset.highlightQuote = after.data;
-      after.parentNode.insertBefore(mark, after); mark.appendChild(after);
-      void rest; marked++; done = true;
+const GREETING = /^\s*(?:Dear\b|Hello\b|Hi\b|Kind regards|Warm regards|Best regards|Regards|Sincerely|Yours)/i;
+
+// Phrase highlighting. A highlight is the whole phrase that carries the advert's terms ("agile delivery, daily
+// governance and senior stakeholder visibility"), never a lone word. A sentence is cut into phrases at punctuation,
+// at linking words ("across", "through", "by"...) and at commas that start a new clause ("At SKY, I..."); commas inside
+// a list keep the list together. Phrases holding a term are trimmed of filler at their edges and kept short.
+const LINK = new Set(['of', 'through', 'across', 'by', 'with', 'using', 'via', 'giving', 'which', 'while', 'whilst', 'where', 'when',
+  'within', 'to', 'for', 'from', 'into', 'on', 'at', 'in', 'including', 'because', 'so', 'that', 'who', 'matches', 'match', 'means']);
+const CLAUSE = new Set(['i', 'we', 'my', 'our', 'and', 'or', 'but', 'which', 'who', 'while', 'whilst', 'so', 'then', 'where', 'when', 'including']);
+const EDGE = new Set(['i', 'my', 'a', 'an', 'the', 'and', 'or', 'also', 'have', 'has', 'had', 'hold', 'held', 'am', 'is', 'are', 'was',
+  'were', 'be', 'been', 'it', 'its', 'this', 'these', 'those', 'our', 'we', 'me', 'both', 'as', 'their', 'bring', 'brings', 'bringing', 'offer', 'offers']);
+const HARD = /[.;:!?\n—–]|\s-\s/;
+const WORD = /[\p{L}\p{N}£$€][\p{L}\p{N}'’®™&+\-\/%]*(?:\.[\p{L}\p{N}]+)*/gu;
+
+// Phrases in one block of text (a paragraph or bullet) for the first use of each pattern there.
+// Returns [{start, end, terms}] with terms as indexes into patterns; at most perBlock phrases, best first by terms held.
+export function phraseSpans(text, patterns, {maxWords = 14, perBlock = 2} = {}) {
+  const src = String(text || '');
+  const masked = src.split('\n').map(line => GREETING.test(line) ? ' '.repeat(line.length) : line).join('\n');
+  const matches = [];
+  (patterns || []).forEach((p, term) => {
+    if (!p) return;
+    const m = new RegExp(p.source, p.flags.replace('g', '')).exec(masked);
+    if (m && m[0]) matches.push({start: m.index, end: m.index + m[0].length, term});
+  });
+  if (!matches.length) return [];
+  const tokens = [...masked.matchAll(WORD)].map(m => ({start: m.index, end: m.index + m[0].length, word: m[0].toLowerCase()}));
+  const hitsOf = t => matches.filter(m => t.start < m.end && t.end > m.start);
+  const sameMatch = (a, b) => matches.some(m => a.start >= m.start && a.start < m.end && b.end <= m.end);
+  const pieces = [];
+  let cur = null, prev = null, breakNext = 'hard';
+  for (const t of tokens) {
+    let join = breakNext; breakNext = null;
+    if (prev && !sameMatch(prev, t)) {
+      const gap = masked.slice(prev.end, t.start);
+      if (HARD.test(gap)) join = 'hard';
+      else if (gap.includes(',') && join !== 'hard') join = CLAUSE.has(t.word) || (/^[a-z]+(?:ing|ed)$/.test(masked.slice(t.start, t.end)) && !hitsOf(t).length) ? 'clause' : 'comma';
     }
+    prev = t;
+    if (LINK.has(t.word) && !hitsOf(t).length) { breakNext = 'hard'; cur = null; continue; }
+    if (join || !cur) { cur = {tokens: [], join: join || 'hard'}; pieces.push(cur); }
+    cur.tokens.push(t);
+  }
+  const hasHit = list => list.some(t => hitsOf(t).length);
+  const groups = [];
+  for (const p of pieces) {
+    const g = groups[groups.length - 1];
+    const listAnd = p.join === 'clause' && ['and', 'or'].includes(p.tokens[0].word) && g && hasHit(g) && hasHit(p.tokens) && p.tokens.length <= 6;
+    if (g && (p.join === 'comma' || listAnd)) g.push(...p.tokens); else groups.push([...p.tokens]);
+  }
+  const spans = [];
+  for (const g of groups) {
+    let a = 0, b = g.length - 1;
+    const hit = i => hitsOf(g[i]).length > 0;
+    while (a <= b && !hit(a) && EDGE.has(g[a].word)) a++;
+    while (b >= a && !hit(b) && EDGE.has(g[b].word)) b--;
+    if (a > b) continue;
+    const idx = []; for (let i = a; i <= b; i++) if (hit(i)) idx.push(i);
+    if (!idx.length) continue;
+    // "...OKR capability and working": an "and" after the last term starts something else.
+    for (let i = idx[idx.length - 1] + 1; i <= b; i++) if (['and', 'or'].includes(g[i].word)) { b = i - 1; break; }
+    if (b - a + 1 > maxWords) {
+      a = Math.max(a, idx[0] - 2);
+      while (a < idx[0] && EDGE.has(g[a].word)) a++;
+      b = idx.filter(i => i - a < maxWords).pop() ?? idx[0];
+    }
+    let start = g[a].start, end = g[b].end;
+    const opened = (src.slice(start, end).match(/\(/g) || []).length - (src.slice(start, end).match(/\)/g) || []).length;
+    if (opened > 0 && src[end] === ')') end++;
+    const terms = [...new Set(matches.filter(m => m.start < end && m.end > start).map(m => m.term))];
+    spans.push({start, end, terms});
+  }
+  return spans.sort((x, y) => y.terms.length - x.terms.length).slice(0, perBlock).sort((x, y) => x.start - y.start);
+}
+
+const BLOCK = 'p,li,div,h1,h2,h3,h4,h5,h6,blockquote';
+// Marks, as automatic highlights (the kind "Clear automatic highlights" removes), the phrase around the first use of
+// each term. Text already highlighted or linked is left alone. Returns the number of phrases highlighted.
+export function markKeywordPhrases(editor, terms) {
+  const doc = editor.ownerDocument;
+  const blocks = new Map();
+  const entryFor = el => {
+    let block = el?.closest?.(BLOCK);
+    if (!block || !editor.contains(block)) block = editor;
+    if (!blocks.has(block)) blocks.set(block, {text: '', segs: []});
+    return blocks.get(block);
+  };
+  const walker = doc.createTreeWalker(editor, 1 | 4);
+  let node;
+  while ((node = walker.nextNode())) {
+    if (node.nodeType === 1) {
+      if (node.tagName === 'BR' || node.matches(BLOCK + ',ul,ol')) entryFor(node.parentElement).text += '\n';
+      continue;
+    }
+    const entry = entryFor(node.parentElement);
+    entry.segs.push({node, start: entry.text.length, end: entry.text.length + node.data.length, skip: Boolean(node.parentElement?.closest('mark,a,[data-highlight-origin]'))});
+    entry.text += node.data;
+  }
+  let remaining = (terms || []).map(t => termPattern(t.stems)).filter(Boolean);
+  const jobs = [];
+  for (const entry of blocks.values()) {
+    if (!remaining.length) break;
+    let text = entry.text;
+    for (const s of entry.segs) if (s.skip) text = text.slice(0, s.start) + ' '.repeat(s.end - s.start) + text.slice(s.end);
+    const spans = phraseSpans(text, remaining);
+    if (!spans.length) continue;
+    const used = new Set(spans.flatMap(s => s.terms));
+    remaining = remaining.filter((_, i) => !used.has(i));
+    for (const span of spans) jobs.push({entry, span});
+  }
+  let marked = 0;
+  for (const {entry, span} of jobs.reverse()) {
+    const quote = entry.text.slice(span.start, span.end);
+    let any = false;
+    for (const seg of [...entry.segs].reverse()) {
+      if (seg.skip || seg.end <= span.start || seg.start >= span.end) continue;
+      const a = Math.max(span.start, seg.start) - seg.start, b = Math.min(span.end, seg.end) - seg.start;
+      if (!seg.node.data.slice(a, b).trim()) continue;
+      let target = seg.node;
+      if (b < target.data.length) target.splitText(b);
+      if (a > 0) target = target.splitText(a);
+      const mark = doc.createElement('mark');
+      mark.style.backgroundColor = '#fff2a8'; mark.dataset.highlightOrigin = 'auto'; mark.dataset.jobAligned = 'true'; mark.dataset.highlight = 'true'; mark.dataset.highlightQuote = quote;
+      target.parentNode.insertBefore(mark, target); mark.appendChild(target);
+      any = true;
+    }
+    if (any) marked++;
   }
   return marked;
 }
@@ -138,11 +245,11 @@ export function attachLetterKeywordControls(doc = document, fetchImpl = fetch, c
       const data = await r.json();
       if (!r.ok || !data.ok) throw new Error(data.error || 'The keyword check failed.');
       const g = data.groups, s = data.summary;
-      const marked = mark ? markTerms(editor, g.inLetter) : 0;
+      const marked = mark ? markKeywordPhrases(editor, g.inLetter) : 0;
       if (marked) editor.dispatchEvent(new (doc.defaultView?.InputEvent || doc.defaultView?.Event || Event)('input', {bubbles: true}));
       const detail = el(doc, 'p', {class: 'keyword-evidence', 'data-keyword-evidence': '', hidden: ''});
       const reading = data.source === 'ai' ? 'Requirements read from the advert by AI (saved for this application).' : 'Requirements from the built-in advert reader.';
-      const parts = [el(doc, 'p', {'data-keyword-summary': '', text: `Essential: ${s.essentialInLetter} of ${s.essentialTotal} in this letter · ${s.inLetter} of ${s.total} requirements overall${marked ? `; ${marked} newly highlighted` : ''}${!mark && g.inLetter.length ? '. Click Keywords to highlight them' : ''}.`}),
+      const parts = [el(doc, 'p', {'data-keyword-summary': '', text: `Essential: ${s.essentialInLetter} of ${s.essentialTotal} in this letter · ${s.inLetter} of ${s.total} requirements overall${marked ? `; ${marked} phrase${marked === 1 ? '' : 's'} highlighted` : ''}${!mark && g.inLetter.length ? '. Click Keywords to highlight them' : ''}.`}),
         el(doc, 'p', {class: 'keyword-source', 'data-keyword-source': data.source, text: reading + (data.note ? ' ' + data.note : '')})];
       if (data.nextSteps.length) parts.push(el(doc, 'ul', {'data-keyword-next': ''}, data.nextSteps.map(t => el(doc, 'li', {text: t}))));
       const label = t => t.term + (t.priority === 'essential' ? '' : ' (desirable)');

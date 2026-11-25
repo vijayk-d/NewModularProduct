@@ -23,10 +23,10 @@ test('Keywords highlights the advert terms the letter uses and lists the missing
   const toolbar = page.getByRole('toolbar', {name: 'Cover letter formatting'});
   await toolbar.getByRole('button', {name: 'Keywords'}).click();
   const panel = page.locator('[data-keyword-panel="cover-letter-draft"]');
-  await expect(panel.locator('[data-keyword-summary]')).toContainText('Essential: 2 of 4 in this letter · 2 of 4 requirements overall; 2 newly highlighted');
+  await expect(panel.locator('[data-keyword-summary]')).toContainText('Essential: 2 of 4 in this letter · 2 of 4 requirements overall; 1 phrase highlighted');
   await expect(panel.locator('[data-keyword-source]')).toContainText('built-in advert reader');
   await expect(panel.locator('[data-keyword-next]')).toContainText('Add Continuous improvement (Essential) to an evidence bullet');
-  await expect(editor.locator('mark[data-highlight-origin="auto"]')).toHaveText(['stakeholder management', 'risk management']);
+  await expect(editor.locator('mark[data-highlight-origin="auto"]')).toHaveText(['strong stakeholder management and steady risk management']);
   await expect(panel.locator('[data-keyword-in-letter]')).toContainText('Stakeholder management');
   await panel.locator('[data-keyword-missing-backed]').getByRole('button', {name: 'Continuous improvement'}).click();
   await expect(panel.locator('[data-keyword-evidence]')).toContainText('Best place: an evidence bullet');
