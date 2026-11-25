@@ -20,6 +20,8 @@ export function createReplyThreadsStore({filePath, clock = () => new Date().toIS
   return {
     list: reviewId => db.prepare('SELECT * FROM reply_items WHERE review_id=? ORDER BY internal_date DESC, message_id').all(reviewId).map(row),
     get,
+    // Their messages across every application, for the free "what recruiters ask" summary.
+    allTexts: () => db.prepare('SELECT their_text FROM reply_items').all().map(r => r.their_text || ''),
     // Adds replies not seen before; keeps every saved draft and status.
     addFound(reviewId, replies = []) {
       const insert = db.prepare(`INSERT INTO reply_items(review_id, message_id, thread_id, from_name, from_address, subject, date_text, internal_date, their_text, status, updated_at)

@@ -32,7 +32,11 @@ const STYLE = `.recruiter-reply .reply-step{border:1px solid #e2e8f0;border-radi
 .recruiter-reply .reply-status-chip[data-reply-status-chip="drafted"]{background:#fef3c7;color:#92400e}
 .recruiter-reply .reply-status-chip[data-reply-status-chip="in_gmail"]{background:#dcfce7;color:#166534}
 .recruiter-reply .reply-snippet{color:#64748b}
-@media (max-width:700px){.recruiter-reply .reply-grid{grid-template-columns:1fr}}`;
+.recruiter-reply .reply-topics-field{margin:.7rem 0 0}
+.recruiter-reply .reply-topics-title{display:block;font-weight:500}
+.recruiter-reply .reply-topics{display:grid;grid-template-columns:1fr 1fr;gap:2px 16px}
+.recruiter-reply .reply-topic input[type=text]{display:block;width:calc(100% - 1.6rem);margin:.2rem 0 .35rem 1.6rem;box-sizing:border-box}
+@media (max-width:700px){.recruiter-reply .reply-grid,.recruiter-reply .reply-topics{grid-template-columns:1fr}}`;
 
 export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard = globalThis.navigator?.clipboard) {
   const reviewId = doc.querySelector('input[name="reviewId"]')?.value;
@@ -64,9 +68,49 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
   // Step 2: your answer.
   const name = el(doc, 'input', {id: 'reply-recipient-name', type: 'text', maxlength: '80', autocomplete: 'off'});
   const statusChoice = el(doc, 'select', {id: 'reply-application-status'});
-  const note = el(doc, 'textarea', {id: 'reply-owner-note', rows: '2', placeholder: 'For example the date you applied, or a question they asked'});
+  const note = el(doc, 'textarea', {id: 'reply-owner-note', rows: '3', maxlength: '2000', placeholder: 'Say it in your own words, for example: My salary expectation is £80,000 base and I am flexible for the right role. The reply keeps your meaning and every fact.'});
+  // What they asked: ticked for you from their reply. Your answers are remembered in this browser for the next reply.
+  const topicsBox = el(doc, 'div', {class: 'reply-topics', 'data-reply-topics': ''});
+  const topicsHint = el(doc, 'p', {class: 'reply-hint', 'data-reply-topics-found': ''});
+  const topicsField = el(doc, 'div', {class: 'reply-topics-field', role: 'group', 'aria-label': 'What they asked about'}, [el(doc, 'span', {class: 'reply-topics-title', text: 'What they asked about'}), topicsHint, topicsBox]);
   const step2 = el(doc, 'fieldset', {class: 'reply-step'}, [el(doc, 'legend', {text: '2. Your answer'}),
-    el(doc, 'div', {class: 'reply-grid'}, [field('Their first name (optional)', name), field('Your online application', statusChoice)]), field('Anything to add (optional)', note)]);
+    el(doc, 'div', {class: 'reply-grid'}, [field('Their first name (optional)', name), field('Your online application', statusChoice)]), topicsField, field('Your own message (optional)', note)]);
+  let topicRows = [];
+  const answerKey = id => 'jobapp.replyAnswer.' + id;
+  function buildTopics(list) {
+    topicRows = (list || []).map(t => {
+      const box = el(doc, 'input', {type: 'checkbox', 'data-topic': t.id});
+      const row = el(doc, 'div', {class: 'reply-topic', 'data-reply-topic': t.id}, [el(doc, 'label', {}, [box, doc.createTextNode(' ' + t.label)])]);
+      let answer = null;
+      if (t.answer) {
+        answer = el(doc, 'input', {type: 'text', maxlength: '300', autocomplete: 'off', 'aria-label': t.answer, placeholder: t.answer, 'data-topic-answer': t.id, hidden: ''});
+        try { answer.value = doc.defaultView?.localStorage?.getItem(answerKey(t.id)) || ''; } catch {}
+        answer.addEventListener('change', () => { try { doc.defaultView?.localStorage?.setItem(answerKey(t.id), answer.value.trim()); } catch {} });
+        row.append(answer);
+      }
+      box.addEventListener('change', () => { if (answer) { answer.hidden = !box.checked; if (box.checked && !answer.value) answer.focus(); } });
+      return {t, box, answer, row};
+    });
+    topicsBox.replaceChildren(...topicRows.map(r => r.row));
+  }
+  // Ticks the topics found in their reply (free, on this computer). The online-application choice moves to
+  // "Not part of this reply" when they asked about something else and not about applying.
+  let detectSeq = 0, detectTimer = null;
+  async function detect(keepStatus = false) {
+    const seq = ++detectSeq, message = theirs.value;
+    if (!topicRows.length) return;
+    if (message.trim().length < 20) { topicsHint.textContent = ''; return; }
+    try {
+      const d = await call('/topics', {theirMessage: message});
+      if (seq !== detectSeq) return;
+      for (const r of topicRows) { r.box.checked = d.topics.includes(r.t.id); if (r.answer) r.answer.hidden = !r.box.checked; }
+      const labels = topicRows.filter(r => r.box.checked).map(r => r.t.label);
+      topicsHint.textContent = labels.length ? `Found in their reply: ${labels.join(', ')}. Untick anything wrong, tick anything missed, and give your answers.`
+        : 'Nothing specific found in their reply. Tick what they asked about, or write your own message below.';
+      if (!keepStatus && labels.length && !d.topics.includes('apply-online') && statusChoice.querySelector('option[value="none"]')) statusChoice.value = 'none';
+    } catch { topicsHint.textContent = ''; }
+  }
+  const patternsLine = el(doc, 'p', {class: 'reply-hint', 'data-reply-patterns': '', hidden: ''});
 
   // Step 3: draft, then the suggested reply.
   const estimate = el(doc, 'button', {type: 'button', text: 'Estimate: draft a reply with AI'});
@@ -84,7 +128,7 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
   const OPEN_KEY = 'jobapp.replyOpen';
   try { panel.open = doc.defaultView?.localStorage?.getItem(OPEN_KEY) === 'true'; } catch {}
   panel.addEventListener('toggle', () => { try { doc.defaultView?.localStorage?.setItem(OPEN_KEY, String(panel.open)); } catch {} });
-  panel.append(el(doc, 'summary', {}, [el(doc, 'h2', {id: 'recruiter-reply-title', text: 'Reply assistant'})]), intro, step1, step2, step3);
+  panel.append(el(doc, 'summary', {}, [el(doc, 'h2', {id: 'recruiter-reply-title', text: 'Reply assistant'})]), intro, patternsLine, step1, step2, step3);
   section.append(panel);
   const anchor = doc.getElementById('application-questions') || doc.getElementById('tailored-cv') || doc.querySelector('.panel--decision');
   if (anchor?.parentNode) anchor.after(section); else (doc.querySelector('main') || doc.body).append(section);
@@ -95,7 +139,8 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
     if (!r.ok || !data.ok) throw new Error(data.error || 'The reply assistant failed.');
     return data;
   };
-  const spec = () => ({theirMessage: theirs.value, recipientName: name.value, applicationStatus: statusChoice.value, ownerNote: note.value});
+  const spec = () => ({theirMessage: theirs.value, recipientName: name.value, applicationStatus: statusChoice.value, ownerNote: note.value,
+    topics: topicRows.filter(r => r.box.checked).map(r => ({id: r.t.id, answer: r.answer ? r.answer.value : ''}))});
   const shortDate = value => { const t = Date.parse(value); return Number.isFinite(t) ? new Date(t).toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'}) : String(value || ''); };
 
   // Replies kept with this application: newest first. Choosing one fills their reply, their name and its saved draft.
@@ -129,9 +174,13 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
     if (r.draftText) { fillEditor(doc, editor, r.draftText); result.hidden = false; status.textContent = 'Your saved reply to this message is shown below.'; }
     else { editor.replaceChildren(); result.hidden = true; status.textContent = ''; }
     renderList(); syncDraftButtons();
+    detect(Boolean(r.applicationStatus));
   };
   const remember = item => { found = found.map(r => r.messageId === item.messageId ? item : r); renderList(); syncDraftButtons(); };
-  theirs.addEventListener('input', () => { source.hidden = true; selected = null; renderList(); syncDraftButtons(); });
+  theirs.addEventListener('input', () => {
+    source.hidden = true; selected = null; renderList(); syncDraftButtons();
+    clearTimeout(detectTimer); detectTimer = setTimeout(() => detect(false), 400);
+  });
   // Opening the Reply assistant looks in Gmail by itself once per page (read-only and free); the button searches again.
   let autoTried = false, overviewLoaded = false;
   const autoFind = () => {
@@ -208,7 +257,11 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
 
   call('').then(o => {
     statusChoice.replaceChildren(...Object.entries(o.statuses).map(([value, label]) => el(doc, 'option', {value, text: label})));
-    intro.textContent = `Draft a polite answer to a recruiter's reply (for example "please apply online") that confirms your online application and explains why you also emailed. It uses only this application's evidence (${o.evidenceCount} line${o.evidenceCount === 1 ? '' : 's'}).${o.aiAvailable ? ' Drafting is paid, with a free estimate first.' : ' Drafting needs letter polishing switched on.'}`;
+    buildTopics(o.topics);
+    const p = o.patterns || {total: 0, topics: []};
+    patternsLine.hidden = !p.total;
+    patternsLine.textContent = p.total ? `What recruiters have said in your ${p.total} saved repl${p.total === 1 ? 'y' : 'ies'} so far: ${p.topics.length ? p.topics.map(t => `${t.label} (${t.count})`).join(' · ') : 'nothing that matches a topic yet'}.` : '';
+    intro.textContent = `Draft a polite answer to a recruiter's reply: whether they ask you to apply online, ask about salary, notice or a call, or say the role has moved on. Tick what they asked, give your answers, or write your own message. It uses only this application's evidence (${o.evidenceCount} line${o.evidenceCount === 1 ? '' : 's'}).${o.aiAvailable ? ' Drafting is paid, with a free estimate first.' : ' Drafting needs letter polishing switched on.'}`;
     estimate.hidden = !o.aiAvailable;
     canDraft = o.gmailDraftAvailable === true;
     found = o.savedReplies || [];

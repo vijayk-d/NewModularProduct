@@ -70,3 +70,27 @@ test('find their reply in Gmail (read-only), with a clear three-step layout', as
   const field = await section.getByLabel('Their reply').boundingBox(), label = await section.getByText('Their reply', {exact: true}).boundingBox();
   expect(label.y + label.height).toBeLessThanOrEqual(field.y + 2);
 });
+
+test('a salary question is ticked for you; your answer and own message go to the writer and the answer is remembered', async ({page, app}) => {
+  await page.goto(app.url + '/applications/r1');
+  const section = page.locator('#recruiter-reply');
+  await section.getByRole('heading', {name: 'Reply assistant'}).click();
+  await section.getByLabel('Their reply').fill('Thanks for getting in touch. Before I share your profile, what are your salary expectations and notice period?');
+  const topics = section.getByRole('group', {name: 'What they asked about'});
+  await expect(topics.locator('[data-topic="salary"]')).toBeChecked();
+  await expect(topics.locator('[data-topic="notice"]')).toBeChecked();
+  await expect(topics.locator('[data-topic="apply-online"]')).not.toBeChecked();
+  await expect(section.locator('[data-reply-topics-found]')).toContainText('Salary or rate expectation, Notice period or start date');
+  await expect(section.getByLabel('Your online application')).toHaveValue('none');
+  await topics.locator('[data-topic-answer="salary"]').fill('£80,000 base');
+  await topics.locator('[data-topic-answer="salary"]').blur();
+  await section.getByLabel('Your own message (optional)').fill('I am flexible for the right role.');
+  await section.getByRole('button', {name: 'Estimate: draft a reply with AI'}).click();
+  await section.getByRole('button', {name: 'Write reply with AI (paid, one request)'}).click();
+  await expect(section.getByRole('textbox', {name: 'Suggested reply (editable)'})).toContainText('Kind regards');
+  expect(app.calls[0].topics).toEqual([{topic: 'Salary or rate expectation', yourAnswer: '£80,000 base'}, {topic: 'Notice period or start date', yourAnswer: ''}]);
+  expect(app.calls[0].ownerNote).toBe('I am flexible for the right role.');
+  expect(app.calls[0].applicationStatusText).toMatch(/Not part of this reply/);
+  await page.reload();
+  await expect(topics.locator('[data-topic-answer="salary"]')).toHaveValue('£80,000 base');
+});
