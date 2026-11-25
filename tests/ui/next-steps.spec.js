@@ -65,3 +65,14 @@ test('desktop notifications are switched on from Next steps; a page can start a 
   await page.evaluate(() => document.dispatchEvent(new CustomEvent('nmp-activity-started')));
   await expect(page.locator('[data-activity-pill]')).toContainText('Importing contacts: Example Ltd…');
 });
+
+test('rail links keep their names for screen readers and tests while the labels are visually hidden', async ({page, app}) => {
+  await page.goto(app.url + '/next-steps');
+  const link = page.getByRole('link', {name: 'New application', exact: true});
+  await expect(link).toBeVisible();
+  await expect(page.getByRole('link', {name: /^Outreach queue/})).toBeVisible();
+  const label = link.locator('.nmp-shell__label');
+  expect(await label.evaluate(e => getComputedStyle(e).clipPath)).not.toBe('none');
+  await link.hover();
+  await expect.poll(() => label.evaluate(e => getComputedStyle(e).clipPath)).toBe('none');
+});
