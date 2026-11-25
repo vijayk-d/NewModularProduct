@@ -239,7 +239,9 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
       go.addEventListener('click', async () => {
         go.disabled = true; status.textContent = 'Writing the reply (one paid request)…';
         try {
-          const w = await call('/write', {...spec(), model: e.model, confirmedCostProof: e.costProof});
+          const writing = call('/write', {...spec(), model: e.model, confirmedCostProof: e.costProof});
+          try { doc.dispatchEvent(new (doc.defaultView?.CustomEvent || CustomEvent)('nmp-activity-started')); } catch {}
+          const w = await writing;
           fillEditor(doc, editor, w.reply); aiLine.hidden = true; result.hidden = false;
           try { await saveSelected(true); } catch { /* the reply stays on the page; Save reply can try again */ }
           status.textContent = 'Reply drafted. Read it, edit anything, then copy it.' + (w.unsupportedFigures.length ? ` Check these figures; they are not in your evidence: ${w.unsupportedFigures.join(', ')}.` : '') + (w.notes ? ' Note: ' + w.notes : '') + outcomeText(w.outcome);

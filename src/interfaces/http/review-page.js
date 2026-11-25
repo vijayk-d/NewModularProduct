@@ -725,6 +725,20 @@ export function attachAutoImportChoice(doc = document, storage = globalThis.loca
     box.addEventListener('change', () => { try { storage?.setItem(AUTO_IMPORT_TABS_KEY, String(box.checked)); } catch {} });
   }
 }
+// With automatic import ticked, opening the search tabs starts "Importing contacts" on the bar: it turns green once
+// the contacts have arrived and the tabs go quiet.
+export async function startContactImportActivity(button, result, doc = document, fetchImpl = globalThis.fetch) {
+  const nav = button.closest('nav');
+  const auto = nav?.querySelector('[data-auto-import-tabs]');
+  const reviewId = doc.querySelector('.refresh-imported-contacts-button')?.dataset.reviewId || doc.querySelector('input[name="reviewId"]')?.value;
+  if (!result?.opened || !auto?.checked || !reviewId || !fetchImpl) return false;
+  try {
+    const r = await fetchImpl('/api/activity/contacts', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({reviewId})});
+    if (!r.ok) return false;
+    doc.dispatchEvent(new (doc.defaultView?.CustomEvent || CustomEvent)('nmp-activity-started'));
+    return true;
+  } catch { return false; }
+}
 function attachSearchTabButtons() {
   for (const button of document.querySelectorAll('[data-open-search-tabs]')) {
     if (button.dataset.tabsAttached) continue; button.dataset.tabsAttached = 'true';
@@ -732,6 +746,7 @@ function attachSearchTabButtons() {
       const result = openSearchTabsStep(button, (url, target) => window.open(url, target));
       const status = button.closest('nav')?.querySelector('[data-open-search-tabs-status]');
       if (status) status.textContent = result.message;
+      startContactImportActivity(button, result);
     });
   }
 }

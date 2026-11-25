@@ -59,7 +59,7 @@ export function replyTopics(value) {
 }
 
 // sentEmails(reviewId): the confirmed sends for this application; replyReader: read-only Gmail thread reader (optional).
-export function createRecruiterReplyService({reviews, evidence = async () => [], writer = null, candidateName = '', sentEmails = () => [], queueItems = () => [], replyReader = null, replyStore = null, draftWriter = null, mailbox = '', now = () => Date.now(), outcomes = null, onOutcome = () => {}}) {
+export function createRecruiterReplyService({reviews, evidence = async () => [], writer = null, candidateName = '', sentEmails = () => [], queueItems = () => [], replyReader = null, replyStore = null, draftWriter = null, mailbox = '', now = () => Date.now(), outcomes = null, onOutcome = () => {}, activity = null}) {
   if (!reviews) throw new Error('The reply assistant needs saved applications.');
   let writing = false, drafting = false;
   const review = id => { const r = reviews.get(id); if (!r) fail('Saved application not found.', 404); return r; };
@@ -167,9 +167,10 @@ export function createRecruiterReplyService({reviews, evidence = async () => [],
         const t = await target(reviewId, body);
         if (!writer.available) fail(OFF, 503, 'REPLY_DISABLED');
         if (body.confirmedCostProof !== t.costProof) fail('Their message, your choices or the model changed since the estimate. Estimate again; nothing was sent.', 409, 'REPLY_ESTIMATE_STALE');
-        let out;
-        try { out = await writer.write(t.request, t.model); }
-        catch (error) { fail(`${String(error.code || '').startsWith('REPLY_') ? error.message : 'The reply service failed.'} Nothing changed and no retry was made.`, 503, error.code || 'REPLY_FAILED'); }
+        let out, activityId = null;
+        try { activityId = activity?.start({kind: 'reply', reviewId}) || null; } catch {}
+        try { out = await writer.write(t.request, t.model); try { activity?.finish(activityId); } catch {} }
+        catch (error) { try { activity?.fail(activityId, error.message); } catch {} fail(`${String(error.code || '').startsWith('REPLY_') ? error.message : 'The reply service failed.'} Nothing changed and no retry was made.`, 503, error.code || 'REPLY_FAILED'); }
         if (!out.reply) fail('The reply service returned an empty reply, so nothing changed.', 502, 'REPLY_INVALID_RESPONSE');
         const check = checkAnswer({answer: out.reply, unit: 'words', limit: 1000, evidence: t.ev});
         // A pasted reply (not found in Gmail) updates the Outcome here; one found in Gmail already did when it was found.

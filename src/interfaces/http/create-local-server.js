@@ -507,14 +507,14 @@ export function createLocalServer({
     scenarioEvidence:review=>{try{const refs=review.polishingScenarios?.references||[];if(!refs.length||!assignmentEvidenceStore)return [];const ev=approvedScenarioRequest(resolveScenarioSelection(assignmentEvidenceStore,JSON.stringify(refs))).approvedScenarioEvidence||[];return ev.map(s=>({text:s.approvedWording,source:'Approved scenario'+(s.organisation?' ('+s.organisation+')':'')}));}catch{return [];}}}):null;
   const handleQuestions=createApplicationQuestionsHandler({service:questionsService,sendJson,sendText});
   // Reply assistant: drafts a reply to a recruiter from the same evidence; never sends.
-  const replyService=createRecruiterReplyService({reviews:reviewStore,writer:replyWriter,candidateName:process.env.CANDIDATE_DISPLAY_NAME||'',evidence:async id=>questionsService?await questionsService.evidenceFor(id):[],
+  const replyService=createRecruiterReplyService({reviews:reviewStore,writer:replyWriter,activity:activityLog,candidateName:process.env.CANDIDATE_DISPLAY_NAME||'',evidence:async id=>questionsService?await questionsService.evidenceFor(id):[],
     sentEmails:()=>outreachRepository?.listSentEmails?.()||[],queueItems:()=>outreachRepository?.list?.()||[],mailbox:String(process.env.GMAIL_FROM_ADDRESS||'').trim(),
     replyReader:gmailReplyReader!==undefined?gmailReplyReader:(gmailReplyReadingEnabled()?args=>readGmailReplies(args):null),
     replyStore:replyThreadsStore,outcomes:insightsStore,onOutcome:()=>insightsSnapshot?.schedule(),draftWriter:gmailReplyDrafter!==undefined?gmailReplyDrafter:(gmailReplyReadingEnabled()?args=>createGmailReplyDraft(args):null)});
   const handleReply=createRecruiterReplyHandler({service:replyService,sendJson,sendText});
   // Letter keyword check: the advert's ATS terms against the letter and your evidence; free and local.
   const letterEvidence=async id=>questionsService?await questionsService.evidenceFor(id):[];
-  const keywordService=createLetterKeywordService({reviews:reviewStore,evidence:letterEvidence,reader:advertRequirementsReader,store:advertRequirementsStore});
+  const keywordService=createLetterKeywordService({reviews:reviewStore,activity:activityLog,evidence:letterEvidence,reader:advertRequirementsReader,store:advertRequirementsStore});
   const handleKeywords=createLetterKeywordsHandler({service:keywordService,sendJson,sendText});
   // Polishing gets the missing Essential advert terms your evidence backs. The estimate never pays for an advert reading.
   const priorityKeywordRequest=async(reviewId,draft,allowPaid)=>{const list=await keywordService.priorityKeywords(reviewId,draft,{allowPaid});return list.length?{priorityKeywords:list}:{};};
@@ -527,7 +527,7 @@ export function createLocalServer({
   // Next-step indicator (Green / Amber / Red): read-only, from what the app already stores; cached for a few seconds.
   const nextStepsService=createNextStepsService({reviews:reviewStore,queueItems:()=>outreachRepository?.list?.()||[],sentEmails:()=>outreachRepository?.listSentEmails?.()||[],replyStore:replyThreadsStore,outcomes:insightsStore});
   const handleNextSteps=createNextStepsHandler({service:nextStepsService,sendHtml,sendJson});
-  const handleActivity=createActivityHandler({log:activityLog,sendJson,sendText});
+  const handleActivity=createActivityHandler({log:activityLog,sendJson,sendText,getReview:id=>reviewStore.get(id)});
   const handleOutcomes=createApplicationOutcomesHandler({store:insightsStore,getReview:id=>reviewStore.get(id),sendJson,sendText,onChange:()=>insightsSnapshot?.schedule()});
   const handleCvTailoring=createCvTailoringHandler({service:cvTailoringService,getReview:id=>reviewStore.get(id),sendJson,sendText,candidateName:candidateDisplayName,outputFolder:applicationOutputFolder});
   const handleCvDocument=createCvDocumentHandler({store:reviewStore,inventory:cvInventoryRepository,adapter:cvDocumentAdapter});
@@ -1677,6 +1677,8 @@ export function createLocalServer({
           recruiters: body.recruiters
         });
 
+        // Contacts from the LinkedIn tabs count towards the running "Importing contacts" activity.
+        try { activityLog.pulse("contacts", Number(result.imported) || 0); } catch {}
         writeDiagnostic("recruiter_contacts_imported", {
           requestId,
           organisationId: result.organisationId,
