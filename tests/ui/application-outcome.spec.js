@@ -38,7 +38,7 @@ test('email opens are read from tracker alerts in Gmail and shown per contact on
   const sent = [{id: 's1', reviewId: 'r1', status: 'sent', email: 'sam@agency.test', fullName: 'Sam Recruiter', subject: 'Application: Delivery Manager', sentAt: '2026-11-20T10:00:00Z'}];
   const reads = [];
   const server = createLocalServer({applicationReviewStore: reviewFixture(), insightsStore: createApplicationInsightsStore({filePath: ':memory:'}),
-    gmailTrackingReader: async args => { reads.push(args); return {ok: true, alerts: [{messageId: 'a1', internalDate: Date.parse('2026-11-22T08:00:00Z'), subject: 'Email opened', text: 'sam@agency.test opened your email'}]}; },
+    gmailTrackingReader: async args => { reads.push(args); return {ok: true, alerts: [{messageId: 'a1', internalDate: Date.parse('2026-11-22T08:00:00Z'), subject: 'Mailsuite Daily Report Nov 22, 2026: 1 email tracked', text: ['Opened emails (1)', 'Application: Delivery Manager', 'Sent on Nov 21, 2026 at 9:00 AM', 'To: sam@agency.test'].join('\n')}]}; },
     recruiterContactStore: {async listAll() { return []; }, async listByReview() { return []; }}, outreachRepository: {list: () => [], listDraftOperations: () => [], listSendAttempts: () => [], listSentEmails: () => sent}});
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   try {
@@ -47,11 +47,11 @@ test('email opens are read from tracker alerts in Gmail and shown per contact on
     await expect(section.locator('[data-email-opens]')).toHaveText('Not checked yet.');
     expect(reads.length).toBe(0);
     await section.getByRole('button', {name: 'Check email opens (read-only)'}).click();
-    await expect(section.locator('[data-email-opens]')).toContainText('Opened once; latest 22 Nov.');
+    await expect(section.locator('[data-email-opens]')).toContainText('Tracked emails to 1 contact: 1 opened; latest report 22 Nov.');
     await expect(section.locator('[data-email-opens]')).toContainText('1 new alert read.');
-    await expect(section.locator('[data-email-opens-contacts]')).toContainText('Sam Recruiter: opened once, latest 22 Nov');
+    await expect(section.locator('[data-email-opens-contacts]')).toContainText('Sam Recruiter: opened (once reported), latest 22 Nov');
     await page.reload();
-    await expect(section.locator('[data-email-opens]')).toContainText('Opened once', {timeout: 5000});
+    await expect(section.locator('[data-email-opens]')).toContainText('1 opened', {timeout: 5000});
     expect(reads.length).toBe(1);
   } finally { server.closeAllConnections(); await new Promise(r => server.close(r)); }
 });
