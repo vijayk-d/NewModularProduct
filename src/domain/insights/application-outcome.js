@@ -33,3 +33,9 @@ export function currentOutcome(events = []) {
 }
 
 export const hasResponse = event => Boolean(event && BY_ID.get(event.outcome)?.responded);
+
+// A recruiter reply moves the outcome forward, never back: "Recruiter replied" or "Rejected" is recorded only when the
+// current outcome is earlier (none, No reply, or Recruiter replied before a rejection). Interview, Offer and Withdrawn stay.
+const STAGE = {no_reply: 0, recruiter_replied: 1, rejected: 2, interview: 3, offer: 4, withdrawn: 4};
+export function replyOutcomeId(topicIds = []) { return topicIds.includes('not-progressing') ? 'rejected' : 'recruiter_replied'; }
+export function replyMovesOutcome(current, next) { return !current || (STAGE[next] ?? 0) > (STAGE[current.outcome] ?? 0); }

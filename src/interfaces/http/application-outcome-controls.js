@@ -60,6 +60,8 @@ export function attachOutcomeControls(doc = document, fetchImpl = fetch) {
     finally { record.disabled = false; }
   });
   call(api).then(render).catch(error => { current.textContent = error.message; record.disabled = true; });
+  // The Reply assistant records replies here too; show them straight away.
+  doc.addEventListener('application-outcome-changed', () => { call(api).then(state => { render(state); message.textContent = 'Updated from the Reply assistant.'; }).catch(() => {}); });
   return section;
 }
 

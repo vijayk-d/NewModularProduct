@@ -497,7 +497,7 @@ export function createLocalServer({
   const replyService=createRecruiterReplyService({reviews:reviewStore,writer:replyWriter,candidateName:process.env.CANDIDATE_DISPLAY_NAME||'',evidence:async id=>questionsService?await questionsService.evidenceFor(id):[],
     sentEmails:()=>outreachRepository?.listSentEmails?.()||[],queueItems:()=>outreachRepository?.list?.()||[],mailbox:String(process.env.GMAIL_FROM_ADDRESS||'').trim(),
     replyReader:gmailReplyReader!==undefined?gmailReplyReader:(gmailReplyReadingEnabled()?args=>readGmailReplies(args):null),
-    replyStore:replyThreadsStore,draftWriter:gmailReplyDrafter!==undefined?gmailReplyDrafter:(gmailReplyReadingEnabled()?args=>createGmailReplyDraft(args):null)});
+    replyStore:replyThreadsStore,outcomes:insightsStore,onOutcome:()=>insightsSnapshot?.schedule(),draftWriter:gmailReplyDrafter!==undefined?gmailReplyDrafter:(gmailReplyReadingEnabled()?args=>createGmailReplyDraft(args):null)});
   const handleReply=createRecruiterReplyHandler({service:replyService,sendJson,sendText});
   // Letter keyword check: the advert's ATS terms against the letter and your evidence; free and local.
   const letterEvidence=async id=>questionsService?await questionsService.evidenceFor(id):[];

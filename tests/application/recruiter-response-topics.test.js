@@ -56,3 +56,40 @@ test('the writer is told to answer each topic from your answer, and the overview
   for (const rule of [/using yourAnswer exactly/, /will confirm it shortly/, /do not mention the online application/, /candidate’s own message/, /do not argue or re-pitch/]) assert.match(REPLY_INSTRUCTIONS, rule);
   assert.notEqual((await s.estimate('r1', {...body, topics: [{id: 'salary', answer: '£90,000'}]})).costProof, e.costProof, 'a changed answer needs a new estimate');
 });
+
+test('replies move the Outcome forward only, once per reply, with who replied and what they asked', async () => {
+  const {createApplicationInsightsStore} = await import('../../src/infrastructure/applications/sqlite-application-insights-store.js');
+  const {replyMovesOutcome, replyOutcomeId} = await import('../../src/domain/insights/application-outcome.js');
+  assert.equal(replyOutcomeId(['salary']), 'recruiter_replied');
+  assert.equal(replyOutcomeId(['apply-online', 'not-progressing']), 'rejected');
+  assert.equal(replyMovesOutcome(null, 'recruiter_replied'), true);
+  assert.equal(replyMovesOutcome({outcome: 'no_reply'}, 'recruiter_replied'), true);
+  assert.equal(replyMovesOutcome({outcome: 'recruiter_replied'}, 'rejected'), true);
+  assert.equal(replyMovesOutcome({outcome: 'recruiter_replied'}, 'recruiter_replied'), false);
+  assert.equal(replyMovesOutcome({outcome: 'interview'}, 'rejected'), false);
+
+  const outcomes = createApplicationInsightsStore({filePath: ':memory:'}), store = createReplyThreadsStore({filePath: ':memory:'});
+  const now = Date.parse('2026-11-25T12:00:00Z'); let replies = [], changed = 0;
+  const reviews = new Map([['r1', {formData: {jobTitle: 'Delivery Manager'}}]]);
+  const calls = [];
+  const writer = {available: true, buildRequest: buildReplyApiRequest, async write(request, model) { calls.push(request); return {reply: 'Hello,\n\nThanks.', notes: '', model}; }};
+  const s = createRecruiterReplyService({reviews, writer, replyStore: store, outcomes, onOutcome: () => changed++, now: () => now, evidence: async () => [],
+    sentEmails: () => [{reviewId: 'r1', status: 'sent', email: 'sam@agency.test', threadId: 't1', messageId: 'm0', sentAt: '2026-11-20T10:00:00Z'}],
+    replyReader: async () => ({ok: true, replies})});
+  replies = [{messageId: 'a', fromName: 'Sam Recruiter', internalDate: Date.parse('2026-11-23T09:00:00Z'), text: 'Thanks. What are your salary expectations?'}];
+  const first = await s.findReplies('r1');
+  assert.deepEqual(first.outcome, {outcome: 'recruiter_replied', label: 'Recruiter replied', occurredOn: '2026-11-23'});
+  assert.equal(outcomes.history('r1')[0].note, 'Reply assistant: Sam Recruiter replied (Salary or rate expectation)');
+  assert.equal((await s.findReplies('r1')).outcome, null, 'finding the same reply again records nothing');
+  replies = [...replies, {messageId: 'b', fromName: 'Sam Recruiter', internalDate: Date.parse('2026-11-24T09:00:00Z'), text: 'Unfortunately we will not be progressing your application.'}];
+  assert.equal((await s.findReplies('r1')).outcome.outcome, 'rejected');
+  assert.deepEqual(outcomes.history('r1').map(e => e.outcome), ['recruiter_replied', 'rejected']);
+  assert.equal(changed, 2);
+  // A pasted reply updates the Outcome when the reply is written; a Gmail one (messageId) does not do it twice.
+  const pasted = {theirMessage: 'Thanks for your note, could we arrange a call on Teams?', applicationStatus: 'none'};
+  reviews.set('r2', {formData: {jobTitle: 'PM'}});
+  const e = await s.estimate('r2', pasted);
+  assert.equal((await s.write('r2', {...pasted, model: e.model, confirmedCostProof: e.costProof})).outcome.occurredOn, '2026-11-25');
+  const e2 = await s.estimate('r1', pasted);
+  assert.equal((await s.write('r1', {...pasted, messageId: 'a', model: e2.model, confirmedCostProof: e2.costProof})).outcome, null);
+});

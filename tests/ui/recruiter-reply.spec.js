@@ -4,6 +4,7 @@ import {createLocalServer} from '../../src/interfaces/http/create-local-server.j
 import {createApplicationAnswersStore} from '../../src/infrastructure/applications/sqlite-application-answers-store.js';
 import {buildReplyApiRequest} from '../../src/infrastructure/refinement/perplexity-recruiter-reply-adapter.js';
 import {reviewFixture} from '../fixtures/cv-tailoring-fixtures.js';
+import {createApplicationInsightsStore} from '../../src/infrastructure/applications/sqlite-application-insights-store.js';
 
 const REPLY = 'Hello Sam,\n\nThank you for letting me know. I have completed the online application.\n\nI emailed as well so that my application reaches a person who can judge my experience, such as facilitating PI planning for five squads at SKY.\n\nKind regards,\nTest Candidate';
 const test = base.extend({app: async ({}, use) => {
@@ -12,8 +13,8 @@ const test = base.extend({app: async ({}, use) => {
   const replyWriter = {available: true, buildRequest: buildReplyApiRequest, async write(request, model) { calls.push(request); return {reply: REPLY, notes: '', model}; }};
   const sent = [{id: 's1', reviewId: 'r1', status: 'sent', email: 'sam@agency.test', fullName: 'Sam Recruiter', threadId: 'thread123', messageId: 'm1', sentAt: '2026-11-20T10:00:00Z'}], reads = [];
   const gmailReplyReader = async args => { reads.push(args); return {ok: true, mailbox: 'me@example.test', replies: [
-    {fromName: 'Sam Recruiter', fromAddress: 'sam@agency.test', date: 'Mon, 23 Nov 2026', text: 'Thanks for your email. We only accept applications through our portal, so please apply online.'}]}; };
-  const server = createLocalServer({applicationReviewStore: reviews, answersStore: createApplicationAnswersStore({filePath: ':memory:'}), replyWriter, gmailReplyReader,
+    {messageId: 'g1', internalDate: Date.parse('2026-11-23T09:00:00Z'), fromName: 'Sam Recruiter', fromAddress: 'sam@agency.test', date: 'Mon, 23 Nov 2026', text: 'Thanks for your email. We only accept applications through our portal, so please apply online.'}]}; };
+  const server = createLocalServer({applicationReviewStore: reviews, insightsStore: createApplicationInsightsStore({filePath: ':memory:'}), answersStore: createApplicationAnswersStore({filePath: ':memory:'}), replyWriter, gmailReplyReader,
     recruiterContactStore: {async listAll() { return []; }, async listByReview() { return []; }}, outreachRepository: {list: () => [], listDraftOperations: () => [], listSendAttempts: () => [], listSentEmails: () => sent}});
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   try { await use({url: 'http://127.0.0.1:' + server.address().port, calls, reads}); }
@@ -93,4 +94,13 @@ test('a salary question is ticked for you; your answer and own message go to the
   expect(app.calls[0].applicationStatusText).toMatch(/Not part of this reply/);
   await page.reload();
   await expect(topics.locator('[data-topic-answer="salary"]')).toHaveValue('£80,000 base');
+});
+
+test('a reply found in Gmail updates the Outcome section straight away', async ({page, app}) => {
+  await page.goto(app.url + '/applications/r1');
+  await expect(page.locator('[data-outcome-current]')).toContainText('No outcome recorded yet');
+  await page.locator('#recruiter-reply').getByRole('heading', {name: 'Reply assistant'}).click();
+  await expect(page.locator('[data-reply-gmail]')).toContainText('Outcome updated: Recruiter replied.');
+  await expect(page.locator('[data-outcome-current]')).toContainText('Current outcome: Recruiter replied');
+  await expect(page.locator('[data-outcome-history]')).toContainText('Reply assistant: Sam Recruiter replied (Asked you to apply online)');
 });
