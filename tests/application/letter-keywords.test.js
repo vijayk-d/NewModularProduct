@@ -5,7 +5,7 @@ import {localAdvertRequirements, normaliseRequirements} from '../../src/domain/k
 import {createMemoryAdvertRequirementsStore, createAdvertRequirementsFileStore} from '../../src/infrastructure/advert-requirements-file.js';
 import {buildAdvertApiRequest, ADVERT_SCHEMA} from '../../src/infrastructure/refinement/perplexity-advert-requirements-adapter.js';
 import {normalizePriorityKeywords} from '../../src/application/refine-cover-letter.js';
-import {termPattern, shortcutFor, SHORTCUTS} from '../../src/interfaces/http/letter-keyword-controls.js';
+import {termPattern, phraseSpans, shortcutFor, SHORTCUTS} from '../../src/interfaces/http/letter-keyword-controls.js';
 import {mkdtempSync, rmSync, readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -117,6 +117,20 @@ test('term patterns match whole words from their stems, across spaces or hyphens
   assert.doesNotMatch('nonstakeholder management', p);
   assert.equal(termPattern([]), null);
   assert.equal('I hold PRINCE2.'.match(termPattern(['prince2']))[0], 'PRINCE2');
+});
+
+test('Keywords highlights whole phrases, not single words', () => {
+  const pats = [['agil', 'deliver'], ['governanc'], ['stakehold'], ['pi', 'planning'], ['agil', 'ceremoni'], ['safe'], ['prince2'], ['scrum', 'master'], ['okr']].map(termPattern);
+  const show = text => phraseSpans(text, pats).map(s => text.slice(s.start, s.end));
+  assert.deepEqual(show('The role’s combination of agile delivery, daily governance and senior stakeholder visibility matches the work I have led.'),
+    ['agile delivery, daily governance and senior stakeholder visibility']);
+  assert.deepEqual(show('At SKY, I boosted team engagement by 30% through remote PI Planning and inclusive Agile ceremonies across distributed squads, and enabled savings.'),
+    ['remote PI Planning and inclusive Agile ceremonies']);
+  assert.deepEqual(show('I hold Certified SAFe® Program Consultant (SPC), PRINCE2®, and Certified Scrum Master (CSM).'),
+    ['Certified SAFe® Program Consultant (SPC), PRINCE2®, and Certified Scrum Master (CSM)']);
+  assert.deepEqual(show('At BP, I cut costs by building in-house Agile and OKR capability and working with leadership.'), ['building in-house Agile and OKR capability']);
+  assert.deepEqual(show('Dear Agile Delivery Team,'), [], 'greeting lines are never highlighted');
+  assert.deepEqual(show('Nothing relevant here.'), []);
 });
 
 test('shortcuts map to toolbar commands; the browser keeps its own bold and italic', () => {
