@@ -33,3 +33,25 @@ html[data-nmp-env]{scroll-padding-top:84px}
 @media (max-width:640px){.nmp-shell__env-long,.nmp-shell__env-port{display:none}.nmp-shell__env-short{display:inline!important}.nmp-shell{padding:5px 6px}.nmp-shell__link{padding:6px 7px}}
 @media (max-width:1100px){html[data-nmp-env] .workspace-section-nav{top:72px;z-index:900}}
 @media print{.nmp-shell-spacer{display:none}}
+/* Next-step indicator: Green / Amber / Red. Colour is never the only signal: the text says what to do. */
+.nmp-shell__next{flex:none;margin-right:6px;display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;text-decoration:none;padding:5px 10px;border-radius:999px;white-space:nowrap;border:1px solid transparent}
+.nmp-shell__dot{display:inline-block;width:10px;height:10px;border-radius:50%;flex:none}
+[data-next-level="red"] .nmp-shell__dot{background:#dc2626}
+[data-next-level="amber"] .nmp-shell__dot{background:#d97706}
+[data-next-level="green"] .nmp-shell__dot{background:#16a34a}
+.nmp-shell__next[data-next-level="red"]{background:#fef2f2;color:#991b1b;border-color:#fecaca}
+.nmp-shell__next[data-next-level="amber"]{background:#fffbeb;color:#92400e;border-color:#fde68a}
+.nmp-shell__next[data-next-level="green"]{background:#f0fdf4;color:#166534;border-color:#bbf7d0}
+.nmp-shell__next:hover{text-decoration:underline}
+.nmp-next-strip{display:flex;flex-wrap:wrap;align-items:center;gap:6px;max-width:1200px;margin:8px auto 0;padding:8px 14px;border-radius:10px;font-size:14px;box-sizing:border-box}
+.nmp-next-strip[data-next-level="red"]{background:#fef2f2;color:#7f1d1d;border:1px solid #fecaca}
+.nmp-next-strip[data-next-level="amber"]{background:#fffbeb;color:#78350f;border:1px solid #fde68a}
+.nmp-next-strip[data-next-level="green"]{background:#f0fdf4;color:#14532d;border:1px solid #bbf7d0}
+.nmp-next-strip a{font-weight:600;margin-left:auto}
+.nmp-next-strip__why{color:inherit;opacity:.8}
+.nmp-next-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}
+.nmp-next-list li{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 14px;border-radius:10px;border:1px solid #e2e8f0;background:#fff}
+.nmp-next-list .nmp-next-name{font-weight:600}
+.nmp-next-list .nmp-next-why{color:#475569;font-size:13px;width:100%;padding-left:18px}
+.nmp-next-list a{margin-left:auto;font-weight:600}
+@media (max-width:640px){.nmp-shell__next span:not(.nmp-shell__dot){display:none}.nmp-next-strip__why{display:none}}

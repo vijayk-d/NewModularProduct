@@ -62,7 +62,19 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 const isCurrent = (item, path) => (item.match ? item.match(path) : path === item.href || path.startsWith(item.href + '/'));
 const link = (item, path, cls) => `<a class="${cls}" href="${item.href}" title="${esc(item.label)}"${isCurrent(item, path) ? ' aria-current="page"' : ''}>${icon(item.icon)}<span>${esc(item.label)}</span></a>`;
 
-export function renderShell(pathname = '/', env = process.env) {
+// The next-step pill (Green / Amber / Red) and, on an application page, that application's next step.
+const LEVEL_TEXT = { red: 'Act now', amber: 'Next step ready', green: 'Nothing to do' };
+function nextPill(next) {
+  if (!next) return '';
+  return `<a class="nmp-shell__next" data-next-level="${esc(next.level)}" href="/next-steps" title="${esc(LEVEL_TEXT[next.level] || '')}: what to do next across your applications"><span class="nmp-shell__dot" aria-hidden="true"></span><span>${esc(next.label)}</span></a>`;
+}
+export function renderNextStrip(step) {
+  if (!step) return '';
+  return `<div class="nmp-next-strip" data-next-strip data-next-level="${esc(step.level)}" role="status"><span class="nmp-shell__dot" aria-hidden="true"></span><strong>Next step:</strong> <span>${esc(step.action)}</span><span class="nmp-next-strip__why"> — ${esc(step.why)}</span> <a href="${esc(step.href)}">Go</a></div>`;
+}
+const applicationId = (pathname) => { const m = /^\/applications\/([A-Za-z0-9_-]{1,100})$/.exec(String(pathname)); return m ? m[1] : ''; };
+
+export function renderShell(pathname = '/', env = process.env, next = null) {
   const e = shellEnvironment(env);
   const other = e.id === 'production' ? { label: 'Development', url: 'http://127.0.0.1:3000' + pathname } : e.id === 'development' ? { label: 'Production', url: 'http://127.0.0.1:3100' + pathname } : null;
   const groups = NAV_GROUPS.map(g => ({ ...g, items: g.items.filter(i => !i.feature || featureEnabled(i.feature, env)) })).map((g) => {
@@ -72,17 +84,18 @@ export function renderShell(pathname = '/', env = process.env) {
   }).join('');
   const badge = `<span class="nmp-shell__env" title="${esc(e.label)} environment on port ${esc(e.port)}${e.release ? ', release ' + esc(e.release) : ''}"><strong class="nmp-shell__env-long">${esc(e.label)}</strong><strong class="nmp-shell__env-short">${esc(e.short)}</strong><span class="nmp-shell__env-port"> · ${esc(e.port)}</span></span>`;
   const switcher = other ? `<a class="nmp-shell__switch" href="${esc(other.url)}" title="Open the same page in ${esc(other.label)}">${esc(other.label)} ↗</a>` : '';
-  return `<header class="nmp-shell" data-nmp-shell="v1"><nav class="nmp-shell__nav" aria-label="Main">${groups}</nav><div class="nmp-shell__right">${badge}${switcher}</div></header><div class="nmp-shell-spacer" aria-hidden="true"></div>`;
+  const id = applicationId(pathname), step = next && id ? next.steps?.find((s) => s.reviewId === id) : null;
+  return `<header class="nmp-shell" data-nmp-shell="v1">${nextPill(next)}<nav class="nmp-shell__nav" aria-label="Main">${groups}</nav><div class="nmp-shell__right">${badge}${switcher}</div></header><div class="nmp-shell-spacer" aria-hidden="true"></div>${renderNextStrip(step)}`;
 }
 
-export function injectShell(html, pathname, env = process.env) {
+export function injectShell(html, pathname, env = process.env, nextSteps = null) {
   if (typeof html !== 'string' || html.includes('data-nmp-shell=') || !/<body[\s>]/i.test(html) || !/<\/head>/i.test(html)) return html;
   const e = shellEnvironment(env);
   let out = html.replace(/<html(?=[\s>])/i, `<html data-nmp-env="${e.id}"`);
   if (!/<html[\s>]/i.test(html)) out = out.replace(/<head(?=[\s>])/i, `<head data-nmp-env="${e.id}"`);
   if (e.id === 'production') out = out.replace(/<title>/i, '<title>PRODUCTION · ');
   out = out.replace(/<\/head>/i, '<link rel="stylesheet" href="/app-shell.css"></head>');
-  out = out.replace(/<body([^>]*)>/i, (m, attrs) => `<body${attrs.includes('data-nmp-env') ? attrs : attrs + ` data-nmp-env="${e.id}"`}>${renderShell(pathname, env)}`);
+  out = out.replace(/<body([^>]*)>/i, (m, attrs) => `<body${attrs.includes('data-nmp-env') ? attrs : attrs + ` data-nmp-env="${e.id}"`}>${renderShell(pathname, env, (() => { try { return typeof nextSteps === 'function' ? nextSteps() : null; } catch { return null; } })())}`);
   return out;
 }
 
@@ -101,7 +114,7 @@ export function allowShellStyles(csp) {
 function headerKey(headers, name) { return Object.keys(headers || {}).find((k) => k.toLowerCase() === name); }
 
 // Wrap a response so complete HTML pages get the shell. Streaming or non-HTML responses pass through untouched.
-export function attachShell(response, pathname, env = process.env) {
+export function attachShell(response, pathname, env = process.env, nextSteps = null) {
   const writeHead = response.writeHead.bind(response), write = response.write.bind(response), end = response.end.bind(response);
   let pending = null, passthrough = false;
   const flush = () => { if (pending) { const p = pending; pending = null; writeHead(...p); } };
@@ -121,7 +134,7 @@ export function attachShell(response, pathname, env = process.env) {
       const type = String((typeKey ? headers[typeKey] : response.getHeader('content-type')) || '');
       if (!/text\/html/i.test(type) || status < 200 || (status >= 300 && status < 400)) return original();
       const text = Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk);
-      const out = injectShell(text, pathname, env);
+      const out = injectShell(text, pathname, env, nextSteps);
       if (out === text) return original();
       const lenKey = headerKey(headers, 'content-length');
       if (lenKey) headers[lenKey] = Buffer.byteLength(out);
