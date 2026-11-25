@@ -32,6 +32,9 @@ test('the bar shows what to click next; the application shows its own next step;
   await page.reload();
   await expect(page.locator('.nmp-shell__next')).toHaveAttribute('data-next-level', 'red');
   await expect(page.locator('[data-review-id="r1"]')).toContainText('Check 1 uncertain or failed send');
+  const outreach = page.locator('.nmp-shell a[href="/outreach-queue"]');
+  await expect(outreach).toHaveAttribute('data-light', 'red');
+  await expect(outreach).toContainText('Outreach queue — 1 application with an uncertain or failed send');
 });
 
 test('a slow task shows amber while running and turns green by itself when it finishes; opening it clears it', async ({page, app}) => {
@@ -46,7 +49,7 @@ test('a slow task shows amber while running and turns green by itself when it fi
   await expect(pill).toHaveAttribute('data-next-level', 'green');
   await pill.click();
   await expect(page).toHaveURL(/\/applications\/r1#proposed-cover-letter$/);
-  await expect(page.locator('[data-activity-pill]')).toBeHidden();
+  await expect(page.locator('[data-activity-pill]')).toHaveAttribute('data-activity-state', 'none');
 });
 
 test('desktop notifications are switched on from Next steps; a page can start a contact import for its application', async ({page, app}) => {

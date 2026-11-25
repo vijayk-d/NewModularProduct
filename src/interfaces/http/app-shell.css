@@ -1,48 +1,58 @@
-/* Shared shell: floating top navigation + environment marker. Loaded on every page. */
-html[data-nmp-env]{--nmp-env:#15803d;--nmp-env-soft:#eef8f1;--nmp-env-ink:#14532d}
+/* Shared shell: a floating vertical navigation rail on the left with status lights, plus a clear environment marker.
+   Loaded on every page. On narrow screens the rail becomes a bar along the bottom. */
+html[data-nmp-env]{--nmp-env:#15803d;--nmp-env-soft:#eef8f1;--nmp-env-ink:#14532d;--nmp-rail:56px}
 html[data-nmp-env=production]{--nmp-env:#b91c1c;--nmp-env-soft:#fdf0ee;--nmp-env-ink:#7f1d1d}
 html[data-nmp-env=verification]{--nmp-env:#6d28d9;--nmp-env-soft:#f4f0fd;--nmp-env-ink:#4c1d95}
 html[data-nmp-env],html[data-nmp-env] body{background-color:var(--nmp-env-soft)!important}
-html[data-nmp-env] body{border-top:5px solid var(--nmp-env);min-height:100vh;box-sizing:border-box}
-.nmp-shell__env-short{display:none}
-.nmp-shell{position:fixed;top:10px;left:50%;transform:translateX(-50%);width:min(96rem,calc(100vw - 20px));z-index:1000;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:nowrap;margin:0;box-sizing:border-box;padding:6px 10px;background:#fff;border:1px solid #cbd5e1;border-left:6px solid var(--nmp-env);border-radius:12px;box-shadow:0 6px 22px rgba(15,23,42,.12);font:500 14px/1.2 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#1e293b}
+html[data-nmp-env] body{border-top:5px solid var(--nmp-env);min-height:100vh;box-sizing:border-box;padding-left:calc(var(--nmp-rail) + 20px)}
+html[data-nmp-env]{scroll-padding-top:16px}
+
+/* The rail */
+.nmp-shell{position:fixed;left:10px;top:14px;z-index:1000;width:var(--nmp-rail);max-height:calc(100vh - 28px);display:flex;flex-direction:column;align-items:center;gap:4px;margin:0;padding:8px 6px;box-sizing:border-box;background:#fff;border:1px solid #cbd5e1;border-top:6px solid var(--nmp-env);border-radius:14px;box-shadow:0 6px 22px rgba(15,23,42,.12);font:500 14px/1.2 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#1e293b}
 .nmp-shell *{box-sizing:border-box}
-.nmp-shell__nav{display:flex;align-items:center;gap:4px;flex-wrap:nowrap;margin:0;padding:0}
-.nmp-shell__group{display:flex;align-items:center;gap:2px;padding-right:6px;margin-right:4px;border-right:1px solid #e2e8f0}
-.nmp-shell__link,.nmp-shell__item{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:6px 9px;border-radius:8px;color:#334155;text-decoration:none;white-space:nowrap;background:none;border:0;font:inherit;cursor:pointer}
-.nmp-shell__link:hover,.nmp-shell__item:hover,.nmp-shell__menu:focus-within>.nmp-shell__menu-button{background:#f1f5f9;color:#0f172a}
-.nmp-shell__link[aria-current=page],.nmp-shell__item[aria-current=page],.nmp-shell__menu.is-active>.nmp-shell__menu-button{background:#e0ecff;color:#1d4ed8;font-weight:650}
+.nmp-shell__nav{display:flex;flex-direction:column;align-items:center;gap:4px;margin:0;padding:0;overflow-y:auto;overflow-x:visible;scrollbar-width:none}
+.nmp-shell__group{display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;border-top:1px solid #e2e8f0}
+.nmp-shell .nmp-shell__link{position:relative;min-height:0;padding:0;box-shadow:none;display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;color:#334155;text-decoration:none;background:none;border:0;font:inherit;cursor:pointer;flex:none}
+.nmp-shell .nmp-shell__link:hover,.nmp-shell__menu:focus-within>.nmp-shell__menu-button{background:#f1f5f9;color:#0f172a}
+.nmp-shell .nmp-shell__link[aria-current=page],.nmp-shell .nmp-shell__menu.is-active>.nmp-shell__menu-button{background:#e0ecff;color:#1d4ed8}
 .nmp-shell a:focus-visible,.nmp-shell button:focus-visible{outline:3px solid #2563eb;outline-offset:1px}
-.nmp-shell svg{flex:none}
-.nmp-shell__menu{position:relative}
-.nmp-shell__menu-button svg:last-child{width:14px;height:14px;opacity:.7}
-.nmp-shell__dropdown{display:none;position:absolute;left:0;top:100%;min-width:220px;padding:6px;margin:0;background:#fff;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 10px 28px rgba(15,23,42,.18);z-index:1001}
-.nmp-shell__menu:hover>.nmp-shell__dropdown,.nmp-shell__menu:focus-within>.nmp-shell__dropdown{display:flex;flex-direction:column;gap:2px}
-.nmp-shell__menu::after{content:"";position:absolute;left:0;right:0;top:100%;height:6px}
-.nmp-shell__right{display:flex;align-items:center;gap:8px;margin-left:auto}
-.nmp-shell__env{display:inline-flex;align-items:center;gap:4px;padding:6px 11px;border-radius:999px;background:var(--nmp-env);color:#fff;font-size:13px;letter-spacing:.02em;white-space:nowrap}
-.nmp-shell__env strong{text-transform:uppercase;letter-spacing:.06em}
-.nmp-shell__switch{font-size:13px;color:var(--nmp-env-ink);text-decoration:none;padding:6px 8px;border-radius:8px;white-space:nowrap}
-.nmp-shell__switch:hover{background:var(--nmp-env-soft);text-decoration:underline}
-@media (max-width:1180px){.nmp-shell__group .nmp-shell__link:not([aria-current]) span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}}
-@media (max-width:640px){.nmp-shell__switch{display:none}}
-@media print{.nmp-shell{display:none}html[data-nmp-env] body{border-top:0}}
-html[data-nmp-env]{scroll-padding-top:84px}
-.nmp-shell-spacer{height:66px}
-@media (max-width:900px){.nmp-shell__menu-button span,.nmp-shell__group .nmp-shell__link span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}.nmp-shell__group{padding-right:2px;margin-right:2px}}
-@media (max-width:640px){.nmp-shell__env-long,.nmp-shell__env-port{display:none}.nmp-shell__env-short{display:inline!important}.nmp-shell{padding:5px 6px}.nmp-shell__link{padding:6px 7px}}
-@media (max-width:1100px){html[data-nmp-env] .workspace-section-nav{top:72px;z-index:900}}
-@media print{.nmp-shell-spacer{display:none}}
-/* Next-step indicator: Green / Amber / Red. Colour is never the only signal: the text says what to do. */
-.nmp-shell__next{flex:none;margin-right:6px;display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;text-decoration:none;padding:5px 10px;border-radius:999px;white-space:nowrap;border:1px solid transparent}
+.nmp-shell svg{flex:none;width:20px;height:20px}
+
+/* Labels: hidden beside the icon, shown as an instant tooltip on hover or keyboard focus (and always read by screen readers). */
+.nmp-shell__link>.nmp-shell__label{position:fixed;left:calc(var(--nmp-rail) + 18px);transform:translateY(-50%);margin-top:20px;max-width:340px;width:max-content;padding:6px 10px;border-radius:8px;background:#0f172a;color:#fff;font-size:13px;font-weight:500;line-height:1.35;white-space:normal;box-shadow:0 6px 18px rgba(15,23,42,.25);pointer-events:none;opacity:0;visibility:hidden;transition:opacity .08s;z-index:1002}
+.nmp-shell__link:hover>.nmp-shell__label,.nmp-shell__link:focus-visible>.nmp-shell__label{opacity:1;visibility:visible}
+
+/* Status lights: a dot on the icon's corner. */
 .nmp-shell__dot{display:inline-block;width:10px;height:10px;border-radius:50%;flex:none}
-[data-next-level="red"] .nmp-shell__dot{background:#dc2626}
-[data-next-level="amber"] .nmp-shell__dot{background:#d97706}
-[data-next-level="green"] .nmp-shell__dot{background:#16a34a}
-.nmp-shell__next[data-next-level="red"]{background:#fef2f2;color:#991b1b;border-color:#fecaca}
-.nmp-shell__next[data-next-level="amber"]{background:#fffbeb;color:#92400e;border-color:#fde68a}
-.nmp-shell__next[data-next-level="green"]{background:#f0fdf4;color:#166534;border-color:#bbf7d0}
-.nmp-shell__next:hover{text-decoration:underline}
+.nmp-shell__light{position:absolute;top:4px;right:4px;width:11px;height:11px;border:2px solid #fff;box-sizing:content-box}
+[data-next-level="red"].nmp-shell__dot,[data-next-level="red"] .nmp-shell__dot{background:#dc2626}
+[data-next-level="amber"].nmp-shell__dot,[data-next-level="amber"] .nmp-shell__dot{background:#d97706}
+[data-next-level="green"].nmp-shell__dot,[data-next-level="green"] .nmp-shell__dot{background:#16a34a}
+.nmp-shell__activity[data-activity-state="running"] .nmp-shell__light{animation:nmp-pulse 1.2s ease-in-out infinite}
+@keyframes nmp-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.8)}}
+@media (prefers-reduced-motion:reduce){.nmp-shell__activity .nmp-shell__light{animation:none}}
+
+/* Menus (Libraries, System): fly out to the right. */
+.nmp-shell__menu{position:relative}
+/* Fixed, so the rail's scroll area never clips it; it lingers briefly so the pointer can reach it. */
+.nmp-shell__dropdown{position:fixed;left:calc(var(--nmp-rail) + 14px);margin-top:-40px;display:flex;flex-direction:column;gap:2px;min-width:230px;padding:6px;background:#fff;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 10px 28px rgba(15,23,42,.18);z-index:1003;visibility:hidden;opacity:0;transition:opacity .1s,visibility 0s linear .3s}
+.nmp-shell__menu:hover>.nmp-shell__dropdown,.nmp-shell__menu:focus-within>.nmp-shell__dropdown{visibility:visible;opacity:1;transition:opacity .1s,visibility 0s}
+.nmp-shell__menu:hover>.nmp-shell__menu-button>.nmp-shell__label,.nmp-shell__menu:focus-within>.nmp-shell__menu-button>.nmp-shell__label{opacity:0;visibility:hidden}
+.nmp-shell__item{display:flex;align-items:center;gap:8px;min-height:34px;padding:6px 9px;border-radius:8px;color:#334155;text-decoration:none;white-space:nowrap}
+.nmp-shell__item:hover{background:#f1f5f9;color:#0f172a}
+.nmp-shell__item[aria-current=page]{background:#e0ecff;color:#1d4ed8;font-weight:650}
+.nmp-shell__item svg{width:18px;height:18px}
+
+/* Bottom of the rail: environment badge and the switch to the other environment. */
+.nmp-shell__right{display:flex;flex-direction:column;align-items:center;gap:4px;margin-top:auto;padding-top:6px;border-top:1px solid #e2e8f0}
+.nmp-shell__env{display:inline-flex;align-items:center;justify-content:center;width:42px;padding:5px 0;border-radius:8px;background:var(--nmp-env);color:#fff;font-size:11px;letter-spacing:.06em}
+.nmp-shell__env-long,.nmp-shell__env-port{display:none}
+.nmp-shell__env-short{display:inline}
+.nmp-shell__switch{color:var(--nmp-env-ink);font-size:16px}
+
+.nmp-shell-spacer{display:none}
+
+/* Each application page: its next step under the page title area. */
 .nmp-next-strip{display:flex;flex-wrap:wrap;align-items:center;gap:6px;max-width:1200px;margin:8px auto 0;padding:8px 14px;border-radius:10px;font-size:14px;box-sizing:border-box}
 .nmp-next-strip[data-next-level="red"]{background:#fef2f2;color:#7f1d1d;border:1px solid #fecaca}
 .nmp-next-strip[data-next-level="amber"]{background:#fffbeb;color:#78350f;border:1px solid #fde68a}
@@ -54,8 +64,22 @@ html[data-nmp-env]{scroll-padding-top:84px}
 .nmp-next-list .nmp-next-name{font-weight:600}
 .nmp-next-list .nmp-next-why{color:#475569;font-size:13px;width:100%;padding-left:18px}
 .nmp-next-list a{margin-left:auto;font-weight:600}
-@media (max-width:640px){.nmp-shell__next span:not(.nmp-shell__dot){display:none}.nmp-next-strip__why{display:none}}
-/* Activity pill: pulses while a slow task runs. */
-.nmp-shell__activity[data-activity-state="running"] .nmp-shell__dot{animation:nmp-pulse 1.2s ease-in-out infinite}
-@keyframes nmp-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.8)}}
-@media (prefers-reduced-motion:reduce){.nmp-shell__activity .nmp-shell__dot{animation:none}}
+
+/* The review page's own section rail moves to the right edge, so the two never overlap. */
+@media (min-width:1101px){
+  html[data-nmp-env] .workspace-section-nav{left:auto;right:.5rem}
+  html.review-workspace[data-nmp-env]:has(.workspace-section-nav) body{padding-left:calc(var(--nmp-rail) + 20px);padding-right:4.6rem}
+}
+
+/* Narrow screens: the rail becomes a bar along the bottom. */
+@media (max-width:640px){
+  html[data-nmp-env] body{padding-left:0;padding-bottom:72px}
+  .nmp-shell{top:auto;bottom:8px;left:8px;right:8px;width:auto;max-height:none;flex-direction:row;border-top:1px solid #cbd5e1;border-left:6px solid var(--nmp-env);padding:4px 6px;overflow-x:auto}
+  .nmp-shell__nav{flex-direction:row;overflow:visible}
+  .nmp-shell__group{flex-direction:row;border-top:0;border-left:1px solid #e2e8f0;padding:0 4px}
+  .nmp-shell__right{flex-direction:row;margin:0 0 0 auto;border-top:0;padding:0}
+  .nmp-shell__link>.nmp-shell__label{display:none}
+  .nmp-shell__dropdown{left:8px;right:8px;top:auto;bottom:72px;margin-top:0}
+  .nmp-next-strip__why{display:none}
+}
+@media print{.nmp-shell{display:none}html[data-nmp-env] body{border-top:0;padding-left:0}}

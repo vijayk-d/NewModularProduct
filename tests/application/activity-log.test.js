@@ -28,10 +28,10 @@ test('a slow task is amber while running, green when finished until seen, red wh
 });
 
 test('the pill text says what happened, and is an empty placeholder when nothing is going on', () => {
-  assert.match(renderActivityPill(null), /data-activity-pill data-activity-state="none" hidden/);
+  assert.match(renderActivityPill(null), /data-activity-pill data-activity-state="none" href="\/next-steps">.*Activity: nothing running/);
   const pill = renderActivityPill({items: [{id: 'a1', state: 'done', level: 'green', label: 'Letter polished', name: 'EY', error: ''}, {id: 'a2', state: 'failed', level: 'red', label: 'x', name: '', error: ''}]});
   assert.match(pill, /data-activity-state="done" data-next-level="green" href="\/activity\/open\?id=a1"/);
-  assert.match(pill, /Letter polished: EY ✓ \(\+1\)/);
+  assert.match(pill, /Letter polished: EY ✓ \(click to see it\) \(\+1 more\)/);
 });
 
 test("the bar's script runs only where the page's own policy allows it, using the page's nonce", () => {
