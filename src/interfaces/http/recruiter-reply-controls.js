@@ -139,7 +139,10 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
     if (!r.ok || !data.ok) throw new Error(data.error || 'The reply assistant failed.');
     return data;
   };
-  const spec = () => ({theirMessage: theirs.value, recipientName: name.value, applicationStatus: statusChoice.value, ownerNote: note.value,
+  // A reply updates the application's Outcome (forward only); the Outcome section refreshes itself.
+  const outcomeText = o => o ? ` Outcome updated: ${o.label}.` : '';
+  const outcomeChanged = o => { if (o) doc.dispatchEvent(new (doc.defaultView?.CustomEvent || CustomEvent)('application-outcome-changed', {detail: o})); };
+  const spec = () => ({messageId: selected || undefined, theirMessage: theirs.value, recipientName: name.value, applicationStatus: statusChoice.value, ownerNote: note.value,
     topics: topicRows.filter(r => r.box.checked).map(r => ({id: r.t.id, answer: r.answer ? r.answer.value : ''}))});
   const shortDate = value => { const t = Date.parse(value); return Number.isFinite(t) ? new Date(t).toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'}) : String(value || ''); };
 
@@ -199,7 +202,8 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
       found = d.replies;
       if (!found.length) { renderList(); findHint.textContent = 'No reply from them found in Gmail yet. You can paste it below.'; return; }
       useReply(found[0]);
-      findHint.textContent = `Found ${found.length} ${found.length === 1 ? 'reply' : 'replies'}${found.length > 1 ? '; the latest is selected. Choose another to answer it' : ''}. Nothing in Gmail was changed.`;
+      findHint.textContent = `Found ${found.length} ${found.length === 1 ? 'reply' : 'replies'}${found.length > 1 ? '; the latest is selected. Choose another to answer it' : ''}. Nothing in Gmail was changed.${outcomeText(d.outcome)}`;
+      outcomeChanged(d.outcome);
     } catch (error) { findHint.textContent = error.message; } finally { find.disabled = false; }
   }
   const draftBody = () => ({messageId: selected, draftText: editorText(editor), draftHtml: editor.innerHTML, recipientName: name.value, applicationStatus: statusChoice.value, ownerNote: note.value});
@@ -238,7 +242,8 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
           const w = await call('/write', {...spec(), model: e.model, confirmedCostProof: e.costProof});
           fillEditor(doc, editor, w.reply); aiLine.hidden = true; result.hidden = false;
           try { await saveSelected(true); } catch { /* the reply stays on the page; Save reply can try again */ }
-          status.textContent = 'Reply drafted. Read it, edit anything, then copy it.' + (w.unsupportedFigures.length ? ` Check these figures; they are not in your evidence: ${w.unsupportedFigures.join(', ')}.` : '') + (w.notes ? ' Note: ' + w.notes : '');
+          status.textContent = 'Reply drafted. Read it, edit anything, then copy it.' + (w.unsupportedFigures.length ? ` Check these figures; they are not in your evidence: ${w.unsupportedFigures.join(', ')}.` : '') + (w.notes ? ' Note: ' + w.notes : '') + outcomeText(w.outcome);
+          outcomeChanged(w.outcome);
         } catch (error) { status.textContent = error.message; go.disabled = false; }
       });
     } catch (error) { status.textContent = error.message; } finally { estimate.disabled = false; }

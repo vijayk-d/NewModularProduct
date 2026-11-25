@@ -123,5 +123,24 @@ class GmailReplyReaderTests(unittest.TestCase):
         self.assertEqual(r.without_quoted('Thanks\n________________\nFrom: Me\nSent: Monday'), 'Thanks')
 
 
+
+class TrackingAlerts(unittest.TestCase):
+    def test_reads_tracker_alert_emails_with_a_fixed_search_and_never_changes_anything(self):
+        svc = Service()
+        SEARCHED['a1'] = message('a1', 'Mailsuite <notifications@mailsuite.com>', 'Sam Recruiter (sam@agency.test) opened "Application: Delivery Manager"', 5, thread='t5')
+        svc.list = lambda userId, q, maxResults: (svc.calls.append('messages.list:' + q), svc._result({'messages': [{'id': 'a1'}]}))[1]
+        out = r.process_request({'action': 'find_tracking_alerts', 'expectedAddress': ME, 'after': '2026/11/01'}, lambda: svc, ENV)
+        self.assertTrue(out['ok'])
+        self.assertEqual(out['alerts'][0]['messageId'], 'a1')
+        self.assertIn('opened', out['alerts'][0]['text'])
+        self.assertIn('messages.list:from:(mailsuite.com OR mailtrack.io) after:2026/11/01', svc.calls)
+        self.assertFalse([c for c in svc.calls if any(w in c for w in ('send', 'modify', 'trash', 'delete', 'drafts'))])
+
+    def test_refuses_a_bad_date_or_another_mailbox(self):
+        self.assertEqual(r.process_request({'action': 'find_tracking_alerts', 'expectedAddress': ME, 'after': 'yesterday'}, lambda: Service(), ENV)['code'], 'INVALID_REQUEST')
+        self.assertEqual(r.process_request({'action': 'find_tracking_alerts', 'expectedAddress': ME, 'after': '2026/11/01'}, lambda: Service(mailbox='x@y.test'), ENV)['code'], 'SENDER_MISMATCH')
+        self.assertEqual(r.process_request({'action': 'find_tracking_alerts', 'expectedAddress': ME, 'after': '2026/11/01'}, lambda: Service(error=HttpErr(403)), ENV)['code'], 'SCOPE_MISSING')
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -60,6 +60,32 @@ export function attachOutcomeControls(doc = document, fetchImpl = fetch) {
     finally { record.disabled = false; }
   });
   call(api).then(render).catch(error => { current.textContent = error.message; record.disabled = true; });
+
+  // Email opens: from your tracker's (Mailsuite) alert emails in Gmail, read-only and free.
+  const opensApi = '/api/reviews/' + encodeURIComponent(reviewId) + '/email-opens';
+  const opensLine = el(doc, 'p', {'data-email-opens': '', role: 'status', 'aria-live': 'polite'});
+  const opensList = el(doc, 'ul', {'data-email-opens-contacts': ''});
+  const checkOpens = el(doc, 'button', {type: 'button', text: 'Check email opens (read-only)', hidden: ''});
+  const opensBox = el(doc, 'div', {class: 'email-opens', hidden: ''}, [el(doc, 'h3', {text: 'Email opens'}), opensLine, opensList,
+    el(doc, 'p', {class: 'outcome-note', text: 'From the open alerts your email tracker (Mailsuite) sends to your Gmail. A hint, not proof: images can be blocked or pre-loaded, and a forward shows only as an open somewhere new.'}), checkOpens]);
+  section.append(opensBox);
+  const times = n => n === 1 ? 'once' : n + ' times';
+  function renderOpens(o, fresh = false) {
+    opensBox.hidden = false; checkOpens.hidden = !o.available;
+    const r = o.review, when = o.checkedAt ? ` Last checked ${new Date(o.checkedAt).toLocaleString('en-GB', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'})}.` : '';
+    const day = ms => new Date(ms).toLocaleDateString('en-GB', {day: 'numeric', month: 'short'});
+    opensLine.textContent = r ? `Opened ${times(r.opens)}${r.clicks ? `, links clicked ${times(r.clicks)}` : ''}; latest ${day(r.lastAt)}.${when}`
+      : o.checkedAt ? `No open alerts matched to this application's emails yet.${when}` : o.available ? 'Not checked yet.' : 'Checking opens needs Gmail switched on.';
+    if (fresh && o.newAlerts !== undefined) opensLine.textContent += ` ${o.newAlerts} new alert${o.newAlerts === 1 ? '' : 's'} read.`;
+    opensList.replaceChildren(...(r?.contacts || []).map(c => el(doc, 'li', {text: `${c.name || c.email}: opened ${times(c.opens)}${c.clicks ? `, clicked ${times(c.clicks)}` : ''}, latest ${day(c.lastAt)}`})));
+  }
+  checkOpens.addEventListener('click', async () => {
+    checkOpens.disabled = true; opensLine.textContent = 'Reading open alerts in Gmail (read-only)…';
+    try { renderOpens(await call(opensApi + '/check', {}), true); } catch (error) { opensLine.textContent = error.message; } finally { checkOpens.disabled = false; }
+  });
+  call(opensApi).then(o => renderOpens(o)).catch(() => {});
+  // The Reply assistant records replies here too; show them straight away.
+  doc.addEventListener('application-outcome-changed', () => { call(api).then(state => { render(state); message.textContent = 'Updated from the Reply assistant.'; }).catch(() => {}); });
   return section;
 }
 

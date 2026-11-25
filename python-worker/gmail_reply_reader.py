@@ -110,9 +110,46 @@ def _reply(m, own):
             'date': _header(headers, 'Date'), 'subject': _header(headers, 'Subject'), 'text': text or str(m.get('snippet', ''))[:MAX_BODY]}
 
 
+TRACKING_QUERY = 'from:(mailsuite.com OR mailtrack.io)'
+MAX_ALERTS, MAX_ALERT_TEXT = 100, 4000
+
+
+def find_tracking_alerts(request, service_factory=None, env=os.environ):
+    """find_tracking_alerts: the open and click alert emails your email tracker (Mailsuite, formerly Mailtrack) sent to
+    this mailbox since a date. A fixed search; read-only; at most MAX_ALERTS, newest first."""
+    expected = str(request.get('expectedAddress', '')).strip()
+    if not expected or expected.lower() != str(env.get('GMAIL_FROM_ADDRESS', '')).strip().lower():
+        return {'ok': False, 'code': 'SENDER_MISMATCH', 'error': 'The configured Gmail address does not match.'}
+    after = str(request.get('after', '') or '')
+    if not re.fullmatch(r'\d{4}/\d{2}/\d{2}', after):
+        return {'ok': False, 'code': 'INVALID_REQUEST', 'error': 'Invalid search date.'}
+    try:
+        service = (service_factory or _service)()
+        mailbox = str(service.users().getProfile(userId='me').execute().get('emailAddress', ''))
+        if mailbox.lower() != expected.lower():
+            return {'ok': False, 'code': 'SENDER_MISMATCH', 'error': 'The authorised Gmail mailbox is not the configured sender.'}
+        listed = service.users().messages().list(userId='me', q=TRACKING_QUERY + ' after:' + after, maxResults=MAX_ALERTS).execute().get('messages') or []
+        alerts = []
+        for item in listed[:MAX_ALERTS]:
+            m = service.users().messages().get(userId='me', id=item['id'], format='full').execute()
+            headers = (m.get('payload') or {}).get('headers')
+            text = re.sub(r'[ \t]+', ' ', body_text(m.get('payload') or {}))
+            alerts.append({'messageId': m.get('id', ''), 'internalDate': int(m.get('internalDate') or 0), 'subject': _header(headers, 'Subject'),
+                           'text': (text.strip() or str(m.get('snippet', '')))[:MAX_ALERT_TEXT]})
+    except Exception as error:
+        status, text = _status(error), str(error)
+        if status == 403 or 'insufficient' in text.lower() or 'scope' in text.lower():
+            return {'ok': False, 'code': 'SCOPE_MISSING', 'error': 'Gmail has not granted read access. Re-authorise Gmail with read-only access first.'}
+        return {'ok': False, 'code': 'READ_FAILED', 'error': 'Gmail could not be read. Nothing was changed.'}
+    alerts.sort(key=lambda a: -a['internalDate'])
+    return {'ok': True, 'mailbox': mailbox, 'alerts': alerts}
+
+
 def process_request(request, service_factory=None, env=os.environ):
     """find_replies: replies in the threads of emails you sent (by thread ID, or found from the sent message ID), plus
     recent messages from this application's contact addresses. Read-only; at most MAX_FOUND replies, newest first."""
+    if isinstance(request, dict) and request.get('action') == 'find_tracking_alerts':
+        return find_tracking_alerts(request, service_factory, env)
     if not isinstance(request, dict) or request.get('action') != 'find_replies':
         return {'ok': False, 'code': 'INVALID_REQUEST', 'error': 'Only reading replies is allowed.'}
     expected = str(request.get('expectedAddress', '')).strip()

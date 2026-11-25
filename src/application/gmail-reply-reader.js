@@ -6,6 +6,16 @@ export const gmailReplyReadingEnabled = (env = process.env) => String(env.ENABLE
   && Boolean(String(env.GMAIL_FROM_ADDRESS || '').trim()) && (env.NMP_ENV || 'development') !== 'verification';
 
 export function readGmailReplies({threads = [], fromAddresses = [], after = '', expectedAddress, env = process.env, spawnImpl = spawn, timeoutMs = 60000}) {
+  return runReader({action: 'find_replies', threads, fromAddresses, after, expectedAddress}, 'replies', {env, spawnImpl, timeoutMs});
+}
+
+// Read-only: the open and click alert emails your tracker (Mailsuite, formerly Mailtrack) sent you since a date (YYYY/MM/DD).
+export function readTrackingAlerts({after, expectedAddress, env = process.env, spawnImpl = spawn, timeoutMs = 90000}) {
+  return runReader({action: 'find_tracking_alerts', after, expectedAddress}, 'alerts', {env, spawnImpl, timeoutMs});
+}
+
+function runReader(request, listKey, {env, spawnImpl, timeoutMs}) {
+  const expectedAddress = request.expectedAddress;
   return new Promise(resolve => {
     let child, out = '', done = false, timer;
     const finish = value => { if (done) return; done = true; clearTimeout(timer); resolve(value); };
@@ -18,16 +28,16 @@ export function readGmailReplies({threads = [], fromAddresses = [], after = '', 
     child.on('error', () => failed('READER_UNAVAILABLE', 'The Gmail reader could not start.'));
     child.stdin.on('error', () => failed('READER_UNAVAILABLE', 'The Gmail reader input failed.'));
     child.stdout.setEncoding('utf8');
-    child.stdout.on('data', chunk => { out += chunk; if (Buffer.byteLength(out) > 500000) { child.kill(); failed('READ_TOO_LARGE', 'The Gmail thread is too large to read here.'); } });
+    child.stdout.on('data', chunk => { out += chunk; if (Buffer.byteLength(out) > 1000000) { child.kill(); failed('READ_TOO_LARGE', 'The Gmail thread is too large to read here.'); } });
     child.stderr.on('data', () => {});
     child.on('close', () => {
       try {
         const value = JSON.parse(out);
-        if (value.ok === true && Array.isArray(value.replies) && String(value.mailbox || '').toLowerCase() === String(expectedAddress).toLowerCase()) finish(value);
+        if (value.ok === true && Array.isArray(value[listKey]) && String(value.mailbox || '').toLowerCase() === String(expectedAddress).toLowerCase()) finish(value);
         else if (value.ok === false && typeof value.code === 'string') finish({ok: false, code: value.code, error: String(value.error || 'Gmail could not be read.')});
         else throw new Error();
       } catch { failed('READ_FAILED', 'Gmail could not be read. Nothing was changed.'); }
     });
-    child.stdin.end(JSON.stringify({action: 'find_replies', threads, fromAddresses, after, expectedAddress}), 'utf8');
+    child.stdin.end(JSON.stringify(request), 'utf8');
   });
 }

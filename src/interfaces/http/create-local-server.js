@@ -56,7 +56,10 @@ import { createLetterKeywordService } from "../../application/letter-keywords.js
 import { factLinesWithCertifications } from "../../domain/cv/cv-facts.js";
 import { normaliseCertifications } from "../../domain/cv/owner-certifications.js";
 import { createRecruiterReplyService } from "../../application/recruiter-reply.js";
-import { readGmailReplies, gmailReplyReadingEnabled } from "../../application/gmail-reply-reader.js";
+import { readGmailReplies, readTrackingAlerts, gmailReplyReadingEnabled } from "../../application/gmail-reply-reader.js";
+import { createEmailOpenService } from "../../application/email-open-tracking.js";
+import { createEmailOpensHandler } from "./email-opens-http.js";
+import { createMemoryEmailOpenSignalsStore } from "../../infrastructure/email-open-signals-file.js";
 import { createGmailReplyDraft } from "../../application/gmail-reply-draft.js";
 import { createApplicationQuestionsService } from "../../application/application-questions.js";
 import { createInsightsHandler } from "./insights-http.js";
@@ -242,6 +245,8 @@ export function createLocalServer({
   advertRequirementsReader = null,
   advertRequirementsStore = null,
   gmailReplyReader = undefined,
+  gmailTrackingReader = undefined,
+  emailOpenSignalsStore = null,
   gmailReplyDrafter = undefined,
   replyThreadsStore = null,
   tailoredCvLatest = null,
@@ -497,7 +502,7 @@ export function createLocalServer({
   const replyService=createRecruiterReplyService({reviews:reviewStore,writer:replyWriter,candidateName:process.env.CANDIDATE_DISPLAY_NAME||'',evidence:async id=>questionsService?await questionsService.evidenceFor(id):[],
     sentEmails:()=>outreachRepository?.listSentEmails?.()||[],queueItems:()=>outreachRepository?.list?.()||[],mailbox:String(process.env.GMAIL_FROM_ADDRESS||'').trim(),
     replyReader:gmailReplyReader!==undefined?gmailReplyReader:(gmailReplyReadingEnabled()?args=>readGmailReplies(args):null),
-    replyStore:replyThreadsStore,draftWriter:gmailReplyDrafter!==undefined?gmailReplyDrafter:(gmailReplyReadingEnabled()?args=>createGmailReplyDraft(args):null)});
+    replyStore:replyThreadsStore,outcomes:insightsStore,onOutcome:()=>insightsSnapshot?.schedule(),draftWriter:gmailReplyDrafter!==undefined?gmailReplyDrafter:(gmailReplyReadingEnabled()?args=>createGmailReplyDraft(args):null)});
   const handleReply=createRecruiterReplyHandler({service:replyService,sendJson,sendText});
   // Letter keyword check: the advert's ATS terms against the letter and your evidence; free and local.
   const letterEvidence=async id=>questionsService?await questionsService.evidenceFor(id):[];
@@ -507,6 +512,10 @@ export function createLocalServer({
   const priorityKeywordRequest=async(reviewId,draft,allowPaid)=>{const list=await keywordService.priorityKeywords(reviewId,draft,{allowPaid});return list.length?{priorityKeywords:list}:{};};
   const handleLetterGate=createLetterGateHandler({reviewStore,sendJson,sendText});
   const handleInsights=createInsightsHandler({snapshot:insightsSnapshot,learning:evidenceLearning,sendJson,sendHtml});
+  // Email opens from your tracker's alert emails (read-only, free); counts saved in their own file.
+  const emailOpenService=createEmailOpenService({store:emailOpenSignalsStore||createMemoryEmailOpenSignalsStore(),sentEmails:()=>outreachRepository?.listSentEmails?.()||[],mailbox:String(process.env.GMAIL_FROM_ADDRESS||'').trim(),
+    readAlerts:gmailTrackingReader!==undefined?gmailTrackingReader:(gmailReplyReadingEnabled()?args=>readTrackingAlerts(args):null)});
+  const handleEmailOpens=createEmailOpensHandler({service:emailOpenService,getReview:id=>reviewStore.get(id),sendJson});
   const handleOutcomes=createApplicationOutcomesHandler({store:insightsStore,getReview:id=>reviewStore.get(id),sendJson,sendText,onChange:()=>insightsSnapshot?.schedule()});
   const handleCvTailoring=createCvTailoringHandler({service:cvTailoringService,getReview:id=>reviewStore.get(id),sendJson,sendText,candidateName:candidateDisplayName,outputFolder:applicationOutputFolder});
   const handleCvDocument=createCvDocumentHandler({store:reviewStore,inventory:cvInventoryRepository,adapter:cvDocumentAdapter});
@@ -543,6 +552,7 @@ export function createLocalServer({
     if (await handleSavedDelete(request,response,url)) return;
     if (await handleSystemCheck(request,response,url)) return;
     if (await handleOutcomes(request,response,url)) return;
+    if (await handleEmailOpens(request,response,url)) return;
     if (await handleQuestions(request,response,url)) return;
     if (await handleReply(request,response,url)) return;
     if (await handleKeywords(request,response,url)) return;
