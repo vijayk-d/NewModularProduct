@@ -5,9 +5,22 @@ import {renderActivityPill} from './app-shell.js';
 
 const APPLICATION = /^\/applications\/([A-Za-z0-9_-]{1,100})$/;
 
-export function createActivityHandler({log, sendJson, sendText}) {
+export function createActivityHandler({log, sendJson, sendText, getReview = null}) {
   return async (req, res, url) => {
     const method = req.method || 'GET';
+    // The page that opens the LinkedIn search tabs starts "Importing contacts" for its application (the only kind a page
+    // may start; every other task is recorded by the server itself).
+    if (method === 'POST' && url.pathname === '/api/activity/contacts') {
+      const origin = req.headers.origin;
+      if ((origin && origin !== `http://${req.headers.host}` && origin !== `https://${req.headers.host}`) || req.headers['sec-fetch-site'] === 'cross-site' || !String(req.headers['content-type'] || '').startsWith('application/json')) { sendJson(res, 403, {ok: false, error: 'Same-origin JSON request required.'}); return true; }
+      let body = {}, size = 0; const chunks = [];
+      for await (const c of req) { size += c.length; if (size > 4096) { sendJson(res, 413, {ok: false, error: 'Request too large.'}); return true; } chunks.push(c); }
+      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); } catch { sendJson(res, 400, {ok: false, error: 'Valid JSON required.'}); return true; }
+      const reviewId = String(body.reviewId || '');
+      if (!/^[A-Za-z0-9_-]{1,100}$/.test(reviewId) || (getReview && !getReview(reviewId))) { sendJson(res, 404, {ok: false, error: 'Saved application not found.'}); return true; }
+      sendJson(res, 200, {ok: true, id: log.start({kind: 'contacts', reviewId})});
+      return true;
+    }
     if (method !== 'GET') return false;
     if (url.pathname === '/app-shell.js') {
       sendText(res, 200, await readFile(new URL('./app-shell-client.js', import.meta.url), 'utf8'), {'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store'});

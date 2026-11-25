@@ -12,6 +12,7 @@ export function renderNextStepsPage(summary) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Next steps</title>
 <style>body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#f8fafc;color:#0f172a;margin:0}main{max-width:960px;margin:0 auto;padding:16px}h1{font-size:1.5rem;margin:.5rem 0}h2{font-size:1.05rem;margin:1.4rem 0 .6rem}.lead{color:#475569}</style></head>
 <body><main><h1>Next steps</h1><p class="lead">What to click next, worked out from your saved applications, the outreach queue, sent emails, recruiter replies and outcomes. Red: act now. Amber: a next step is ready. Green: nothing to do. Applications quiet for over 60 days are left out.</p>
+<p class="lead"><span data-notify-status></span> <button type="button" data-notify-toggle hidden>Turn on desktop notifications</button></p>
 ${groups || '<p data-next-empty>Nothing to show yet: save an application to start.</p>'}</main></body></html>`;
 }
 

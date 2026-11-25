@@ -46,7 +46,7 @@ export function priorityKeywordsFrom(report, limit = PRIORITY_KEYWORD_LIMIT) {
 
 const advertHash = text => createHash('sha256').update(String(text)).digest('hex').slice(0, 24);
 
-export function createLetterKeywordService({reviews, evidence = async () => [], reader = null, store = null}) {
+export function createLetterKeywordService({reviews, evidence = async () => [], reader = null, store = null, activity = null}) {
   const inFlight = new Map();
   function local(review, note) {
     return {requirements: localAdvertRequirements(review.formData?.jobDescriptionText || '', {organisationName: review.formData?.organisationName || ''}), source: 'local', note};
@@ -66,13 +66,16 @@ export function createLetterKeywordService({reviews, evidence = async () => [], 
     if (!reader?.available || !store) return local(review, reader?.available ? '' : 'AI reading of adverts is off, so the built-in reading is used.');
     if (!allowPaid) return local(review, 'The advert has not been read by AI yet; click Keywords to read it (one small paid request).');
     if (!inFlight.has(reviewId)) inFlight.set(reviewId, (async () => {
+      let activityId = null; try { activityId = activity?.start({kind: 'keywords', reviewId}) || null; } catch {}
       try {
         const out = await reader.read({jobTitle: review.formData?.jobTitle || '', organisationName: review.formData?.organisationName || '', jobDescriptionText: jd});
         const requirements = normaliseRequirements(out.requirements, jd, {source: 'ai'});
         try { store.set(reviewId, requirements.length ? {advertHash: hash, source: 'ai', model: out.model, requirements} : {advertHash: hash, source: 'failed', error: 'ADVERT_EMPTY'}); } catch {}
+        try { if (requirements.length) activity?.finish(activityId); else activity?.fail(activityId, 'The AI reading found nothing usable.'); } catch {}
         return requirements.length ? {requirements, source: 'ai', note: ''} : local(review, 'The AI reading found nothing usable, so the built-in reading is used.');
       } catch (error) {
         try { store.set(reviewId, {advertHash: hash, source: 'failed', error: String(error.code || 'ADVERT_FAILED')}); } catch {}
+        try { activity?.fail(activityId, error.message || 'unknown error'); } catch {}
         return local(review, 'The AI reading did not work (' + (error.message || 'unknown error') + '), so the built-in reading is used. It is not retried automatically.');
       } finally { inFlight.delete(reviewId); }
     })());

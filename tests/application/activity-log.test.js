@@ -58,3 +58,41 @@ test('a domain lookup is recorded as running, then found or failed', async () =>
   await new Promise(r => setTimeout(r, 20));
   assert.deepEqual([log.summary().items[0].label, log.summary().items[0].error], ['Domain lookup failed', 'No API key']);
 });
+
+test('contact import: one activity per application, counted per batch, green once the tabs go quiet, red if nothing arrives', async () => {
+  const {QUIET_MS, NOTHING_MS} = await import('../../src/application/activity-log.js');
+  let t = 0;
+  const log = createActivityLog({now: () => t});
+  const a = log.start({kind: 'contacts', reviewId: 'r1'});
+  assert.equal(log.start({kind: 'contacts', reviewId: 'r1'}), a, 'opening more tabs keeps the same activity');
+  t += 1000; log.pulse('contacts', 4);
+  t += 1000; log.pulse('contacts', 0);
+  assert.equal(log.summary().items[0].state, 'running');
+  t += QUIET_MS + 1;
+  assert.deepEqual([log.summary().items[0].state, log.summary().items[0].label], ['done', 'Contacts imported (4 new)']);
+  const b = log.start({kind: 'contacts', reviewId: 'r2'});
+  t += NOTHING_MS + 1;
+  const none = log.get(b);
+  assert.deepEqual([none.state, none.label], ['failed', 'No contacts imported']);
+  assert.match(none.error, /Tampermonkey contact bridge/);
+  assert.equal(log.pulse('contacts', 3), 0, 'a finished import takes no more batches');
+});
+
+test('the Keywords advert reading and reply writing are recorded as running, then finished or failed', async () => {
+  const {createLetterKeywordService} = await import('../../src/application/letter-keywords.js');
+  const {createRecruiterReplyService} = await import('../../src/application/recruiter-reply.js');
+  const {buildReplyApiRequest} = await import('../../src/infrastructure/refinement/perplexity-recruiter-reply-adapter.js');
+  const log = createActivityLog();
+  const reviews = new Map([['r1', {formData: {jobTitle: 'PM', jobDescriptionText: 'We need stakeholder management and risk management skills for this programme.'}}]]);
+  const store = new Map();
+  const k = createLetterKeywordService({reviews, activity: log, store: {get: id => store.get(id), set: (id, v) => store.set(id, v)},
+    reader: {available: true, read: async () => { throw Object.assign(new Error('timed out'), {code: 'X'}); }}});
+  await k.check('r1', {letterText: 'Dear Sam'});
+  assert.deepEqual([log.summary().items[0].kind, log.summary().items[0].label, log.summary().items[0].error], ['keywords', 'Advert reading failed', 'timed out']);
+  const writer = {available: true, buildRequest: buildReplyApiRequest, write: async (request, model) => ({reply: 'Hello,\n\nThanks.', notes: '', model})};
+  const s = createRecruiterReplyService({reviews, writer, activity: log, evidence: async () => []});
+  const body = {theirMessage: 'Thanks for your email, please apply online via our portal.', applicationStatus: 'applied'};
+  const e = await s.estimate('r1', body);
+  await s.write('r1', {...body, model: e.model, confirmedCostProof: e.costProof});
+  assert.deepEqual([log.summary().items.find(x => x.kind === 'reply').label], ['Reply written']);
+});

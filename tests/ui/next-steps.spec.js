@@ -48,3 +48,17 @@ test('a slow task shows amber while running and turns green by itself when it fi
   await expect(page).toHaveURL(/\/applications\/r1#proposed-cover-letter$/);
   await expect(page.locator('[data-activity-pill]')).toBeHidden();
 });
+
+test('desktop notifications are switched on from Next steps; a page can start a contact import for its application', async ({page, app}) => {
+  await page.goto(app.url + '/next-steps');
+  // Headless Chromium reports notifications as blocked; a real browser asks once from the button.
+  const permission = await page.evaluate(() => Notification.permission);
+  await expect(page.locator('[data-notify-status]')).toContainText(permission === 'granted' ? 'Desktop notifications are on' : permission === 'denied' ? 'blocked for this site' : 'Get a desktop notification');
+  await expect(page.locator('[data-notify-toggle]')).toBeVisible({visible: permission === 'default'});
+  const started = await page.evaluate(async () => (await fetch('/api/activity/contacts', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({reviewId: 'r1'})})).status);
+  expect(started).toBe(200);
+  const missing = await page.evaluate(async () => (await fetch('/api/activity/contacts', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({reviewId: 'nope'})})).status);
+  expect(missing).toBe(404);
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('nmp-activity-started')));
+  await expect(page.locator('[data-activity-pill]')).toContainText('Importing contacts: Example Ltd…');
+});

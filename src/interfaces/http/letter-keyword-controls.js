@@ -241,7 +241,9 @@ export function attachLetterKeywordControls(doc = document, fetchImpl = fetch, c
   async function check(editor, panel, {mark = true} = {}) {
     panel.hidden = false; panel.replaceChildren(el(doc, 'p', {text: 'Reading what the advert asks for…'}));
     try {
-      const r = await fetchImpl('/api/reviews/' + encodeURIComponent(reviewId) + '/keywords', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({letterText: plainText(editor)})});
+      const pending = fetchImpl('/api/reviews/' + encodeURIComponent(reviewId) + '/keywords', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({letterText: plainText(editor)})});
+      try { doc.dispatchEvent(new (doc.defaultView?.CustomEvent || CustomEvent)('nmp-activity-started')); } catch {}
+      const r = await pending;
       const data = await r.json();
       if (!r.ok || !data.ok) throw new Error(data.error || 'The keyword check failed.');
       const g = data.groups, s = data.summary;
