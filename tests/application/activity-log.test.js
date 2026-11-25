@@ -96,3 +96,17 @@ test('the Keywords advert reading and reply writing are recorded as running, the
   await s.write('r1', {...body, model: e.model, confirmedCostProof: e.costProof});
   assert.deepEqual([log.summary().items.find(x => x.kind === 'reply').label], ['Reply written']);
 });
+
+test('trying a failed task again replaces its red: the bar follows the latest attempt', () => {
+  const log = createActivityLog();
+  const first = log.start({kind: 'polish', reviewId: 'r1'});
+  log.fail(first, 'REFINEMENT_FAILED');
+  assert.equal(log.summary().items[0].level, 'red');
+  const second = log.start({kind: 'polish', reviewId: 'r1'});
+  assert.deepEqual(log.summary().items.map(x => [x.id, x.level]), [[second, 'amber']], 'the old failure is gone once you try again');
+  log.finish(second);
+  assert.deepEqual(log.summary().items.map(x => [x.label, x.level]), [['Letter polished', 'green']]);
+  const other = log.start({kind: 'domain', reviewId: 'r1'}); log.fail(other, 'x');
+  log.start({kind: 'polish', reviewId: 'r1'});
+  assert.ok(log.summary().items.some(x => x.id === other), 'a different task keeps its own result');
+});

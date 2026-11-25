@@ -48,6 +48,8 @@ export function createActivityLog({now = () => Date.now(), nameFor = () => ''} =
       if (!ACTIVITY_KINDS[kind] || !reviewId) return null;
       const same = items.find(a => a.kind === kind && a.reviewId === String(reviewId) && settle(a).state === 'running');
       if (same && ACTIVITY_KINDS[kind].quiet) return same.id;
+      // Trying again replaces the earlier result: an old red (or green) for the same task and application is cleared.
+      for (const old of items) if (old.kind === kind && old.reviewId === String(reviewId) && old.state !== 'running') old.seen = true;
       let name = ''; try { name = String(nameFor(reviewId) || ''); } catch {}
       const a = {id: `a${++seq}`, kind, reviewId: String(reviewId), name, state: 'running', startedAt: now(), endedAt: 0, error: '', seen: false, count: 0, batches: 0, lastPulse: 0};
       items.unshift(a); items.splice(KEEP);
