@@ -74,7 +74,18 @@ export function renderNextStrip(step) {
 }
 const applicationId = (pathname) => { const m = /^\/applications\/([A-Za-z0-9_-]{1,100})$/.exec(String(pathname)); return m ? m[1] : ''; };
 
-export function renderShell(pathname = '/', env = process.env, next = null) {
+// Slow tasks: amber while running, green when finished and not yet seen, red when failed. Always rendered (hidden when
+// empty) so the refresh script can fill it in.
+export function renderActivityPill(activity) {
+  const items = activity?.items || [];
+  if (!items.length) return '<span class="nmp-shell__activity" data-activity-pill data-activity-state="none" hidden></span>';
+  const top = items[0], more = items.length - 1;
+  const text = `${top.label}${top.name ? ': ' + top.name : ''}${top.state === 'running' ? '…' : top.state === 'done' ? ' ✓' : ''}`;
+  const title = top.state === 'running' ? 'Still running: you can work elsewhere; this turns green when it finishes.' : top.state === 'done' ? 'Finished: click to see the result.' : 'Failed: click to see why. ' + top.error;
+  return `<a class="nmp-shell__next nmp-shell__activity" data-activity-pill data-activity-state="${esc(top.state)}" data-next-level="${esc(top.level)}" href="/activity/open?id=${encodeURIComponent(top.id)}" title="${esc(title)}"><span class="nmp-shell__dot" aria-hidden="true"></span><span>${esc(text)}${more > 0 ? ` (+${more})` : ''}</span></a>`;
+}
+
+export function renderShell(pathname = '/', env = process.env, next = null, activity = null) {
   const e = shellEnvironment(env);
   const other = e.id === 'production' ? { label: 'Development', url: 'http://127.0.0.1:3000' + pathname } : e.id === 'development' ? { label: 'Production', url: 'http://127.0.0.1:3100' + pathname } : null;
   const groups = NAV_GROUPS.map(g => ({ ...g, items: g.items.filter(i => !i.feature || featureEnabled(i.feature, env)) })).map((g) => {
@@ -85,17 +96,20 @@ export function renderShell(pathname = '/', env = process.env, next = null) {
   const badge = `<span class="nmp-shell__env" title="${esc(e.label)} environment on port ${esc(e.port)}${e.release ? ', release ' + esc(e.release) : ''}"><strong class="nmp-shell__env-long">${esc(e.label)}</strong><strong class="nmp-shell__env-short">${esc(e.short)}</strong><span class="nmp-shell__env-port"> · ${esc(e.port)}</span></span>`;
   const switcher = other ? `<a class="nmp-shell__switch" href="${esc(other.url)}" title="Open the same page in ${esc(other.label)}">${esc(other.label)} ↗</a>` : '';
   const id = applicationId(pathname), step = next && id ? next.steps?.find((s) => s.reviewId === id) : null;
-  return `<header class="nmp-shell" data-nmp-shell="v1">${nextPill(next)}<nav class="nmp-shell__nav" aria-label="Main">${groups}</nav><div class="nmp-shell__right">${badge}${switcher}</div></header><div class="nmp-shell-spacer" aria-hidden="true"></div>${renderNextStrip(step)}`;
+  return `<header class="nmp-shell" data-nmp-shell="v1">${renderActivityPill(activity)}${nextPill(next)}<nav class="nmp-shell__nav" aria-label="Main">${groups}</nav><div class="nmp-shell__right">${badge}${switcher}</div></header><div class="nmp-shell-spacer" aria-hidden="true"></div>${renderNextStrip(step)}`;
 }
 
-export function injectShell(html, pathname, env = process.env, nextSteps = null) {
+const call = (fn) => { try { return typeof fn === 'function' ? fn() : null; } catch { return null; } };
+// extras: {activity: () => summary, script: {nonce} | null}: the refresh script is added only where the page allows it.
+export function injectShell(html, pathname, env = process.env, nextSteps = null, extras = {}) {
   if (typeof html !== 'string' || html.includes('data-nmp-shell=') || !/<body[\s>]/i.test(html) || !/<\/head>/i.test(html)) return html;
   const e = shellEnvironment(env);
   let out = html.replace(/<html(?=[\s>])/i, `<html data-nmp-env="${e.id}"`);
   if (!/<html[\s>]/i.test(html)) out = out.replace(/<head(?=[\s>])/i, `<head data-nmp-env="${e.id}"`);
   if (e.id === 'production') out = out.replace(/<title>/i, '<title>PRODUCTION · ');
   out = out.replace(/<\/head>/i, '<link rel="stylesheet" href="/app-shell.css"></head>');
-  out = out.replace(/<body([^>]*)>/i, (m, attrs) => `<body${attrs.includes('data-nmp-env') ? attrs : attrs + ` data-nmp-env="${e.id}"`}>${renderShell(pathname, env, (() => { try { return typeof nextSteps === 'function' ? nextSteps() : null; } catch { return null; } })())}`);
+  out = out.replace(/<body([^>]*)>/i, (m, attrs) => `<body${attrs.includes('data-nmp-env') ? attrs : attrs + ` data-nmp-env="${e.id}"`}>${renderShell(pathname, env, call(nextSteps), call(extras.activity))}`);
+  if (extras.script) out = out.replace(/<\/body>/i, `<script src="/app-shell.js" defer${extras.script.nonce ? ` nonce="${esc(extras.script.nonce)}"` : ''}></script></body>`);
   return out;
 }
 
@@ -114,7 +128,18 @@ export function allowShellStyles(csp) {
 function headerKey(headers, name) { return Object.keys(headers || {}).find((k) => k.toLowerCase() === name); }
 
 // Wrap a response so complete HTML pages get the shell. Streaming or non-HTML responses pass through untouched.
-export function attachShell(response, pathname, env = process.env, nextSteps = null) {
+// May the shell's script run under this page's policy? Uses the page's own nonce; never loosens the policy.
+export function shellScriptPermission(csp) {
+  if (!csp) return {nonce: ''};
+  const parts = String(csp).split(';').map((p) => p.trim());
+  const script = parts.find((p) => /^script-src(\s|$)/i.test(p)) || parts.find((p) => /^default-src(\s|$)/i.test(p));
+  if (!script) return {nonce: ''};
+  const nonce = /'nonce-([A-Za-z0-9+/=_-]+)'/.exec(script);
+  if (nonce) return {nonce: nonce[1]};
+  return /'self'/.test(script) ? {nonce: ''} : null;
+}
+
+export function attachShell(response, pathname, env = process.env, nextSteps = null, activity = null) {
   const writeHead = response.writeHead.bind(response), write = response.write.bind(response), end = response.end.bind(response);
   let pending = null, passthrough = false;
   const flush = () => { if (pending) { const p = pending; pending = null; writeHead(...p); } };
@@ -134,7 +159,9 @@ export function attachShell(response, pathname, env = process.env, nextSteps = n
       const type = String((typeKey ? headers[typeKey] : response.getHeader('content-type')) || '');
       if (!/text\/html/i.test(type) || status < 200 || (status >= 300 && status < 400)) return original();
       const text = Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk);
-      const out = injectShell(text, pathname, env, nextSteps);
+      const cspKeyIn = headerKey(headers, 'content-security-policy');
+      const script = shellScriptPermission(cspKeyIn ? headers[cspKeyIn] : response.getHeader('content-security-policy'));
+      const out = injectShell(text, pathname, env, nextSteps, {activity, script: activity ? script : null});
       if (out === text) return original();
       const lenKey = headerKey(headers, 'content-length');
       if (lenKey) headers[lenKey] = Buffer.byteLength(out);

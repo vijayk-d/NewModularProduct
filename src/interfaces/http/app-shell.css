@@ -55,3 +55,7 @@ html[data-nmp-env]{scroll-padding-top:84px}
 .nmp-next-list .nmp-next-why{color:#475569;font-size:13px;width:100%;padding-left:18px}
 .nmp-next-list a{margin-left:auto;font-weight:600}
 @media (max-width:640px){.nmp-shell__next span:not(.nmp-shell__dot){display:none}.nmp-next-strip__why{display:none}}
+/* Activity pill: pulses while a slow task runs. */
+.nmp-shell__activity[data-activity-state="running"] .nmp-shell__dot{animation:nmp-pulse 1.2s ease-in-out infinite}
+@keyframes nmp-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.8)}}
+@media (prefers-reduced-motion:reduce){.nmp-shell__activity .nmp-shell__dot{animation:none}}

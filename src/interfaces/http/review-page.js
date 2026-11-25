@@ -44,6 +44,8 @@ function attachEmailDomainListener() {
       }
 
       var jobId = startData.job.jobId;
+      // The bar's activity pill shows the lookup as running, then green when it finishes.
+      document.dispatchEvent(new CustomEvent("nmp-activity-started"));
 
       var poll = async function () {
         var jobResponse = await fetch(
