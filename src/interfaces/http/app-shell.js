@@ -17,6 +17,7 @@ const I = Object.freeze({
   tools: 'M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z',
   pulse: 'M3 12h4l3-8 4 16 3-8h4',
   chevron: 'M6 9l6 6 6-6',
+  flag: 'M4 22V4 M4 4h12l-2 4 2 4H4',
 });
 
 // Groups shown left to right. "primary" items appear directly on the bar; others sit in a dropdown.
@@ -25,6 +26,7 @@ export const NAV_GROUPS = Object.freeze([
     { href: '/', label: 'New application', icon: I.add, match: (p) => p === '/' },
     { href: '/applications', label: 'Saved applications', icon: I.folder, match: (p) => p === '/applications' || p.startsWith('/applications/') || p === '/application-reviews' },
     { href: '/dashboard', label: 'Dashboard', icon: I.chart },
+    { href: '/next-steps', label: 'Next steps', icon: I.flag },
     { href: '/insights', label: 'Insights', icon: I.chart, match: (p) => p === '/insights' },
     { href: '/insights/data', label: 'Insights data', icon: I.pulse },
     { href: '/insights/evidence', label: 'Evidence learning', icon: I.evidence },
@@ -60,67 +62,32 @@ export function shellEnvironment(env = process.env) {
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const isCurrent = (item, path) => (item.match ? item.match(path) : path === item.href || path.startsWith(item.href + '/'));
-// Each rail item: icon, a label that appears beside it on hover or focus (and is its accessible name), and an
-// optional status light in the corner. Colour is never the only signal: the label says the status too.
-const light = (level) => (level ? `<span class="nmp-shell__dot nmp-shell__light" data-next-level="${esc(level)}" aria-hidden="true"></span>` : '');
-const link = (item, path, cls, status = null) => `<a class="${cls}" href="${item.href}"${status?.level ? ` data-light="${esc(status.level)}"` : ''}${isCurrent(item, path) ? ' aria-current="page"' : ''}>${icon(item.icon)}<span class="nmp-shell__label">${esc(item.label)}${status?.text ? ` — ${esc(status.text)}` : ''}</span>${light(status?.level)}</a>`;
+const link = (item, path, cls) => `<a class="${cls}" href="${item.href}" title="${esc(item.label)}"${isCurrent(item, path) ? ' aria-current="page"' : ''}>${icon(item.icon)}<span>${esc(item.label)}</span></a>`;
 
-// The next-step light (Green / Amber / Red) and, on an application page, that application's next step.
-const LEVEL_TEXT = { red: 'act now', amber: 'a next step is ready', green: 'nothing to do' };
-const FLAG = 'M4 22V4 M4 4h12l-2 4 2 4H4';
-const BOLT = 'M13 2 3 14h9l-1 8 10-12h-9z';
-function nextPill(next) {
-  if (!next) return '';
-  return `<a class="nmp-shell__link nmp-shell__next" data-next-level="${esc(next.level)}" href="/next-steps">${icon(FLAG)}<span class="nmp-shell__label">Next steps: ${esc(next.label)} (${esc(LEVEL_TEXT[next.level] || '')})</span>${light(next.level)}</a>`;
-}
-// The Outreach queue light: red when a send is uncertain or failed, amber when emails are queued but not sent.
-export function outreachStatus(next) {
-  const steps = (next?.steps || []).filter((s) => s.href === '/outreach-queue');
-  if (!steps.length) return null;
-  const red = steps.filter((s) => s.level === 'red').length, amber = steps.filter((s) => s.level === 'amber').length;
-  return red ? { level: 'red', text: `${red} application${red === 1 ? '' : 's'} with an uncertain or failed send` }
-    : amber ? { level: 'amber', text: `${amber} application${amber === 1 ? '' : 's'} with emails queued, not sent` } : null;
-}
-export function renderNextStrip(step) {
-  if (!step) return '';
-  return `<div class="nmp-next-strip" data-next-strip data-next-level="${esc(step.level)}" role="status"><span class="nmp-shell__dot" aria-hidden="true"></span><strong>Next step:</strong> <span>${esc(step.action)}</span><span class="nmp-next-strip__why"> — ${esc(step.why)}</span> <a href="${esc(step.href)}">Go</a></div>`;
-}
-const applicationId = (pathname) => { const m = /^\/applications\/([A-Za-z0-9_-]{1,100})$/.exec(String(pathname)); return m ? m[1] : ''; };
-
-// Slow tasks: the Activity item at the top of the rail. Its light pulses amber while a task runs, turns green when it
-// finishes (until you look) and red when it fails. Always present so the refresh script can update it.
-export function renderActivityPill(activity) {
-  const items = activity?.items || [];
-  if (!items.length) return `<a class="nmp-shell__link nmp-shell__activity" data-activity-pill data-activity-state="none" href="/next-steps">${icon(BOLT)}<span class="nmp-shell__label">Activity: nothing running</span></a>`;
-  const top = items[0], more = items.length - 1;
-  const text = `${top.label}${top.name ? ': ' + top.name : ''}${top.state === 'running' ? '… (still running; this turns green when it finishes)' : top.state === 'done' ? ' ✓ (click to see it)' : ` (click to see why${top.error ? ': ' + top.error : ''})`}`;
-  return `<a class="nmp-shell__link nmp-shell__activity" data-activity-pill data-activity-state="${esc(top.state)}" data-next-level="${esc(top.level)}" href="/activity/open?id=${encodeURIComponent(top.id)}">${icon(BOLT)}<span class="nmp-shell__label">${esc(text)}${more > 0 ? ` (+${more} more)` : ''}</span>${light(top.level)}</a>`;
-}
-
-export function renderShell(pathname = '/', env = process.env, next = null, activity = null) {
+// The top bar carries navigation only. Status (activity and next steps) is shown on the review page's floating
+// section rail instead (see app-shell-client.js), so the bar never grows.
+export function renderShell(pathname = '/', env = process.env) {
   const e = shellEnvironment(env);
   const other = e.id === 'production' ? { label: 'Development', url: 'http://127.0.0.1:3000' + pathname } : e.id === 'development' ? { label: 'Production', url: 'http://127.0.0.1:3100' + pathname } : null;
   const groups = NAV_GROUPS.map(g => ({ ...g, items: g.items.filter(i => !i.feature || featureEnabled(i.feature, env)) })).map((g) => {
-    if (g.primary) return `<div class="nmp-shell__group" role="group" aria-label="${esc(g.label)}">${g.items.map((i) => link(i, pathname, 'nmp-shell__link', i.href === '/outreach-queue' ? outreachStatus(next) : null)).join('')}</div>`;
+    if (g.primary) return `<div class="nmp-shell__group" role="group" aria-label="${esc(g.label)}">${g.items.map((i) => link(i, pathname, 'nmp-shell__link')).join('')}</div>`;
     const active = g.items.some((i) => isCurrent(i, pathname));
-    return `<div class="nmp-shell__menu${active ? ' is-active' : ''}"><button type="button" class="nmp-shell__link nmp-shell__menu-button" aria-haspopup="true">${icon(g.icon)}<span class="nmp-shell__label">${esc(g.label)}</span></button><div class="nmp-shell__dropdown" role="group" aria-label="${esc(g.label)}">${g.items.map((i) => link(i, pathname, 'nmp-shell__item')).join('')}</div></div>`;
+    return `<div class="nmp-shell__menu${active ? ' is-active' : ''}"><button type="button" class="nmp-shell__link nmp-shell__menu-button" aria-haspopup="true">${icon(g.icon)}<span>${esc(g.label)}</span>${icon(I.chevron)}</button><div class="nmp-shell__dropdown" role="group" aria-label="${esc(g.label)}">${g.items.map((i) => link(i, pathname, 'nmp-shell__item')).join('')}</div></div>`;
   }).join('');
   const badge = `<span class="nmp-shell__env" title="${esc(e.label)} environment on port ${esc(e.port)}${e.release ? ', release ' + esc(e.release) : ''}"><strong class="nmp-shell__env-long">${esc(e.label)}</strong><strong class="nmp-shell__env-short">${esc(e.short)}</strong><span class="nmp-shell__env-port"> · ${esc(e.port)}</span></span>`;
-  const switcher = other ? `<a class="nmp-shell__link nmp-shell__switch" href="${esc(other.url)}"><span aria-hidden="true">↗</span><span class="nmp-shell__label">Open this page in ${esc(other.label)}</span></a>` : '';
-  const id = applicationId(pathname), step = next && id ? next.steps?.find((s) => s.reviewId === id) : null;
-  return `<header class="nmp-shell nmp-shell--rail" data-nmp-shell="v1">${renderActivityPill(activity)}${nextPill(next)}<nav class="nmp-shell__nav" aria-label="Main">${groups}</nav><div class="nmp-shell__right">${badge}${switcher}</div></header><div class="nmp-shell-spacer" aria-hidden="true"></div>${renderNextStrip(step)}`;
+  const switcher = other ? `<a class="nmp-shell__switch" href="${esc(other.url)}" title="Open the same page in ${esc(other.label)}">${esc(other.label)} ↗</a>` : '';
+  return `<header class="nmp-shell" data-nmp-shell="v1"><nav class="nmp-shell__nav" aria-label="Main">${groups}</nav><div class="nmp-shell__right">${badge}${switcher}</div></header><div class="nmp-shell-spacer" aria-hidden="true"></div>`;
 }
 
-const call = (fn) => { try { return typeof fn === 'function' ? fn() : null; } catch { return null; } };
-// extras: {activity: () => summary, script: {nonce} | null}: the refresh script is added only where the page allows it.
-export function injectShell(html, pathname, env = process.env, nextSteps = null, extras = {}) {
+// extras.script ({nonce} or null): the status script is added only where the page's own policy allows it.
+export function injectShell(html, pathname, env = process.env, extras = {}) {
   if (typeof html !== 'string' || html.includes('data-nmp-shell=') || !/<body[\s>]/i.test(html) || !/<\/head>/i.test(html)) return html;
   const e = shellEnvironment(env);
   let out = html.replace(/<html(?=[\s>])/i, `<html data-nmp-env="${e.id}"`);
   if (!/<html[\s>]/i.test(html)) out = out.replace(/<head(?=[\s>])/i, `<head data-nmp-env="${e.id}"`);
   if (e.id === 'production') out = out.replace(/<title>/i, '<title>PRODUCTION · ');
   out = out.replace(/<\/head>/i, '<link rel="stylesheet" href="/app-shell.css"></head>');
-  out = out.replace(/<body([^>]*)>/i, (m, attrs) => `<body${attrs.includes('data-nmp-env') ? attrs : attrs + ` data-nmp-env="${e.id}"`}>${renderShell(pathname, env, call(nextSteps), call(extras.activity))}`);
+  out = out.replace(/<body([^>]*)>/i, (m, attrs) => `<body${attrs.includes('data-nmp-env') ? attrs : attrs + ` data-nmp-env="${e.id}"`}>${renderShell(pathname, env)}`);
   if (extras.script) out = out.replace(/<\/body>/i, `<script src="/app-shell.js" defer${extras.script.nonce ? ` nonce="${esc(extras.script.nonce)}"` : ''}></script></body>`);
   return out;
 }
@@ -151,7 +118,7 @@ export function shellScriptPermission(csp) {
   return /'self'/.test(script) ? {nonce: ''} : null;
 }
 
-export function attachShell(response, pathname, env = process.env, nextSteps = null, activity = null) {
+export function attachShell(response, pathname, env = process.env, { withScript = false } = {}) {
   const writeHead = response.writeHead.bind(response), write = response.write.bind(response), end = response.end.bind(response);
   let pending = null, passthrough = false;
   const flush = () => { if (pending) { const p = pending; pending = null; writeHead(...p); } };
@@ -173,7 +140,7 @@ export function attachShell(response, pathname, env = process.env, nextSteps = n
       const text = Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk);
       const cspKeyIn = headerKey(headers, 'content-security-policy');
       const script = shellScriptPermission(cspKeyIn ? headers[cspKeyIn] : response.getHeader('content-security-policy'));
-      const out = injectShell(text, pathname, env, nextSteps, {activity, script: activity ? script : null});
+      const out = injectShell(text, pathname, env, { script: withScript ? script : null });
       if (out === text) return original();
       const lenKey = headerKey(headers, 'content-length');
       if (lenKey) headers[lenKey] = Buffer.byteLength(out);

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createActivityLog, STALE_MS} from '../../src/application/activity-log.js';
-import {renderActivityPill, shellScriptPermission, injectShell} from '../../src/interfaces/http/app-shell.js';
+import {shellScriptPermission, injectShell} from '../../src/interfaces/http/app-shell.js';
 import {createEmailDomainResolutionService} from '../../src/application/email-domain-resolution-service.js';
 
 test('a slow task is amber while running, green when finished until seen, red when it fails', () => {
@@ -27,21 +27,14 @@ test('a slow task is amber while running, green when finished until seen, red wh
   assert.deepEqual([stale.state, stale.level, stale.label], ['failed', 'red', 'Finding email domain was interrupted']);
 });
 
-test('the pill text says what happened, and is an empty placeholder when nothing is going on', () => {
-  assert.match(renderActivityPill(null), /data-activity-pill data-activity-state="none" href="\/next-steps">.*Activity: nothing running/);
-  const pill = renderActivityPill({items: [{id: 'a1', state: 'done', level: 'green', label: 'Letter polished', name: 'EY', error: ''}, {id: 'a2', state: 'failed', level: 'red', label: 'x', name: '', error: ''}]});
-  assert.match(pill, /data-activity-state="done" data-next-level="green" href="\/activity\/open\?id=a1"/);
-  assert.match(pill, /Letter polished: EY ✓ \(click to see it\) \(\+1 more\)/);
-});
-
 test("the bar's script runs only where the page's own policy allows it, using the page's nonce", () => {
   assert.deepEqual(shellScriptPermission("default-src 'self'; script-src 'nonce-abc123'"), {nonce: 'abc123'});
   assert.deepEqual(shellScriptPermission("default-src 'none'; script-src 'self'"), {nonce: ''});
   assert.equal(shellScriptPermission("default-src 'none'; style-src 'unsafe-inline'"), null);
   assert.deepEqual(shellScriptPermission(''), {nonce: ''});
   const page = '<!doctype html><html><head><title>x</title></head><body>hi</body></html>';
-  assert.match(injectShell(page, '/', {}, null, {activity: () => null, script: {nonce: 'abc123'}}), /<script src="\/app-shell.js" defer nonce="abc123"><\/script><\/body>/);
-  assert.doesNotMatch(injectShell(page, '/', {}, null, {activity: () => null, script: null}), /app-shell.js/);
+  assert.match(injectShell(page, '/', {}, {script: {nonce: 'abc123'}}), /<script src="\/app-shell.js" defer nonce="abc123"><\/script><\/body>/);
+  assert.doesNotMatch(injectShell(page, '/', {}, {script: null}), /app-shell.js/);
 });
 
 test('a domain lookup is recorded as running, then found or failed', async () => {
