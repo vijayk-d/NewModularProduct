@@ -76,6 +76,8 @@ test('a salary question is ticked for you; your answer and own message go to the
   await page.goto(app.url + '/applications/r1');
   const section = page.locator('#recruiter-reply');
   await section.getByRole('heading', {name: 'Reply assistant'}).click();
+  // Opening the panel searches Gmail by itself; let that finish so it cannot replace the pasted text.
+  await expect(section.locator('[data-reply-gmail]')).toContainText('Found 1 reply');
   await section.getByLabel('Their reply').fill('Thanks for getting in touch. Before I share your profile, what are your salary expectations and notice period?');
   const topics = section.getByRole('group', {name: 'What they asked about'});
   await expect(topics.locator('[data-topic="salary"]')).toBeChecked();

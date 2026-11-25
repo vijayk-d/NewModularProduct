@@ -33,3 +33,25 @@ test('record an outcome with a date and note, see it on the saved list, and remo
   await page.locator('#application-outcome').getByRole('button', {name: 'Click again to remove'}).click();
   await expect(page.locator('#application-outcome [data-outcome-current]')).toHaveText('No outcome recorded yet.');
 });
+
+test('email opens are read from tracker alerts in Gmail and shown per contact on the Outcome section', async ({page}) => {
+  const sent = [{id: 's1', reviewId: 'r1', status: 'sent', email: 'sam@agency.test', fullName: 'Sam Recruiter', subject: 'Application: Delivery Manager', sentAt: '2026-11-20T10:00:00Z'}];
+  const reads = [];
+  const server = createLocalServer({applicationReviewStore: reviewFixture(), insightsStore: createApplicationInsightsStore({filePath: ':memory:'}),
+    gmailTrackingReader: async args => { reads.push(args); return {ok: true, alerts: [{messageId: 'a1', internalDate: Date.parse('2026-11-22T08:00:00Z'), subject: 'Email opened', text: 'sam@agency.test opened your email'}]}; },
+    recruiterContactStore: {async listAll() { return []; }, async listByReview() { return []; }}, outreachRepository: {list: () => [], listDraftOperations: () => [], listSendAttempts: () => [], listSentEmails: () => sent}});
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  try {
+    await page.goto('http://127.0.0.1:' + server.address().port + '/applications/r1');
+    const section = page.locator('#application-outcome');
+    await expect(section.locator('[data-email-opens]')).toHaveText('Not checked yet.');
+    expect(reads.length).toBe(0);
+    await section.getByRole('button', {name: 'Check email opens (read-only)'}).click();
+    await expect(section.locator('[data-email-opens]')).toContainText('Opened once; latest 22 Nov.');
+    await expect(section.locator('[data-email-opens]')).toContainText('1 new alert read.');
+    await expect(section.locator('[data-email-opens-contacts]')).toContainText('Sam Recruiter: opened once, latest 22 Nov');
+    await page.reload();
+    await expect(section.locator('[data-email-opens]')).toContainText('Opened once', {timeout: 5000});
+    expect(reads.length).toBe(1);
+  } finally { server.closeAllConnections(); await new Promise(r => server.close(r)); }
+});
