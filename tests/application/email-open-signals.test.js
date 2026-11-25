@@ -8,48 +8,63 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 
 const T = iso => Date.parse(iso);
-const SENT = [
-  {id: 's1', reviewId: 'r1', status: 'sent', email: 'sam@agency.test', fullName: 'Sam Recruiter', subject: 'Application: Senior Delivery Manager', sentAt: '2026-11-20T10:00:00Z'},
-  {id: 's2', reviewId: 'r1', status: 'sent', email: 'jo@client.test', fullName: 'Jo Lead', subject: 'Application: Senior Delivery Manager', sentAt: '2026-11-20T10:05:00Z'},
-  {id: 's3', reviewId: 'r2', status: 'sent', email: 'kim@other.test', fullName: 'Kim', subject: 'Interest in the Programme Manager role', sentAt: '2026-11-21T09:00:00Z'}];
-const alert = (id, iso, subject, text) => ({messageId: id, internalDate: T(iso), subject, text});
+const SUBJECT = '_Application for Lead Delivery Manager | LinkedIn (Ref: 123) | Test Candidate';
+// Shaped like a real Mailsuite daily report (names and addresses made up).
+const REPORT = ['Mailsuite', 'Mailsuite Daily Report', 'Nov 24, 2026', 'View Full Report', '✔✔ Opened emails (1)',
+  'RE: ' + SUBJECT, 'Sent on Nov 24, 2026 at 7:53 PM', 'To: ann.lead@client.test', '',
+  'Unopened emails (2)', SUBJECT, 'Sent on Nov 24, 2026 at 8:42 PM', 'To: bob.hire@client.test', '',
+  SUBJECT, 'Sent on Nov 24, 2026 at 8:58 PM', 'To: cat.manager@client.test', '', 'Unsubscribe from daily reports'].join('\n');
+const report = (id, iso, text = REPORT) => ({messageId: id, internalDate: T(iso), subject: 'Mailsuite Daily Report Nov 24, 2026: 3 emails tracked', text});
+const QUEUED = [
+  {reviewId: 'r1', email: 'ann.lead@client.test', fullName: 'Ann Lead', subject: SUBJECT, createdAt: '2026-11-24T09:00:00Z'},
+  {reviewId: 'r1', email: 'bob.hire@client.test', fullName: 'Bob Hire', subject: SUBJECT, createdAt: '2026-11-24T09:00:00Z'},
+  {reviewId: 'r1', email: 'cat.manager@client.test', fullName: 'Cat Manager', subject: SUBJECT, createdAt: '2026-11-24T09:00:00Z'}];
+const people = QUEUED.map(q => ({...q, at: T(q.createdAt)}));
 
-test('alerts are read for what happened and who, never the tracker itself', () => {
+test('a daily report is read section by section: "Unopened" is never counted as opened', () => {
+  const p = parseAlert(report('d1', '2026-11-25T07:15:00Z'));
+  assert.equal(p.report, true);
+  assert.deepEqual(p.entries.map(e => [e.address, e.kind]), [['ann.lead@client.test', 'opened'], ['bob.hire@client.test', 'unopened'], ['cat.manager@client.test', 'unopened']]);
+  assert.match(p.entries[1].words, /lead delivery manager/);
+  const onlyUnopened = parseAlert(report('d2', '2026-11-25T07:15:00Z', REPORT.replace('✔✔ Opened emails (1)', 'Unopened emails (1)')));
+  assert.deepEqual(onlyUnopened.entries.map(e => e.kind), ['unopened', 'unopened', 'unopened']);
+  assert.equal(parseAlert({messageId: 'x', subject: 'Mailsuite Daily Report', text: 'help@mailsuite.com opened'}).entries.length, 0, 'the tracker itself and loose words in a report count for nothing');
+});
+
+test('single alerts still work, and promotions are ignored', () => {
   assert.equal(alertKind({subject: 'Your email was opened'}), 'opened');
   assert.equal(alertKind({text: 'Sam clicked a link in your email'}), 'clicked');
-  assert.equal(alertKind({subject: 'Upgrade to Mailsuite Pro'}), 'other');
-  const p = parseAlert(alert('a', '2026-11-22T08:00:00Z', 'Opened: Application: Senior Delivery Manager', 'sam@agency.test opened your email. Manage alerts: help@mailsuite.com'));
-  assert.deepEqual([p.id, p.kind, p.addresses], ['a', 'opened', ['sam@agency.test']]);
+  assert.deepEqual(parseAlert({messageId: 'a', internalDate: 1, subject: 'Opened: ' + SUBJECT, text: 'bob.hire@client.test opened your email'}).entries.map(e => [e.address, e.kind]), [['bob.hire@client.test', 'opened']]);
+  assert.deepEqual(parseAlert({messageId: 'b', subject: 'Upgrade to Mailsuite Pro', text: 'Offer for you@example.test'}).entries, []);
 });
 
-test('opens are matched by address first, then by subject, and only after the email was sent', () => {
-  const alerts = [
-    alert('a1', '2026-11-22T08:00:00Z', 'Email opened', 'sam@agency.test opened "Application: Senior Delivery Manager"'),
-    alert('a2', '2026-11-23T08:00:00Z', 'Email opened', 'Your email "Application: Senior Delivery Manager" was opened'),
-    alert('a3', '2026-11-23T09:00:00Z', 'Link clicked', 'Kim clicked a link in "Interest in the Programme Manager role"'),
-    alert('a4', '2026-11-19T09:00:00Z', 'Email opened', 'sam@agency.test opened an email'),
-    alert('a5', '2026-11-24T09:00:00Z', 'Weekly tips', 'Mailsuite news')].map(parseAlert);
-  const out = openSignalsByReview(alerts, SENT);
-  assert.deepEqual([out.r1.opens, out.r1.clicks, out.r1.lastAt], [2, 0, T('2026-11-23T08:00:00Z')], 'a4 came before the email was sent');
-  assert.deepEqual(out.r1.contacts.map(c => [c.email, c.opens]), [['sam@agency.test', 1]], 'a subject shared by two contacts counts for the application only');
-  assert.deepEqual([out.r2.opens, out.r2.clicks, out.r2.contacts[0].name], [0, 1, 'Kim']);
+test('entries are matched to the application through its contacts, furthest state wins, the subject picks between applications', () => {
+  const later = report('d3', '2026-11-26T07:15:00Z', REPORT.replace('Unopened emails (2)', 'Opened emails (2)'));
+  const out = openSignalsByReview([parseAlert(report('d1', '2026-11-25T07:15:00Z')), parseAlert(later)], people);
+  assert.deepEqual(out.r1.contacts.map(c => [c.email, c.state, c.opens]), [['ann.lead@client.test', 'opened', 2], ['bob.hire@client.test', 'opened', 1], ['cat.manager@client.test', 'opened', 1]]);
+  assert.equal(out.r1.tracked, 3);
+  const firstOnly = openSignalsByReview([parseAlert(report('d1', '2026-11-25T07:15:00Z'))], people);
+  assert.deepEqual(firstOnly.r1.contacts.map(c => c.state), ['opened', 'unopened', 'unopened']);
+  // Bob is a contact on two applications: the subject in the report decides which one.
+  const two = [...people, {reviewId: 'r9', email: 'bob.hire@client.test', fullName: 'Bob Hire', subject: 'Interest in the Programme Manager role', at: T('2026-11-20T09:00:00Z')}];
+  const split = openSignalsByReview([parseAlert(report('d1', '2026-11-25T07:15:00Z'))], two);
+  assert.equal(split.r9, undefined);
+  assert.equal(openSignalsByReview([parseAlert(report('d0', '2026-11-20T07:00:00Z'))], people).r1, undefined, 'a report from before the contact was queued counts for nothing');
 });
 
-test('a check reads only alerts since the last one, keeps short copies and recounts; switched off is refused', async () => {
+test('a check reads only alerts since the last one, uses queued contacts, and re-reads alerts saved by the first version', async () => {
   const store = createMemoryEmailOpenSignalsStore(), reads = [];
-  let alerts = [alert('a1', '2026-11-22T08:00:00Z', 'Email opened', 'sam@agency.test opened your email')];
-  const s = createEmailOpenService({store, mailbox: 'me@example.test', now: () => T('2026-11-25T12:00:00Z'), sentEmails: () => SENT,
+  store.write({checkedAt: 'old', lastAlertAt: T('2026-11-25T00:00:00Z'), alerts: [{id: 'old', at: 1, kind: 'opened', addresses: [], words: ''}]});
+  let alerts = [report('d1', '2026-11-25T07:15:00Z')];
+  const s = createEmailOpenService({store, mailbox: 'me@example.test', now: () => T('2026-11-26T12:00:00Z'), sentEmails: () => [], queueItems: () => QUEUED,
     readAlerts: async args => { reads.push(args); return {ok: true, alerts}; }});
-  assert.deepEqual(s.forReview('r1'), {available: true, checkedAt: null, alertsKept: 0, review: null});
   const first = await s.check('r1');
-  assert.deepEqual([reads[0].after, reads[0].expectedAddress, first.newAlerts, first.review.opens], ['2026/11/19', 'me@example.test', 1, 1]);
-  assert.equal(store.read().alerts[0].words.length <= 2000, true);
-  alerts = [...alerts, alert('a2', '2026-11-24T08:00:00Z', 'Email opened', 'sam@agency.test opened your email again')];
+  assert.deepEqual([reads[0].after, reads[0].expectedAddress, first.newAlerts, first.review.tracked], ['2026/11/23', 'me@example.test', 1, 3]);
+  alerts = [...alerts, report('d3', '2026-11-26T07:15:00Z', REPORT.replace('Unopened emails (2)', 'Opened emails (2)'))];
   const second = await s.check('r1');
-  assert.deepEqual([reads[1].after, second.newAlerts, second.review.opens], ['2026/11/20', 1, 2]);
+  assert.deepEqual([reads[1].after, second.newAlerts, second.review.contacts.every(c => c.state === 'opened')], ['2026/11/23', 1, true]);
   await assert.rejects(createEmailOpenService({store}).check('r1'), /Gmail switched on/);
-  const scope = createEmailOpenService({store, readAlerts: async () => ({ok: false, code: 'SCOPE_MISSING', error: 'x'})});
-  await assert.rejects(scope.check('r1'), /Gmail read access: add/);
+  await assert.rejects(createEmailOpenService({store, readAlerts: async () => ({ok: false, code: 'SCOPE_MISSING', error: 'x'})}).check('r1'), /Gmail read access: add/);
 });
 
 test('the counts live in their own file in the state folder', () => {

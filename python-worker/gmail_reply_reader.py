@@ -39,7 +39,7 @@ def _parts(payload):
 
 def _html_to_text(value):
     value = re.sub(r'(?is)<(script|style).*?</\1>', '', value)
-    value = re.sub(r'(?i)<br\s*/?>|</p>|</div>|</li>', '\n', value)
+    value = re.sub(r'(?i)<br\s*/?>|</p>|</div>|</li>|</td>|</tr>|</table>|</h[1-6]>', '\n', value)
     value = re.sub(r'<[^>]+>', '', value)
     return html.unescape(value)
 

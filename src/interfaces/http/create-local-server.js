@@ -513,7 +513,7 @@ export function createLocalServer({
   const handleLetterGate=createLetterGateHandler({reviewStore,sendJson,sendText});
   const handleInsights=createInsightsHandler({snapshot:insightsSnapshot,learning:evidenceLearning,sendJson,sendHtml});
   // Email opens from your tracker's alert emails (read-only, free); counts saved in their own file.
-  const emailOpenService=createEmailOpenService({store:emailOpenSignalsStore||createMemoryEmailOpenSignalsStore(),sentEmails:()=>outreachRepository?.listSentEmails?.()||[],mailbox:String(process.env.GMAIL_FROM_ADDRESS||'').trim(),
+  const emailOpenService=createEmailOpenService({store:emailOpenSignalsStore||createMemoryEmailOpenSignalsStore(),sentEmails:()=>outreachRepository?.listSentEmails?.()||[],queueItems:()=>outreachRepository?.list?.()||[],mailbox:String(process.env.GMAIL_FROM_ADDRESS||'').trim(),
     readAlerts:gmailTrackingReader!==undefined?gmailTrackingReader:(gmailReplyReadingEnabled()?args=>readTrackingAlerts(args):null)});
   const handleEmailOpens=createEmailOpensHandler({service:emailOpenService,getReview:id=>reviewStore.get(id),sendJson});
   const handleOutcomes=createApplicationOutcomesHandler({store:insightsStore,getReview:id=>reviewStore.get(id),sendJson,sendText,onChange:()=>insightsSnapshot?.schedule()});
