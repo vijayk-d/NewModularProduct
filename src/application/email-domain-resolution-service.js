@@ -27,6 +27,7 @@ function generateCandidates(contacts, domain) {
 export function createEmailDomainResolutionService({
   perplexityClient,
   recruiterContactStore,
+  activity = null,
   store = createEmailDomainStore()
 }) {
   const jobs = new Map();
@@ -41,16 +42,22 @@ export function createEmailDomainResolutionService({
       startedAt: new Date().toISOString()
     });
 
+    // The bar shows this lookup as running, then found or failed (see activity-log.js).
+    let activityId = null;
+    try { activityId = activity?.start({ kind: "domain", reviewId }) || null; } catch {}
     processJob({
       jobId,
       reviewId,
       organisation
+    }).then(() => {
+      try { activity?.finish(activityId); } catch {}
     }).catch((error) => {
       jobs.set(jobId, {
         ...jobs.get(jobId),
         status: "failed",
         error: error.message
       });
+      try { activity?.fail(activityId, error.message); } catch {}
     });
 
     return jobs.get(jobId);

@@ -72,6 +72,10 @@ import { sendText, sendHtml, sendJson } from './responses.js';
 import { createServer } from 'node:http';
 import { readFileSync as readShellFile } from 'node:fs';
 import { attachShell } from './app-shell.js';
+import { createNextStepsService } from "../../application/next-steps.js";
+import { createActivityLog } from "../../application/activity-log.js";
+import { createActivityHandler } from "./activity-http.js";
+import { createNextStepsHandler } from "./next-steps-http.js";
 const APP_SHELL_CSS = readShellFile(new URL('./app-shell.css', import.meta.url), 'utf8');
 import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { acceptRefinedCoverLetter } from '../../application/accept-refined-cover-letter.js';
@@ -246,6 +250,7 @@ export function createLocalServer({
   advertRequirementsStore = null,
   gmailReplyReader = undefined,
   gmailTrackingReader = undefined,
+  activityLog: injectedActivityLog = null,
   emailOpenSignalsStore = null,
   gmailReplyDrafter = undefined,
   replyThreadsStore = null,
@@ -304,9 +309,12 @@ export function createLocalServer({
     apiKey: process.env.PERPLEXITY_API_KEY
   });
 
+  // Slow tasks shown on the bar while running and when finished (activity indicator).
+  const activityLog = injectedActivityLog || createActivityLog({nameFor: id => { const f = reviewStore.get(id)?.formData || {}; return [f.organisationName, f.jobTitle].filter(Boolean).join(' · '); }});
   const emailDomainResolutionService = createEmailDomainResolutionService({
     perplexityClient,
     recruiterContactStore,
+    activity: activityLog,
     ...(emailDomainStore ? {store: emailDomainStore} : {})
   });
   // A domain newly found by research replaces the saved one, so the page and the browser copy show the new domain.
@@ -516,6 +524,10 @@ export function createLocalServer({
   const emailOpenService=createEmailOpenService({store:emailOpenSignalsStore||createMemoryEmailOpenSignalsStore(),sentEmails:()=>outreachRepository?.listSentEmails?.()||[],queueItems:()=>outreachRepository?.list?.()||[],mailbox:String(process.env.GMAIL_FROM_ADDRESS||'').trim(),
     readAlerts:gmailTrackingReader!==undefined?gmailTrackingReader:(gmailReplyReadingEnabled()?args=>readTrackingAlerts(args):null)});
   const handleEmailOpens=createEmailOpensHandler({service:emailOpenService,getReview:id=>reviewStore.get(id),sendJson});
+  // Next-step indicator (Green / Amber / Red): read-only, from what the app already stores; cached for a few seconds.
+  const nextStepsService=createNextStepsService({reviews:reviewStore,queueItems:()=>outreachRepository?.list?.()||[],sentEmails:()=>outreachRepository?.listSentEmails?.()||[],replyStore:replyThreadsStore,outcomes:insightsStore});
+  const handleNextSteps=createNextStepsHandler({service:nextStepsService,sendHtml,sendJson});
+  const handleActivity=createActivityHandler({log:activityLog,sendJson,sendText});
   const handleOutcomes=createApplicationOutcomesHandler({store:insightsStore,getReview:id=>reviewStore.get(id),sendJson,sendText,onChange:()=>insightsSnapshot?.schedule()});
   const handleCvTailoring=createCvTailoringHandler({service:cvTailoringService,getReview:id=>reviewStore.get(id),sendJson,sendText,candidateName:candidateDisplayName,outputFolder:applicationOutputFolder});
   const handleCvDocument=createCvDocumentHandler({store:reviewStore,inventory:cvInventoryRepository,adapter:cvDocumentAdapter});
@@ -543,7 +555,10 @@ export function createLocalServer({
     const method = request.method || 'GET';
     const url = new URL(request.url || '/', 'http://localhost');
     if(method==='GET'&&url.pathname==='/app-shell.css'){response.writeHead(200,{'content-type':'text/css; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'});response.end(APP_SHELL_CSS);return;}
-    attachShell(response,url.pathname);
+    if(method!=='GET')nextStepsService.refresh();
+    if (await handleActivity(request,response,url)) return;
+    attachShell(response,url.pathname,process.env,()=>nextStepsService.all(),()=>activityLog.summary());
+    if (await handleNextSteps(request,response,url)) return;
     if(method==='GET'&&url.pathname==='/healthz'){sendJson(response,200,{ok:true,service:'NewModularProduct',environment:process.env.NMP_ENV||'development',release:process.env.NMP_RELEASE_COMMIT||'development'});return;}
     if(await handleWritingReferences(request,response,url))return;
     if(await handleCoverReferences(request,response,url))return;
@@ -1335,6 +1350,7 @@ export function createLocalServer({
       let letterLengthMode=review.letterLengthMode||'standard';
       let rejectedRefinementProposal=review.rejectedRefinementProposal||null;
 
+      const polishActivity = activityLog.start({kind: 'polish', reviewId});
       writeDiagnostic('refinement_provider_requested', {
         requestId,
         reviewId,
@@ -1411,6 +1427,7 @@ export function createLocalServer({
         if(error.code==='REFINEMENT_LENGTH_EXCEEDED'){rejectedRefinementProposal=error.rejectedProposal||{...refinementProposal,letterLengthMode,quality:error.quality,lengthCheckFailed:true,warnings:[error.message]};rejectedRefinementProposal={...rejectedRefinementProposal,attemptMetadata:error.attemptMetadata||null};}
         writeDiagnostic('refinement_failed', { requestId, reviewId,
           ...describeRefinementFailure(error) });
+        activityLog.fail(polishActivity, describeRefinementFailure(error).errorCode);
         refinementLastAttempt = error.attemptMetadata || buildPolishingAttempt({requestModel:error.code === 'REFINEMENT_MODEL_INVALID' ? null : polishingModel,
           durationMs:Date.now()-actionStartedAt,tone:letterTone,
           webSearchEnabled:formBody.values.has('webSearchEnabled') ? formBody.values.getAll('webSearchEnabled').includes('true') : true,
@@ -1444,6 +1461,7 @@ export function createLocalServer({
         refinementProposal
       });
 
+      activityLog.finish(polishActivity);
       await renderReview(200, refinementProposal);
       return;
     }
