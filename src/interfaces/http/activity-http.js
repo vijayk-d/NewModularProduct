@@ -1,9 +1,6 @@
 // Activity indicator routes: the pill's refresh script, its current state, and "open" (marks it seen, then goes to the
 // result). Local and read-only apart from marking seen.
 import {readFile} from 'node:fs/promises';
-import {renderActivityPill} from './app-shell.js';
-
-const APPLICATION = /^\/applications\/([A-Za-z0-9_-]{1,100})$/;
 
 export function createActivityHandler({log, sendJson, sendText, getReview = null}) {
   return async (req, res, url) => {
@@ -28,7 +25,7 @@ export function createActivityHandler({log, sendJson, sendText, getReview = null
     }
     if (url.pathname === '/api/activity') {
       const summary = log.summary();
-      sendJson(res, 200, {ok: true, ...summary, html: renderActivityPill(summary)});
+      sendJson(res, 200, {ok: true, ...summary});
       return true;
     }
     if (url.pathname === '/activity/open') {
@@ -38,9 +35,7 @@ export function createActivityHandler({log, sendJson, sendText, getReview = null
       res.end();
       return true;
     }
-    // Opening an application means you have seen what finished there; the page itself is served as usual.
-    const m = APPLICATION.exec(url.pathname);
-    if (m) log.markSeen({reviewId: m[1]});
+    // A finished task stays lit on its section of the rail until you click that section (or try the task again).
     return false;
   };
 }

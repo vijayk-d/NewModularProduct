@@ -557,7 +557,7 @@ export function createLocalServer({
     if(method==='GET'&&url.pathname==='/app-shell.css'){response.writeHead(200,{'content-type':'text/css; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'});response.end(APP_SHELL_CSS);return;}
     if(method!=='GET')nextStepsService.refresh();
     if (await handleActivity(request,response,url)) return;
-    attachShell(response,url.pathname,process.env,()=>nextStepsService.all(),()=>activityLog.summary());
+    attachShell(response,url.pathname,process.env,{withScript:true});
     if (await handleNextSteps(request,response,url)) return;
     if(method==='GET'&&url.pathname==='/healthz'){sendJson(response,200,{ok:true,service:'NewModularProduct',environment:process.env.NMP_ENV||'development',release:process.env.NMP_RELEASE_COMMIT||'development'});return;}
     if(await handleWritingReferences(request,response,url))return;

@@ -52,15 +52,12 @@ test('the service reads every store, skips any that fails, and caches briefly', 
   assert.equal(createNextStepsService({reviews: {}}).all().label, 'All clear');
 });
 
-test('the bar shows the pill on every page and the strip only on that application', () => {
-  const next = summariseNextSteps([{reviewId: 'r1', name: 'Valtech', level: 'red', action: "Answer Sam's reply", href: '/applications/r1#recruiter-reply', why: 'A recruiter replied.'}]);
-  const bar = renderShell('/applications/r1', {NMP_ENV: 'development'}, next);
-  assert.match(bar, /class="nmp-shell__link nmp-shell__next" data-next-level="red" href="\/next-steps"/);
-  assert.match(bar, /Next steps: 1 urgent \(act now\)/);
-  assert.match(bar, /data-next-strip data-next-level="red".*Answer Sam&#39;s reply.*href="\/applications\/r1#recruiter-reply"/);
-  assert.doesNotMatch(renderShell('/applications/r2', {}, next), /data-next-strip/);
-  assert.doesNotMatch(renderShell('/', {}, null), /nmp-shell__next/);
+test('the top bar carries navigation only; the Next steps page lists every application by colour', () => {
+  const bar = renderShell('/applications/r1', {NMP_ENV: 'development'});
+  assert.match(bar, /href="\/next-steps" title="Next steps"/);
+  assert.doesNotMatch(bar, /data-next-level|data-activity|nmp-next-strip/, 'no status on the top bar, so it never grows');
   const page = '<!doctype html><html><head><title>x</title></head><body>hi</body></html>';
-  assert.match(injectShell(page, '/', {}, () => { throw new Error('store down'); }), /<header class="nmp-shell/, 'a failing indicator never breaks a page');
+  assert.match(injectShell(page, '/', {}), /<header class="nmp-shell"/);
+  const next = summariseNextSteps([{reviewId: 'r1', name: 'Valtech', level: 'red', action: "Answer Sam's reply", href: '/applications/r1#recruiter-reply', why: 'A recruiter replied.'}]);
   assert.match(renderNextStepsPage(next), /<h2>Act now \(1\)<\/h2>.*Answer Sam&#39;s reply/s);
 });
