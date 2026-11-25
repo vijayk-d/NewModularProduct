@@ -1,7 +1,7 @@
 // Reply assistant routes. Local same-origin only; only "write" makes a paid call, after a confirmed estimate. Nothing is sent by email.
 import {readFile} from 'node:fs/promises';
 
-const ROUTE = /^\/api\/reviews\/([A-Za-z0-9_-]{1,100})\/reply(?:\/(estimate|write|fetch|save|gmail-draft))?$/;
+const ROUTE = /^\/api\/reviews\/([A-Za-z0-9_-]{1,100})\/reply(?:\/(estimate|write|fetch|save|gmail-draft|topics))?$/;
 
 async function jsonBody(req) {
   if (!String(req.headers['content-type'] || '').startsWith('application/json')) throw Object.assign(new Error('JSON required.'), {statusCode: 415});

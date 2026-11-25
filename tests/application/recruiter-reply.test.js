@@ -13,7 +13,7 @@ function fakeWriter(reply = 'Hello Sam,\n\nThank you. I have applied online.\n\n
 const body = (extra = {}) => ({theirMessage: theirs, applicationStatus: 'applied', recipientName: 'Sam', ownerNote: '', ...extra});
 
 test('reply requests are checked before anything is estimated or sent', () => {
-  assert.deepEqual(Object.keys(REPLY_STATUSES), ['applied', 'will-apply', 'not-yet']);
+  assert.deepEqual(Object.keys(REPLY_STATUSES), ['applied', 'will-apply', 'not-yet', 'none']);
   for (const [delta, message] of [[{theirMessage: ''}, /required/], [{theirMessage: 'Too short'}, /too short/], [{theirMessage: 'x'.repeat(8001)}, /too long/], [{applicationStatus: 'maybe'}, /online application stands/], [{recipientName: 'x'.repeat(81)}, /too long/]])
     assert.throws(() => validateReplyRequest(body(delta)), message);
   assert.equal(validateReplyRequest(body({ownerNote: '  applied on Monday \r\n'})).ownerNote, 'applied on Monday');

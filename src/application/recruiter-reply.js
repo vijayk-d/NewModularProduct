@@ -5,11 +5,13 @@ import {createHash} from 'node:crypto';
 import {checkAnswer} from '../domain/questions/answer-policy.js';
 import {DEFAULT_POLISHING_MODEL, normalizePolishingModel} from './polishing-model-catalog.js';
 import {estimatePolishingApiRequest} from './polishing-cost-estimator.js';
+import {RESPONSE_TOPICS, topicById, responsePatterns, detectTopics} from '../domain/replies/recruiter-response-topics.js';
 
 export const REPLY_STATUSES = Object.freeze({
   applied: 'I have already applied online',
   'will-apply': 'I will complete the online application today',
-  'not-yet': 'I have not applied online yet; ask how they prefer to receive it'
+  'not-yet': 'I have not applied online yet; ask how they prefer to receive it',
+  none: 'Not part of this reply (do not mention the online application)'
 });
 const OFF = 'Writing replies with AI is off. It uses the same setting as letter polishing: ENABLE_COVER_LETTER_REFINEMENT=true and PERPLEXITY_API_KEY in .env, then restart.';
 const fail = (message, statusCode = 400, code = 'REPLY_BLOCKED') => { throw Object.assign(new Error(message), {statusCode, code}); };
@@ -38,7 +40,21 @@ export function validateReplyRequest(body = {}) {
   const status = String(body.applicationStatus || '');
   if (!REPLY_STATUSES[status]) fail('Choose where your online application stands.');
   return {theirMessage: text(body.theirMessage, 8000, 'Their message', {required: true, min: 20}), applicationStatus: status,
-    recipientName: text(body.recipientName, 80, 'Their name'), ownerNote: text(body.ownerNote, 1000, 'Your note')};
+    recipientName: text(body.recipientName, 80, 'Their name'), ownerNote: text(body.ownerNote, 2000, 'Your own message'), topics: replyTopics(body.topics)};
+}
+
+// The points to answer: known topics only, once each, with your answer to each (blank: say you will confirm).
+export function replyTopics(value) {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) fail('Topics must be a list.');
+  const seen = new Set(), out = [];
+  for (const t of value.slice(0, RESPONSE_TOPICS.length)) {
+    const topic = topicById(String(t?.id || ''));
+    if (!topic || seen.has(topic.id)) continue;
+    seen.add(topic.id);
+    out.push({id: topic.id, answer: text(t.answer, 300, `Your answer about ${topic.label.toLowerCase()}`)});
+  }
+  return out;
 }
 
 // sentEmails(reviewId): the confirmed sends for this application; replyReader: read-only Gmail thread reader (optional).
@@ -59,7 +75,7 @@ export function createRecruiterReplyService({reviews, evidence = async () => [],
   async function target(reviewId, body) {
     if (!writer || typeof writer.buildRequest !== 'function') fail(OFF, 503, 'REPLY_DISABLED');
     const r = review(reviewId), v = validateReplyRequest(body), ev = await evidence(reviewId), form = r.formData || {};
-    const request = {...v, applicationStatusText: REPLY_STATUSES[v.applicationStatus], candidateName: String(candidateName || ''),
+    const request = {...v, applicationStatusText: REPLY_STATUSES[v.applicationStatus], topics: v.topics.map(t => ({topic: topicById(t.id).label, yourAnswer: t.answer})), candidateName: String(candidateName || ''),
       jobTitle: String(form.jobTitle || ''), organisationName: String(form.organisationName || ''), evidence: ev.slice(0, 40)};
     const model = normalizePolishingModel(body.model || r.polishingModel || DEFAULT_POLISHING_MODEL);
     const apiBody = writer.buildRequest(request, model);
@@ -70,8 +86,12 @@ export function createRecruiterReplyService({reviews, evidence = async () => [],
     async overview(reviewId) {
       review(reviewId); const ev = await evidence(reviewId);
       const sent = sends(reviewId), {addresses} = contacts(reviewId, sent);
-      return {evidenceCount: ev.length, aiAvailable: Boolean(writer?.available), statuses: REPLY_STATUSES, gmailReadAvailable: Boolean(replyReader), gmailDraftAvailable: Boolean(draftWriter && replyStore), savedReplies: replyStore ? replyStore.list(reviewId) : [], sentCount: sent.length, contactCount: addresses.length, contactAddresses: addresses};
+      let patterns = {total: 0, topics: []};
+      try { patterns = responsePatterns(replyStore?.allTexts ? replyStore.allTexts() : []); } catch {}
+      return {topics: RESPONSE_TOPICS.map(t => ({id: t.id, label: t.label, answer: t.answer})), patterns, evidenceCount: ev.length, aiAvailable: Boolean(writer?.available), statuses: REPLY_STATUSES, gmailReadAvailable: Boolean(replyReader), gmailDraftAvailable: Boolean(draftWriter && replyStore), savedReplies: replyStore ? replyStore.list(reviewId) : [], sentCount: sent.length, contactCount: addresses.length, contactAddresses: addresses};
     },
+    // Free and local: what their message is about (salary, notice, a call...), so the page can tick those topics.
+    topics(reviewId, body = {}) { review(reviewId); return {topics: detectTopics(String(body?.theirMessage ?? '').slice(0, 20000))}; },
     // Read-only: their replies in the Gmail threads of emails sent for this application, and recent messages from its contacts.
     // Saves the reply drafted for one of their messages (local only).
     saveDraft(reviewId, body = {}) {
