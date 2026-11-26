@@ -45,6 +45,7 @@ test('rewriting swaps both forms of each link, leaves others alone and adds the 
   assert.ok(!out.bodyPlainText.includes('linkedin.com') && !out.bodyHtml.includes('linkedin.com'));
   assert.ok(out.bodyPlainText.endsWith('\n\n' + LINK_TRACKING_FOOTNOTE));
   assert.ok(out.bodyHtml.endsWith(LINK_TRACKING_FOOTNOTE + '</p>'));
+  assert.ok(out.bodyHtml.includes('<p style="color:#9ca3af;font-size:11px;'), 'the footnote is quiet light grey but still readable, never hidden');
   assert.equal(out.subject, 'Application');
   const shown = rewriteTrackedLinks({bodyPlainText: 'x', bodyHtml: '<a href="' + ADVERT + '">' + ADVERT + '</a>'}, {advertKey: 'a-4123456789', urls});
   assert.equal(shown.bodyHtml, '<a href="' + BASE + '/c/A">' + BASE + '/c/A</a>', 'a link showing its own address shows the tracked one');
