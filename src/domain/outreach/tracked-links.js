@@ -6,7 +6,7 @@ import {advertLinkKey, targetFor} from './link-tokens.js';
 export const LINK_TRACKING_FOOTNOTE = 'The links above go through a simple click counter so I can see which ones are useful. Nothing else is tracked.';
 export const SIGNATURE_SEPARATOR = '\n-- \n';
 export const SIGNATURE_MARKER = '<!-- application-gmail-signature:v1 -->';
-const footnoteHtml = text => `<p style="color:#6b7280;font-size:12px;line-height:1.4;margin:12px 0 0">${String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`;
+const footnoteHtml = text => `<p style="color:#9ca3af;font-size:11px;line-height:1.4;margin:12px 0 0">${String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`;
 const URL_IN_TEXT = /https?:\/\/[^\s<>"'()\[\]]+/g;
 const HREF = /(<a\b[^>]*?\shref\s*=\s*)(["'])([^"']*)\2([^>]*>)([\s\S]*?)(<\/a>)/gi;
 
