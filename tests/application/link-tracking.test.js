@@ -164,3 +164,19 @@ test('a Gmail draft update compares and replaces the tracked letter, keeping the
   assert.ok(payload.bodyHtml.includes('href="' + tokenUrl + '"'));
   assert.equal(tracker.links().length, 2, 'no new ids for an update');
 });
+
+test('the footnote wording comes from .env, can be reworded but not removed, and stays plain text', async () => {
+  const own = 'I count clicks on these two links to see which are useful; nothing else is tracked & nothing is stored about you.';
+  const store = createMemoryLinkTrackingStore();
+  const out = await createLinkTracker({env: env({LINK_TRACKING_FOOTNOTE: '  ' + own + '  '}), store}).track(signedDraft(), item);
+  assert.ok(out.bodyPlainText.endsWith('\n\n' + own));
+  assert.ok(out.bodyHtml.endsWith(own.replace('&', '&amp;') + '</p>'), 'the wording is escaped in the formatted email');
+  assert.equal(linkTrackingSettings(env({LINK_TRACKING_FOOTNOTE: ''})).footnote, LINK_TRACKING_FOOTNOTE, 'blank means the default, never no footnote');
+  assert.match(LINK_TRACKING_FOOTNOTE, /click counter.*Nothing else is tracked\.$/);
+  for (const bad of ['Too short', 'See https://example.test for details about this', '<b>Counted</b> when clicked, nothing else', 'x'.repeat(241)]) {
+    const s = linkTrackingSettings(env({LINK_TRACKING_FOOTNOTE: bad}));
+    assert.equal(s.ready, false, bad);
+    assert.match(s.problems.join(' '), /LINK_TRACKING_FOOTNOTE/);
+  }
+  await assert.rejects(createLinkTracker({env: env({LINK_TRACKING_FOOTNOTE: 'Too short'}), store}).track(signedDraft(), {...item, id: 'q9'}), /LINK_TRACKING_FOOTNOTE/);
+});

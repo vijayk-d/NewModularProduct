@@ -57,7 +57,7 @@ test('link tracking: the prepared email has tracked links and the footnote, iden
  const p=await f.service.prepare({queueId:'q'});
  assert.ok(p.bodyPlainText.includes('Role details: https://jobapp-links.example.workers.dev/c/a-4123456789.'));
  assert.ok(p.bodyHtml.includes('href="https://jobapp-links.example.workers.dev/c/p.'));
- assert.ok(p.bodyPlainText.endsWith('No other tracking is used.'));
+ assert.ok(p.bodyPlainText.endsWith('Nothing else is tracked.'));
  assert.equal(store.read().links.length,2);
  const again=await f.service.prepare({queueId:'q'});assert.equal(again.contentHash,p.contentHash);assert.equal(again.bodyHtml,p.bodyHtml);assert.equal(store.read().links.length,2);
  assert.equal((await f.service.commit({ticket:p.ticket,confirmed:true})).sent,true);

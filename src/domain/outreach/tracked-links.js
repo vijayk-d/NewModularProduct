@@ -2,10 +2,11 @@
 // links, plus the disclosure footnote. Signing happens elsewhere: this module only swaps addresses it is given.
 import {advertLinkKey, targetFor} from './link-tokens.js';
 
-export const LINK_TRACKING_FOOTNOTE = 'Links in this email are counted when clicked so I know they were useful. No other tracking is used.';
+// The default disclosure line; LINK_TRACKING_FOOTNOTE in .env replaces it (checked in the application layer).
+export const LINK_TRACKING_FOOTNOTE = 'The links above go through a simple click counter so I can see which ones are useful. Nothing else is tracked.';
 export const SIGNATURE_SEPARATOR = '\n-- \n';
 export const SIGNATURE_MARKER = '<!-- application-gmail-signature:v1 -->';
-const FOOTNOTE_HTML = `<p style="color:#6b7280;font-size:12px;line-height:1.4;margin:12px 0 0">${LINK_TRACKING_FOOTNOTE}</p>`;
+const footnoteHtml = text => `<p style="color:#6b7280;font-size:12px;line-height:1.4;margin:12px 0 0">${String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`;
 const URL_IN_TEXT = /https?:\/\/[^\s<>"'()\[\]]+/g;
 const HREF = /(<a\b[^>]*?\shref\s*=\s*)(["'])([^"']*)\2([^>]*>)([\s\S]*?)(<\/a>)/gi;
 
@@ -64,8 +65,8 @@ export function splitMessage({bodyPlainText = '', bodyHtml = ''}) {
 }
 
 // Swaps each found link for urls[linkKey]. The advert is only swapped above the signature and the profile only in
-// the signature. With footnote, the disclosure line goes at the very end (below the signature).
-export function rewriteTrackedLinks(message, {advertKey = '', profileTarget = '', urls = {}, footnote = false, scope = 'all'} = {}) {
+// the signature. With footnote, the disclosure line (footnoteText, or the default) goes at the very end.
+export function rewriteTrackedLinks(message, {advertKey = '', profileTarget = '', urls = {}, footnote = false, footnoteText = LINK_TRACKING_FOOTNOTE, scope = 'all'} = {}) {
   const parts = splitMessage(message);
   const urlFor = key => urls[key];
   const inLetter = url => { const k = linkKeyForUrl(url, {advertKey}); return k && urls[k] ? k : ''; };
@@ -74,6 +75,6 @@ export function rewriteTrackedLinks(message, {advertKey = '', profileTarget = ''
   let signatureHtml = parts.signatureHtml, signaturePlain = parts.signaturePlain;
   if (scope === 'all') { signatureHtml = rewriteHtml(signatureHtml, inSignature, urlFor); signaturePlain = rewritePlain(signaturePlain, inSignature, urlFor); }
   let bodyPlainText = letterPlain + signaturePlain, bodyHtml = letterHtml + signatureHtml;
-  if (footnote) { bodyPlainText = bodyPlainText.trimEnd() + '\n\n' + LINK_TRACKING_FOOTNOTE; if (bodyHtml) bodyHtml = bodyHtml.trimEnd() + FOOTNOTE_HTML; }
+  if (footnote) { bodyPlainText = bodyPlainText.trimEnd() + '\n\n' + footnoteText; if (bodyHtml) bodyHtml = bodyHtml.trimEnd() + footnoteHtml(footnoteText); }
   return {...message, bodyPlainText, ...(message.bodyHtml === undefined ? {} : {bodyHtml})};
 }
