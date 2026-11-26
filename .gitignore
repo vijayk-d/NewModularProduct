@@ -77,3 +77,7 @@ __pycache__/
 
 # Claude Code personal overrides
 .claude/settings.local.json
+
+# Cloudflare wrangler local state (link-click tracker)
+/tools/link-tracker/.wrangler/
+/tools/link-tracker/.dev.vars
