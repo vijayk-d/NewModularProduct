@@ -1,5 +1,5 @@
 // Free, local check of the strong-fit paragraph in a polished letter. The AI does not reliably follow "do not repeat
-// the bullets", so after each polish this flags: a missing paragraph, figures or near-identical sentences reused from
+// the bullets", so after each polish this flags: a missing paragraph, figures or sentences repeated or retold from
 // the evidence bullets, and future-plan sentences. Warnings only: the letter is never changed here.
 const STOP = new Set(['about', 'across', 'after', 'also', 'among', 'and', 'been', 'being', 'both', 'from', 'have', 'into', 'more', 'that', 'than', 'their', 'them', 'then', 'there', 'these', 'they', 'this', 'through', 'were', 'what', 'when', 'where', 'which', 'while', 'with', 'within', 'would', 'your']);
 const FIGURE = /£\s?\d[\d,.]*\s?(?:k|m|bn|million|billion)?(?:\s?\/\s?(?:year|yr|annum))?|\$\s?\d[\d,.]*\s?(?:k|m|bn|million|billion)?|\d[\d,.]*\s?%|\b\d[\d,]*\+/gi;
@@ -23,6 +23,8 @@ export function strongFitWarnings(draft = '') {
   const shown = new Map([...String(fit).matchAll(FIGURE)].map(m => [figuresIn(m[0])[0], m[0].trim()]));
   const repeated = [...new Set(figuresIn(fit).filter(f => bulletFigures.has(f)))].map(f => shown.get(f) || f);
   if (repeated.length) warnings.push(`The strong-fit paragraph repeats ${repeated.length === 1 ? 'a figure' : 'figures'} from the evidence bullets (${repeated.join(', ')}). Use a different achievement if your evidence has one, or edit it.`);
+  // A sentence repeats a bullet when most of its words come from it, or when it names that bullet's organisation and
+  // tells the same story in other words.
   const echoed = new Set();
   for (const s of sentences(fit)) {
     if (/^I hold\b/i.test(s)) continue;
@@ -30,11 +32,14 @@ export function strongFitWarnings(draft = '') {
     if (sw.size < 6) continue;
     for (const b of bullets) {
       const bw = new Set(words(b));
-      const shared = [...sw].filter(w => bw.has(w)).length;
-      if (shared / sw.size >= 0.6) echoed.add(organisationOf(b) || b.slice(2, 40) + '…');
+      const share = [...sw].filter(w => bw.has(w)).length / sw.size;
+      const org = organisationOf(b);
+      const namesOrg = org && s.toLowerCase().includes(org.toLowerCase());
+      if (share >= 0.45 || (namesOrg && share >= 0.3)) echoed.add(org || b.slice(2, 40) + '…');
     }
   }
-  for (const o of echoed) warnings.push(`The strong-fit paragraph repeats the ${o} evidence bullet almost word for word. Replace it with a different achievement, or edit it.`);
+  if (echoed.size >= 2) warnings.push(`Most of the strong-fit paragraph repeats the evidence bullets (${[...echoed].join(', ')}). It should add evidence the bullets do not show: other achievements, tools, methods, scale or certifications. Edit it, or polish again.`);
+  else for (const o of echoed) warnings.push(`The strong-fit paragraph repeats the ${o} evidence bullet. Replace it with an achievement the bullets do not use, or edit it.`);
   const future = /\bI (?:would|will|'d|’d|intend to|plan to)\b/i.exec(fit);
   if (future) warnings.push(`The strong-fit paragraph includes a future plan ("${future[0]}"). It should say why you fit, using evidence; edit that sentence.`);
   return warnings;
