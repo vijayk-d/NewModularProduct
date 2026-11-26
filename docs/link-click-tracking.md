@@ -53,8 +53,8 @@ Code: `tools/link-tracker/`
 |---|---|---|
 | 0 | Decisions above | Done |
 | 1 | Worker, signed links, tests, and this deploy guide | Done; deployed 2026-11-26 at `https://jobapp-links.career-links-5141.workers.dev` |
-| 2 | Local id store (new file `link-tracking-v1.json`); links rewritten and footnote added when an email is prepared for Gmail (send or draft), behind `ENABLE_LINK_TRACKING`; tested by sending to yourself | This change |
-| 3 | "Check link clicks" button (read-only, no automatic retries); scanner filtering; clicks shown on Outcome and as an amber "follow up" next step | |
+| 2 | Local id store (new file `link-tracking-v1.json`); links rewritten and footnote added when an email is prepared for Gmail (send or draft), behind `ENABLE_LINK_TRACKING`; tested by sending to yourself | Done (2026-11-26) |
+| 3 | "Check link clicks" button (read-only, no automatic retries); scanner filtering; clicks shown on Outcome and as an amber "follow up" next step | This change |
 | 4 | Opt-out handling, clean-up, a week's trial in development, then production | |
 
 ## Switching it on in the app (Stage 2)
@@ -82,6 +82,22 @@ LINK_TRACKING_PROFILE_URL=<your LinkedIn profile address, as given to the Worker
 
 The read key is not needed until Stage 3. Restart the app, then send one application email to your own address and
 click both links: each should open LinkedIn. The switch also appears on the Features page as "Link-click tracking".
+
+## Seeing clicks (Stage 3)
+
+Add the read key to `.env` (the second key you made; the Worker has it as `READ_KEY`) and restart:
+
+```
+LINK_TRACKING_READ_KEY=<the read key>
+```
+
+- **Where:** each application's Outcome section has a "Link clicks" box with **Check link clicks (read-only)**.
+  The box only appears once the tracker address and read key are set.
+- **What a check does:** one request to the Worker (more only if it has several pages), nothing else. No automatic retries and no background checking.
+  If the Worker cannot be reached, nothing changes; click again later.
+- **What counts:** only clicks on links this app gave out. Left out: anything the Worker marked as a scanner, and clicks within 60 seconds of the email being sent.
+- **Saved:** clicks are kept in the new file `link-clicks-v1.json` in the data folder (only the link id, which link, the time and the scanner mark).
+- **Next steps:** after a check, an application whose email link was clicked in the last 14 days, after the last send and with no reply recorded, shows an amber "Follow up: link clicked ..." step.
 
 ## Deploying the Worker (you do this once, about 15 minutes)
 

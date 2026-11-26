@@ -59,6 +59,9 @@ import { createRecruiterReplyService } from "../../application/recruiter-reply.j
 import { readGmailReplies, readTrackingAlerts, gmailReplyReadingEnabled } from "../../application/gmail-reply-reader.js";
 import { createEmailOpenService } from "../../application/email-open-tracking.js";
 import { createEmailOpensHandler } from "./email-opens-http.js";
+import { createLinkClicksHandler } from "./link-clicks-http.js";
+import { createLinkClickService } from "../../application/link-click-tracking.js";
+import { createMemoryLinkClicksStore, createLinkClickReader } from "../../infrastructure/link-clicks-file.js";
 import { createMemoryEmailOpenSignalsStore } from "../../infrastructure/email-open-signals-file.js";
 import { createGmailReplyDraft } from "../../application/gmail-reply-draft.js";
 import { createApplicationQuestionsService } from "../../application/application-questions.js";
@@ -253,6 +256,8 @@ export function createLocalServer({
   activityLog: injectedActivityLog = null,
   emailOpenSignalsStore = null,
   linkTracker = null,
+  linkClickStore = null,
+  linkClickReader = undefined,
   gmailReplyDrafter = undefined,
   replyThreadsStore = null,
   tailoredCvLatest = null,
@@ -525,8 +530,11 @@ export function createLocalServer({
   const emailOpenService=createEmailOpenService({store:emailOpenSignalsStore||createMemoryEmailOpenSignalsStore(),sentEmails:()=>outreachRepository?.listSentEmails?.()||[],queueItems:()=>outreachRepository?.list?.()||[],mailbox:String(process.env.GMAIL_FROM_ADDRESS||'').trim(),
     readAlerts:gmailTrackingReader!==undefined?gmailTrackingReader:(gmailReplyReadingEnabled()?args=>readTrackingAlerts(args):null)});
   const handleEmailOpens=createEmailOpensHandler({service:emailOpenService,getReview:id=>reviewStore.get(id),sendJson});
+  // Link clicks from your link tracker (read-only check, no retries); clicks saved in their own file.
+  const linkClickService=createLinkClickService({store:linkClickStore||createMemoryLinkClicksStore(),fetchClicks:linkClickReader!==undefined?linkClickReader:createLinkClickReader(),links:()=>linkTracker?.links?.()||[],sentEmails:()=>outreachRepository?.listSentEmails?.()||[]});
   // Next-step indicator (Green / Amber / Red): read-only, from what the app already stores; cached for a few seconds.
-  const nextStepsService=createNextStepsService({reviews:reviewStore,queueItems:()=>outreachRepository?.list?.()||[],sentEmails:()=>outreachRepository?.listSentEmails?.()||[],replyStore:replyThreadsStore,outcomes:insightsStore});
+  const nextStepsService=createNextStepsService({reviews:reviewStore,queueItems:()=>outreachRepository?.list?.()||[],sentEmails:()=>outreachRepository?.listSentEmails?.()||[],replyStore:replyThreadsStore,outcomes:insightsStore,linkClicks:()=>linkClickService.latestByReview()});
+  const handleLinkClicks=createLinkClicksHandler({service:linkClickService,getReview:id=>reviewStore.get(id),sendJson,onChecked:()=>nextStepsService.refresh()});
   const handleNextSteps=createNextStepsHandler({service:nextStepsService,sendHtml,sendJson});
   const handleActivity=createActivityHandler({log:activityLog,sendJson,sendText,getReview:id=>reviewStore.get(id)});
   const handleOutcomes=createApplicationOutcomesHandler({store:insightsStore,getReview:id=>reviewStore.get(id),sendJson,sendText,onChange:()=>insightsSnapshot?.schedule()});
@@ -571,6 +579,7 @@ export function createLocalServer({
     if (await handleSystemCheck(request,response,url)) return;
     if (await handleOutcomes(request,response,url)) return;
     if (await handleEmailOpens(request,response,url)) return;
+    if (await handleLinkClicks(request,response,url)) return;
     if (await handleQuestions(request,response,url)) return;
     if (await handleReply(request,response,url)) return;
     if (await handleKeywords(request,response,url)) return;

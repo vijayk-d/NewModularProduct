@@ -5,16 +5,17 @@
 // Pure: built only from what the app already stores. Nothing is sent or changed.
 
 export const LEVELS = Object.freeze({red: 3, amber: 2, green: 1});
-export const FOLLOW_UP_DAYS = 5, IDLE_DAYS = 14, WINDOW_DAYS = 60;
+export const FOLLOW_UP_DAYS = 5, IDLE_DAYS = 14, WINDOW_DAYS = 60, CLICK_DAYS = 14;
 const DAY = 864e5;
 const CLOSED = new Set(['rejected', 'offer', 'withdrawn']);
 const time = v => { const n = typeof v === 'number' ? v : Date.parse(v || ''); return Number.isFinite(n) ? n : 0; };
 const days = (now, at) => Math.floor((now - at) / DAY);
 const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 
-// review: {id, jobTitle, organisation, updatedAt}; queue / sent / replies: this application's rows; outcome: its current one.
+// review: {id, jobTitle, organisation, updatedAt}; queue / sent / replies: this application's rows; outcome: its current one;
+// lastClickAt: when someone last clicked a tracked link in this application's emails (from Check link clicks).
 // Returns null when the application is old and quiet (nothing to show).
-export function nextStepFor({review, queue = [], sent = [], replies = [], outcome = null, now = Date.now()}) {
+export function nextStepFor({review, queue = [], sent = [], replies = [], outcome = null, lastClickAt = '', now = Date.now()}) {
   const id = String(review?.id || ''), app = `/applications/${encodeURIComponent(id)}`;
   const name = [review?.organisation, review?.jobTitle].filter(Boolean).join(' · ') || 'Untitled application';
   const step = (level, action, href, why) => ({reviewId: id, name, level, action, href, why});
@@ -38,6 +39,11 @@ export function nextStepFor({review, queue = [], sent = [], replies = [], outcom
   if (lastSent) {
     const d = days(now, lastSent), responded = outcome && outcome.outcome !== 'no_reply';
     if (d > WINDOW_DAYS) return null;
+    const clickedAt = time(lastClickAt);
+    if (!responded && clickedAt > lastSent && days(now, clickedAt) <= CLICK_DAYS) {
+      const c = days(now, clickedAt);
+      return step('amber', `Follow up: link clicked ${c === 0 ? 'today' : plural(c, 'day') + ' ago'}`, app + '#application-outcome', 'Someone opened the LinkedIn link in your email but has not replied; a short follow-up now is timely.');
+    }
     if (!responded && d >= FOLLOW_UP_DAYS) return step('amber', `Follow up: no reply for ${plural(d, 'day')}`, app + '#application-outcome', 'Send a short follow-up, or record the outcome.');
     return step('green', responded ? `Waiting: ${outcome.label || 'replied'}` : `Waiting for replies (sent ${d === 0 ? 'today' : plural(d, 'day') + ' ago'})`, app + '#application-outcome', 'Nothing to do yet.');
   }

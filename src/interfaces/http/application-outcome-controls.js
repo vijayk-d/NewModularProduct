@@ -86,6 +86,30 @@ export function attachOutcomeControls(doc = document, fetchImpl = fetch) {
     try { renderOpens(await call(opensApi + '/check', {}), true); } catch (error) { opensLine.textContent = error.message; } finally { checkOpens.disabled = false; }
   });
   call(opensApi).then(o => renderOpens(o)).catch(() => {});
+
+  // Link clicks: from your own link tracker (the LinkedIn advert and profile links in emails this app sent).
+  const clicksApi = '/api/reviews/' + encodeURIComponent(reviewId) + '/link-clicks';
+  const clicksLine = el(doc, 'p', {'data-link-clicks': '', role: 'status', 'aria-live': 'polite'});
+  const clicksList = el(doc, 'ul', {'data-link-clicks-contacts': ''});
+  const checkClicks = el(doc, 'button', {type: 'button', text: 'Check link clicks (read-only)', hidden: ''});
+  const clicksBox = el(doc, 'div', {class: 'link-clicks', hidden: ''}, [el(doc, 'h3', {text: 'Link clicks'}), clicksLine, clicksList,
+    el(doc, 'p', {class: 'outcome-note', text: 'Clicks on the LinkedIn advert and profile links in emails this app sent. Email security scanners and clicks within a minute of sending are left out. A hint, not proof: a forwarded email counts too.'}), checkClicks]);
+  section.append(clicksBox);
+  function renderClicks(c, fresh = false) {
+    if (!c.available && !c.review && !c.checkedAt) { clicksBox.hidden = true; return; }
+    clicksBox.hidden = false; checkClicks.hidden = !c.available;
+    const r = c.review, day = iso => new Date(iso).toLocaleDateString('en-GB', {day: 'numeric', month: 'short'});
+    const when = c.checkedAt ? ` Last checked ${new Date(c.checkedAt).toLocaleString('en-GB', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'})}.` : '';
+    const parts = x => [x.advert ? `advert ${times(x.advert)}` : '', x.profile ? `profile ${times(x.profile)}` : ''].filter(Boolean).join(', ');
+    clicksLine.textContent = r ? `Links clicked: ${parts(r)}; latest ${day(r.lastAt)}.${when}` : c.checkedAt ? `No link clicks for this application yet.${when}` : 'Not checked yet.';
+    if (fresh && c.newClicks !== undefined) clicksLine.textContent += ` ${c.newClicks} new click${c.newClicks === 1 ? '' : 's'} read.`;
+    clicksList.replaceChildren(...(r?.contacts || []).map(p => el(doc, 'li', {text: `${p.email}: ${parts(p)}, latest ${day(p.lastAt)}`})));
+  }
+  checkClicks.addEventListener('click', async () => {
+    checkClicks.disabled = true; clicksLine.textContent = 'Reading clicks from your link tracker (read-only)…';
+    try { renderClicks(await call(clicksApi + '/check', {}), true); } catch (error) { clicksLine.textContent = error.message; } finally { checkClicks.disabled = false; }
+  });
+  call(clicksApi).then(c => renderClicks(c)).catch(() => {});
   // The Reply assistant records replies here too; show them straight away.
   doc.addEventListener('application-outcome-changed', () => { call(api).then(state => { render(state); message.textContent = 'Updated from the Reply assistant.'; }).catch(() => {}); });
   return section;
