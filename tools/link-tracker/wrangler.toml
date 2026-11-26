@@ -4,8 +4,10 @@ name = "jobapp-links"
 main = "src/worker.js"
 compatibility_date = "2026-11-01"
 workers_dev = true
+# Only the one public address; no per-version preview addresses.
+preview_urls = false
 
 [[kv_namespaces]]
 binding = "CLICKS"
-# Replace with the id printed by: npx wrangler kv namespace create CLICKS
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+# Store id from: npx wrangler kv namespace create CLICKS (not a secret)
+id = "a5b31734b3c2416cb468dea37b66aeab"

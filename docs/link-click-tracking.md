@@ -52,7 +52,7 @@ Code: `tools/link-tracker/`
 | Stage | What | Status |
 |---|---|---|
 | 0 | Decisions above | Done |
-| 1 | Worker, signed links, tests, and this deploy guide | This change |
+| 1 | Worker, signed links, tests, and this deploy guide | Done; deployed 2026-11-26 at `https://jobapp-links.career-links-5141.workers.dev` |
 | 2 | Local id store (new file `link-tracking-v1.json`); links rewritten and footnote added when an email is queued, behind `ENABLE_LINK_TRACKING`; tested by sending to yourself | Next |
 | 3 | "Check link clicks" button (read-only, no automatic retries); scanner filtering; clicks shown on Outcome and as an amber "follow up" next step | |
 | 4 | Opt-out handling, clean-up, a week's trial in development, then production | |
@@ -68,7 +68,7 @@ Run each block in PowerShell from the repository folder. Nothing here touches th
 $ErrorActionPreference='Stop'; Set-Location 'D:\monorepo\NewModularProduct\tools\link-tracker'; npx wrangler@4 login; if ($LASTEXITCODE -ne 0) { throw 'wrangler login failed' }
 ```
 
-2. Create the click store. Copy the printed `id` into `tools/link-tracker/wrangler.toml`, replacing `REPLACE_WITH_KV_NAMESPACE_ID`. The id is not a secret.
+2. Create the click store. Copy the printed `id` into `tools/link-tracker/wrangler.toml`. The id is not a secret. (Already done: the committed file holds the live store id, so skip this step when redeploying.)
 
 ```powershell
 $ErrorActionPreference='Stop'; Set-Location 'D:\monorepo\NewModularProduct\tools\link-tracker'; npx wrangler@4 kv namespace create CLICKS; if ($LASTEXITCODE -ne 0) { throw 'KV create failed' }
@@ -90,6 +90,7 @@ $ErrorActionPreference='Stop'; Set-Location 'D:\monorepo\NewModularProduct\tools
 ```
 
 5. Deploy. It prints the address, for example `https://jobapp-links.<sub>.workers.dev`.
+   The first deploy asks for a workers.dev subdomain. It must be unique across Cloudflare and appears in every tracked link, so use a neutral name with digits (the live one is `career-links-5141`). A new subdomain's certificate can take a few minutes to start working.
 
 ```powershell
 $ErrorActionPreference='Stop'; Set-Location 'D:\monorepo\NewModularProduct\tools\link-tracker'; npx wrangler@4 deploy; if ($LASTEXITCODE -ne 0) { throw 'deploy failed' }
