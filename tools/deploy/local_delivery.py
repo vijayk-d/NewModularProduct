@@ -109,6 +109,8 @@ def safe_source(name):
  if parts[0] in ['src','tests','templates','examples','docs','tampermonkey','scripts']:return p.suffix.lower() in ['.js','.mjs','.cjs','.py','.css','.html','.json','.md','.toml','.txt','.yml','.yaml']
  # tools/documents holds scripts the running app calls (for example Convert-DocxToPdf.ps1 for Word PDFs).
  if len(parts)==3 and parts[:2]==('tools','documents'):return p.suffix.lower() in ['.ps1','.py','.md']
+ # tools/link-tracker is the Cloudflare Worker for link-click tracking (deployed by the owner with wrangler, not run by the app).
+ if len(parts)>2 and parts[:2]==('tools','link-tracker'):return p.suffix.lower() in ['.js','.mjs','.md','.toml']
  if len(parts)>2 and parts[:2] in [('tools','deploy'),('tools','maintenance')]:return p.suffix.lower() in ['.py','.ps1','.bat','.cmd','.mjs','.js','.md','.txt','.json'] and (parts[1]=='deploy' or p.suffix.lower()!='.json')
  return len(parts)==2 and parts[0]=='tools' and p.suffix=='.py'
 def scan(name,b):
