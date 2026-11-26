@@ -20,11 +20,11 @@ function outreachOrganisationKey(form={}) {
     return host?`domain:${host}`:'organisation:unknown';
   }catch{return 'organisation:unknown';}
 }
-export function createOutreachHttpHandler({ repository, contactStore, getReview, peekReview = null, gmailMailboxPort = null, gmailDraftCreationPort = null, gmailSendPort = null, tailoredAttachment = null }) {
+export function createOutreachHttpHandler({ repository, contactStore, getReview, peekReview = null, gmailMailboxPort = null, gmailDraftCreationPort = null, gmailSendPort = null, tailoredAttachment = null, linkTracker = null }) {
   const mailboxPort = gmailMailboxPort || createGmailMailboxPort();
-  const confirmedDrafts = gmailDraftCreationPort || createConfirmedGmailDraftService({repository,mailboxPort});
+  const confirmedDrafts = gmailDraftCreationPort || createConfirmedGmailDraftService({repository,mailboxPort,linkTracker});
   const service = repository ? createOutreachQueueService({ repository, contactStore, getReview, tailoredAttachment }) : null;
-  const sends=gmailSendPort||createGmailSendService({repository,mailboxPort});
+  const sends=gmailSendPort||createGmailSendService({repository,mailboxPort,linkTracker});
   // Approved batches are sent by the server, so clicking elsewhere does not interrupt them (see send-run.js).
   const sendRun=createSendRun({sends});
   // Polish gate: queueing, drafting, sending and scheduling need the polished letter applied (or a deliberate override).
