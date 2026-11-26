@@ -122,5 +122,6 @@ test('the privacy page says what is and is not recorded', async () => {
   const html = await r.text();
   assert.match(html, /Not recorded: your IP address, location, browser or device/);
   assert.match(html, /deleted after 90 days/);
+  assert.match(html, /reply to the email and say so/);
   assert.match(html, /lang="en-GB"/);
 });

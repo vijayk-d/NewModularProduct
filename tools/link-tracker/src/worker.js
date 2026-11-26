@@ -63,7 +63,8 @@ export async function handleRequest(request, env, ctx = null, now = Date.now()) 
   const url = new URL(request.url);
   if (url.pathname === '/privacy' && request.method === 'GET') {
     return page(200, 'About these links', '<p>Some links in emails from this sender go through this address first. It counts that the link was clicked, so the sender knows the link was useful, then takes you straight to the page.</p>'
-      + '<p>Recorded: a random link number, which link it was, and the time. Not recorded: your IP address, location, browser or device. Nothing is read from your mailbox and email opens are not tracked. Records are deleted after 90 days.</p>');
+      + '<p>Recorded: a random link number, which link it was, and the time. Not recorded: your IP address, location, browser or device. Nothing is read from your mailbox and email opens are not tracked. Records are deleted after 90 days.</p>'
+      + '<p>If you would rather your clicks were not counted, reply to the email and say so. Links in later emails will be plain links, and clicks on earlier ones will no longer be counted.</p>');
   }
   if (url.pathname === '/api/clicks' && request.method === 'GET') return listClicks(request, env, url);
   const match = /^\/c\/([^/]{1,80})$/.exec(url.pathname);

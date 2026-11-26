@@ -55,8 +55,8 @@ Code: `tools/link-tracker/`
 | 0 | Decisions above | Done |
 | 1 | Worker, signed links, tests, and this deploy guide | Done; deployed 2026-11-26 at `https://jobapp-links.career-links-5141.workers.dev` |
 | 2 | Local id store (new file `link-tracking-v1.json`); links rewritten and footnote added when an email is prepared for Gmail (send or draft), behind `ENABLE_LINK_TRACKING`; tested by sending to yourself | Done (2026-11-26) |
-| 3 | "Check link clicks" button (read-only, no automatic retries); scanner filtering; clicks shown on Outcome and as an amber "follow up" next step | This change |
-| 4 | Opt-out handling, clean-up, a week's trial in development, then production | |
+| 3 | "Check link clicks" button (read-only, no automatic retries); scanner filtering; clicks shown on Outcome and as an amber "follow up" next step | Done (2026-11-26) |
+| 4 | Opt-out handling, clean-up, a week's trial in development, then production | Code: this change. Trial and production: your steps below |
 
 ## Switching it on in the app (Stage 2)
 
@@ -105,6 +105,32 @@ LINK_TRACKING_READ_KEY=<the read key>
 - **What counts:** only clicks on links this app gave out. Left out: anything the Worker marked as a scanner, and clicks within 60 seconds of the email being sent.
 - **Saved:** clicks are kept in the new file `link-clicks-v1.json` in the data folder (only the link id, which link, the time and the scanner mark).
 - **Next steps:** after a check, an application whose email link was clicked in the last 14 days, after the last send and with no reply recorded, shows an amber "Follow up: link clicked ..." step.
+
+## Opt-outs and clean-up (Stage 4)
+
+- **Opt-out:** if someone asks not to be tracked, open any application's Outcome section and, under Link clicks,
+  add their email address (or `@theirdomain.co.uk` for a whole organisation) in **Not counted**.
+  - Their emails get plain LinkedIn links and no footnote (the server log says `SKIPPED reason=opted-out`).
+  - Clicks on links already sent to them stop counting, and no follow-up step comes from them.
+  - **Count again** removes them. The list is kept in `link-tracking-v1.json` on this PC.
+- **The privacy page** now says how to opt out (reply to the email). Redeploy the Worker once for this:
+  run step 5 of the deploy guide again from the repository folder.
+- **Clean-up:** link ids older than 180 days are dropped whenever the id store is saved; saved clicks older than
+  90 days are dropped at each check (the Worker deletes its own records after 90 days).
+
+## Trial and going live (your steps)
+
+1. **Development trial, one week.** Keep `ENABLE_LINK_TRACKING=true` in the development `.env`, send real
+   applications as usual, and click **Check link clicks** every day or two. Look for:
+   - every sent email showing the footnote, with both links opening LinkedIn;
+   - scanner hits not being counted (a click within a minute of sending should never show);
+   - no recruiter replies mentioning the links.
+2. **Switch off quickly if needed:** set `ENABLE_LINK_TRACKING=false` and restart. Drafts already in Gmail keep
+   working; new emails get plain links.
+3. **Production, after the trial:** ship master as usual, then add the same `LINK_TRACKING_*` lines (same Worker,
+   same keys) to the production `.env` and restart production. Production gets its own new files
+   (`link-tracking-v1.json`, `link-clicks-v1.json`) in its data folder; no existing file or database changes.
+   Development and production use the same Worker, and each only counts clicks on links it gave out.
 
 ## Deploying the Worker (you do this once, about 15 minutes)
 

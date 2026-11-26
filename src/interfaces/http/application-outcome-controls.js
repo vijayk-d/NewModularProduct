@@ -96,7 +96,9 @@ export function attachOutcomeControls(doc = document, fetchImpl = fetch) {
     el(doc, 'p', {class: 'outcome-note', text: 'Clicks on the LinkedIn advert and profile links in emails this app sent. Email security scanners and clicks within a minute of sending are left out. A hint, not proof: a forwarded email counts too.'}), checkClicks]);
   section.append(clicksBox);
   function renderClicks(c, fresh = false) {
-    if (!c.available && !c.review && !c.checkedAt) { clicksBox.hidden = true; return; }
+    const noClicks = !c.available && !c.review && !c.checkedAt;
+    clicksLine.hidden = noClicks; clicksList.hidden = noClicks;
+    if (noClicks) { clicksBox.hidden = optBox.hidden; checkClicks.hidden = true; return; }
     clicksBox.hidden = false; checkClicks.hidden = !c.available;
     const r = c.review, day = iso => new Date(iso).toLocaleDateString('en-GB', {day: 'numeric', month: 'short'});
     const when = c.checkedAt ? ` Last checked ${new Date(c.checkedAt).toLocaleString('en-GB', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'})}.` : '';
@@ -110,6 +112,38 @@ export function attachOutcomeControls(doc = document, fetchImpl = fetch) {
     try { renderClicks(await call(clicksApi + '/check', {}), true); } catch (error) { clicksLine.textContent = error.message; } finally { checkClicks.disabled = false; }
   });
   call(clicksApi).then(c => renderClicks(c)).catch(() => {});
+
+  // Opt-outs: people (or @domain for a whole organisation) who asked not to have clicks counted. Their emails get
+  // plain links and no footnote, and clicks on links already sent to them stop counting.
+  const optApi = '/api/link-tracking/opt-outs';
+  const optInput = el(doc, 'input', {id: 'link-opt-out-value', type: 'text', maxlength: '254', placeholder: 'name@example.com or @example.com'});
+  const optAdd = el(doc, 'button', {type: 'button', text: 'Stop counting'});
+  const optMessage = el(doc, 'p', {role: 'status', 'aria-live': 'polite', 'data-link-opt-out-message': ''});
+  const optList = el(doc, 'ul', {'data-link-opt-outs': ''});
+  const optBox = el(doc, 'div', {class: 'link-opt-outs', hidden: ''}, [el(doc, 'h4', {text: 'Not counted'}),
+    el(doc, 'p', {class: 'outcome-note', text: 'If someone asks not to be tracked, add their email address (or @ and their domain for a whole organisation). Their emails get plain links and no footnote, and clicks on links already sent stop counting.'}),
+    el(doc, 'div', {class: 'outcome-form'}, [el(doc, 'label', {for: optInput.id, text: 'Email or @domain'}), optInput, optAdd]), optMessage, optList]);
+  clicksBox.append(optBox);
+  const refreshClicks = () => call(clicksApi).then(c => renderClicks(c)).catch(() => {});
+  function renderOptOuts(list) {
+    optBox.hidden = false; clicksBox.hidden = false;
+    optList.replaceChildren(...list.map(o => {
+      const remove = el(doc, 'button', {type: 'button', text: 'Count again', 'aria-label': 'Count clicks again for ' + o.value});
+      remove.addEventListener('click', async () => {
+        remove.disabled = true;
+        try { renderOptOuts((await call(optApi, {value: o.value, optOut: false})).optOuts); optMessage.textContent = o.value + ' is counted again for new emails.'; refreshClicks(); }
+        catch (error) { optMessage.textContent = error.message; remove.disabled = false; }
+      });
+      return el(doc, 'li', {'data-link-opt-out': o.value}, [doc.createTextNode(o.value + ' '), remove]);
+    }));
+  }
+  optAdd.addEventListener('click', async () => {
+    optAdd.disabled = true;
+    try { const value = optInput.value; renderOptOuts((await call(optApi, {value, optOut: true})).optOuts); optInput.value = ''; optMessage.textContent = 'Saved: ' + value.trim().toLowerCase() + ' will not be counted.'; refreshClicks(); }
+    catch (error) { optMessage.textContent = error.message; }
+    finally { optAdd.disabled = false; }
+  });
+  call(optApi).then(o => { if (o.inUse) renderOptOuts(o.optOuts); }).catch(() => {});
   // The Reply assistant records replies here too; show them straight away.
   doc.addEventListener('application-outcome-changed', () => { call(api).then(state => { render(state); message.textContent = 'Updated from the Reply assistant.'; }).catch(() => {}); });
   return section;
