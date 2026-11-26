@@ -20,8 +20,14 @@ test('repeated figures and a near-identical bullet sentence are flagged', () => 
   const fit = 'I am a strong fit for the Delivery Lead role, bringing evidence-led delivery. At CONTOSO, I led a claims-automation MVP delivering £2.4M annualised cost reduction. At NORTHWIND, I consolidated delivery, quality, capacity and release reporting across platform workstreams, clarifying priority discussions. I hold PRINCE2®.';
   const w = strongFitWarnings(letter(fit));
   assert.ok(w.some(x => /repeats a figure from the evidence bullets \(£2\.4M\)/.test(x)), w.join(' | '));
-  assert.ok(w.some(x => /repeats the NORTHWIND evidence bullet almost word for word/.test(x)), w.join(' | '));
+  assert.ok(w.some(x => /Most of the strong-fit paragraph repeats the evidence bullets \(.*NORTHWIND.*\)/.test(x)), w.join(' | '));
   assert.ok(!w.some(x => /FABRIKAM/.test(x)));
+});
+
+test('a bullet retold in other words is flagged, by organisation', () => {
+  const fit = 'I am a strong fit for the Delivery Lead role, bringing hands-on delivery leadership. At FABRIKAM, a self-service portal I introduced shortened how long onboarding took for new starters. I hold PRINCE2®.';
+  const w = strongFitWarnings(letter(fit));
+  assert.ok(w.some(x => /repeats the FABRIKAM evidence bullet\. Replace it/.test(x)), w.join(' | '));
 });
 
 test('future plans and a missing paragraph are flagged', () => {
