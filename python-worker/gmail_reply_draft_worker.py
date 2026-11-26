@@ -105,7 +105,9 @@ def process_request(request, service_factory=None, env=os.environ):
                 result = drafts.update(userId='me', id=draft_id, body={'id': draft_id, **body}).execute()
                 updated = True
             except Exception as error:
-                if _status(error) != 404:
+                # 404: the draft was deleted. 400: it was already sent, so it is no longer a draft. Gmail refused the
+                # update and changed nothing, so a new draft is created instead (this is not a retry).
+                if _status(error) not in (400, 404):
                     raise
                 result, updated = drafts.create(userId='me', body=body).execute(), False
         else:

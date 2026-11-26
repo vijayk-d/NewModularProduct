@@ -90,6 +90,12 @@ class ReplyDraftWorkerTests(unittest.TestCase):
         gone = Service(update_error=HttpErr(404))
         out = w.process_request(request(draftId='d-old'), lambda: gone, ENV)
         self.assertEqual((out['draftId'], out['updated']), ('d-new', False))
+        sent = Service(update_error=HttpErr(400))
+        out = w.process_request(request(draftId='d-old'), lambda: sent, ENV)
+        self.assertEqual((out['ok'], out['draftId'], out['updated']), (True, 'd-new', False), 'a draft already sent from Gmail gets a new draft')
+        broken = Service(update_error=HttpErr(500))
+        self.assertEqual(w.process_request(request(draftId='d-old'), lambda: broken, ENV)['code'], 'DRAFT_UNCERTAIN')
+        self.assertNotIn('drafts.create', [c[0] for c in broken.calls], 'an uncertain update is never followed by a create')
 
     def test_refusals_and_uncertain_outcomes(self):
         self.assertEqual(w.process_request({'action': 'send'}, lambda: Service(), ENV)['code'], 'INVALID_REQUEST')
