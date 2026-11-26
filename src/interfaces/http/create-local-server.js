@@ -507,7 +507,7 @@ export function createLocalServer({
     scenarioEvidence:review=>{try{const refs=review.polishingScenarios?.references||[];if(!refs.length||!assignmentEvidenceStore)return [];const ev=approvedScenarioRequest(resolveScenarioSelection(assignmentEvidenceStore,JSON.stringify(refs))).approvedScenarioEvidence||[];return ev.map(s=>({text:s.approvedWording,source:'Approved scenario'+(s.organisation?' ('+s.organisation+')':'')}));}catch{return [];}}}):null;
   const handleQuestions=createApplicationQuestionsHandler({service:questionsService,sendJson,sendText});
   // Reply assistant: drafts a reply to a recruiter from the same evidence; never sends.
-  const replyService=createRecruiterReplyService({reviews:reviewStore,writer:replyWriter,activity:activityLog,candidateName:process.env.CANDIDATE_DISPLAY_NAME||'',evidence:async id=>questionsService?await questionsService.evidenceFor(id):[],
+  const replyService=createRecruiterReplyService({reviews:reviewStore,writer:replyWriter,activity:activityLog,log:line=>console.log(line),candidateName:process.env.CANDIDATE_DISPLAY_NAME||'',evidence:async id=>questionsService?await questionsService.evidenceFor(id):[],
     sentEmails:()=>outreachRepository?.listSentEmails?.()||[],queueItems:()=>outreachRepository?.list?.()||[],mailbox:String(process.env.GMAIL_FROM_ADDRESS||'').trim(),
     replyReader:gmailReplyReader!==undefined?gmailReplyReader:(gmailReplyReadingEnabled()?args=>readGmailReplies(args):null),
     replyStore:replyThreadsStore,outcomes:insightsStore,onOutcome:()=>insightsSnapshot?.schedule(),draftWriter:gmailReplyDrafter!==undefined?gmailReplyDrafter:(gmailReplyReadingEnabled()?args=>createGmailReplyDraft(args):null)});

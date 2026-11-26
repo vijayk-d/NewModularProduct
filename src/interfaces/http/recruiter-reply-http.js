@@ -30,6 +30,8 @@ export function createRecruiterReplyHandler({service, sendJson, sendText}) {
       sendJson(res, 200, {ok: true, ...(await service[method_](reviewId, await jsonBody(req)))});
       return true;
     } catch (error) {
+      // Gmail draft failures also go to the server window, code only, so they are never silent there.
+      if (action === 'gmail-draft') console.warn(`[REPLY_ASSISTANT] GMAIL_DRAFT_FAILED review=${reviewId} code=${error.code || 'REPLY_FAILED'}`);
       sendJson(res, error.statusCode || 503, {ok: false, code: error.code || 'REPLY_FAILED', error: error.statusCode ? error.message : 'The reply assistant is unavailable. Nothing was changed.'});
       return true;
     }

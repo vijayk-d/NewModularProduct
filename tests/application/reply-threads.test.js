@@ -23,10 +23,10 @@ test('the store keeps each reply once, newest first, and never loses a saved dra
 });
 
 test('each reply gets its own Gmail draft; a second click updates that draft instead of creating another', async () => {
-  const store = createReplyThreadsStore({filePath: ':memory:'}), calls = [];
+  const store = createReplyThreadsStore({filePath: ':memory:'}), calls = [], logged = [];
   const reviews = new Map([['r1', {formData: {}}]]);
   const draftWriter = async args => { calls.push(args); return {ok: true, draftId: args.draftId || 'd-new', updated: Boolean(args.draftId), subject: 'Re: Application'}; };
-  const s = createRecruiterReplyService({reviews, replyStore: store, draftWriter, mailbox: 'me@example.test', replyReader: async () => ({ok: true, mailbox: 'me@example.test', replies: REPLIES}), sentEmails: () => [{reviewId: 'r1', status: 'sent', email: 'sam@agency.test', threadId: 't1', messageId: 'm1'}]});
+  const s = createRecruiterReplyService({reviews, replyStore: store, draftWriter, mailbox: 'me@example.test', log: line => logged.push(line), replyReader: async () => ({ok: true, mailbox: 'me@example.test', replies: REPLIES}), sentEmails: () => [{reviewId: 'r1', status: 'sent', email: 'sam@agency.test', threadId: 't1', messageId: 'm1'}]});
   const found = await s.findReplies('r1');
   assert.deepEqual(found.replies.map(r => r.messageId), ['m9', 'm2']);
   const first = await s.createGmailDraft('r1', {messageId: 'm2', bodyPlainText: 'Hello Sam,\n\nI have applied.\n\nKind regards,\nVijay'});
@@ -35,6 +35,9 @@ test('each reply gets its own Gmail draft; a second click updates that draft ins
   assert.equal(calls[0].bodyHtml, '<p>Hello Sam,</p><p>I have applied.</p><p>Kind regards,<br>Vijay</p>');
   const second = await s.createGmailDraft('r1', {messageId: 'm2', bodyPlainText: 'Hello Sam, edited.', bodyHtml: '<p>Hello Sam, edited.</p>'});
   assert.equal(second.updated, true); assert.equal(calls[1].draftId, 'd-new');
+  assert.equal(first.gmailDraftsUrl, 'https://mail.google.com/mail/?authuser=me%40example.test#drafts', 'opens the mailbox the draft is in');
+  assert.deepEqual(logged, ['[REPLY_ASSISTANT] GMAIL_DRAFT_CREATED review=r1', '[REPLY_ASSISTANT] GMAIL_DRAFT_UPDATED review=r1']);
+  assert.ok(!logged.join(' ').includes('sam@agency.test') && !logged.join(' ').includes('Hello'), 'no addresses or reply text in the log');
   assert.equal(store.get('r1', 'm9').status, 'new', 'the other reply is untouched');
   assert.equal((await s.overview('r1')).savedReplies.length, 2);
 });

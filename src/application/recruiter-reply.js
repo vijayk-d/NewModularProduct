@@ -59,7 +59,7 @@ export function replyTopics(value) {
 }
 
 // sentEmails(reviewId): the confirmed sends for this application; replyReader: read-only Gmail thread reader (optional).
-export function createRecruiterReplyService({reviews, evidence = async () => [], writer = null, candidateName = '', sentEmails = () => [], queueItems = () => [], replyReader = null, replyStore = null, draftWriter = null, mailbox = '', now = () => Date.now(), outcomes = null, onOutcome = () => {}, activity = null}) {
+export function createRecruiterReplyService({reviews, evidence = async () => [], writer = null, candidateName = '', sentEmails = () => [], queueItems = () => [], replyReader = null, replyStore = null, draftWriter = null, mailbox = '', now = () => Date.now(), outcomes = null, onOutcome = () => {}, activity = null, log = () => {}}) {
   if (!reviews) throw new Error('The reply assistant needs saved applications.');
   let writing = false, drafting = false;
   const review = id => { const r = reviews.get(id); if (!r) fail('Saved application not found.', 404); return r; };
@@ -129,8 +129,10 @@ export function createRecruiterReplyService({reviews, evidence = async () => [],
       try {
         replyStore.saveDraft(reviewId, item.messageId, {...item, draftText: plain, draftHtml: html});
         const r = await draftWriter({threadId: item.threadId, replyToMessageId: item.messageId, to: item.fromAddress, bodyPlainText: plain, bodyHtml: html, draftId: item.gmailDraftId, expectedAddress: mailbox});
+        // A line in the server window when it works (failures are logged by the HTTP handler): never the reply or addresses.
+        if (r.ok) log(`[REPLY_ASSISTANT] GMAIL_DRAFT_${r.updated ? 'UPDATED' : 'CREATED'} review=${reviewId}${item.gmailDraftId && !r.updated ? ' (the earlier draft was sent or deleted, so a new one was made)' : ''}`);
         if (!r.ok) fail(r.code === 'SCOPE_MISSING' ? 'Gmail has not granted the access needed. Run the Maintenance card "Gmail read access: add", restart the app, then try again.' : r.error, r.code === 'SCOPE_MISSING' ? 403 : 502, 'REPLY_' + r.code);
-        return {reply: replyStore.markGmailDraft(reviewId, item.messageId, r.draftId), updated: r.updated === true, subject: r.subject || '', gmailDraftsUrl: 'https://mail.google.com/mail/u/0/#drafts'};
+        return {reply: replyStore.markGmailDraft(reviewId, item.messageId, r.draftId), updated: r.updated === true, subject: r.subject || '', gmailDraftsUrl: 'https://mail.google.com/mail/' + (mailbox ? '?authuser=' + encodeURIComponent(mailbox) : 'u/0/') + '#drafts'};
       } finally { drafting = false; }
     },
     // body.theirEmail (optional): the respondent's own address(es), searched first, in addition to this application's contacts.
