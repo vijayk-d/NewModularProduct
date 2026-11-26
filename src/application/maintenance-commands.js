@@ -301,6 +301,46 @@ export const MAINTENANCE_COMMANDS = Object.freeze([
       "directory": "D:\\monorepo\\NewModularProduct"
   },
   {
+      "id": "release-backups-keep-10",
+      "title": "Release backups: keep only the last 10 (preview)",
+      "category": "Production",
+      "command": "python tools\\deploy\\release_backups.py --production-root D:\\NewModularProduct-Production --keep 10",
+      "purpose": "Lists the data backups made before each ship (shared\\backups), newest first with sizes, and which ones keeping only the newest 10 would remove. It prints a confirmation code for that exact plan.",
+      "caution": "Read-only preview. To act, run the next card with the code it printed. The newest 3 are always kept.",
+      "effect": "Read-only",
+      "directory": "D:\\monorepo\\NewModularProduct"
+  },
+  {
+      "id": "release-backups-keep-10-apply",
+      "title": "Release backups: move all but the last 10 to another drive",
+      "category": "Production",
+      "command": "python tools\\deploy\\release_backups.py --production-root D:\\NewModularProduct-Production --keep 10 --move-to E:\\JobApp-Backups --apply --confirm <code from the preview>",
+      "purpose": "Moves the older data backups out of shared\\backups into the folder you name (example E:\\JobApp-Backups, which must already exist), keeping the newest 10. Nothing is deleted.",
+      "caution": "Run the preview first; the code only matches the plan it printed. Use --delete instead of --move-to only if you want them gone for good. Not while a ship is running.",
+      "effect": "Changes production",
+      "directory": "D:\\monorepo\\NewModularProduct"
+  },
+  {
+      "id": "releases-keep-10",
+      "title": "Release code folders: keep only the last 10 (preview)",
+      "category": "Production",
+      "command": "$p='D:\\NewModularProduct-Production'; $a=Get-Content \"$p\\active.json\" -Raw | ConvertFrom-Json; $keep=@($a.commit,$a.previous) | Where-Object { $_ }; $old=Get-ChildItem \"$p\\releases\" -Directory | Sort-Object CreationTime -Descending | Select-Object -Skip 10 | Where-Object { $keep -notcontains $_.Name }; 'Release folders: ' + (Get-ChildItem \"$p\\releases\" -Directory).Count; 'Always kept: ' + ($keep -join ', '); if ($old) { $old | ForEach-Object { 'WOULD MOVE  ' + $_.Name + '  ' + $_.CreationTime } } else { 'Nothing to move: no older releases beyond the newest 10.' }",
+      "purpose": "Lists the release folders (releases\\<commit>) that keeping only the newest 10 would move. The running release and the previous one (used for rollback) are always kept.",
+      "caution": "Read-only preview. Release folders hold code only; your data stays in shared\\data.",
+      "effect": "Read-only",
+      "directory": "D:\\monorepo\\NewModularProduct"
+  },
+  {
+      "id": "releases-keep-10-apply",
+      "title": "Release code folders: move all but the last 10 to archived-releases",
+      "category": "Production",
+      "command": "$p='D:\\NewModularProduct-Production'; $a=Get-Content \"$p\\active.json\" -Raw | ConvertFrom-Json; $keep=@($a.commit,$a.previous) | Where-Object { $_ }; $old=Get-ChildItem \"$p\\releases\" -Directory | Sort-Object CreationTime -Descending | Select-Object -Skip 10 | Where-Object { $keep -notcontains $_.Name }; if (-not $old) { 'Nothing to move.' } else { New-Item -ItemType Directory -Force \"$p\\archived-releases\" | Out-Null; $old | ForEach-Object { Move-Item $_.FullName \"$p\\archived-releases\\$($_.Name)\"; 'MOVED  ' + $_.Name } }",
+      "purpose": "Moves older release folders into archived-releases in the production folder, keeping the newest 10 plus the running and previous releases. Nothing is deleted; delete archived-releases yourself later if you want the space back.",
+      "caution": "Run the preview first. Use only when no ship or rollback is running. A folder in use stays where it is and is named in a red error.",
+      "effect": "Changes production",
+      "directory": "D:\\monorepo\\NewModularProduct"
+  },
+  {
       "id": "prod-resume-paused",
       "title": "Resume a paused production",
       "category": "Recovery",

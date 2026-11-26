@@ -7,6 +7,7 @@ import {openSqlite} from './sqlite-open.js';
 import {checkOutputFolder} from './applications/application-output-folder.js';
 import {TEMPLATE_FOLDER} from './documents/template-cover-letter.js';
 import {providerTimeLimitMs} from './provider-time-limit.js';
+import {linkTrackingSettings} from '../application/link-tracking.js';
 
 const GB = 2 ** 30;
 const gb = bytes => (bytes / GB).toFixed(1) + ' GB';
@@ -30,7 +31,7 @@ async function folderSize(dir, limit = 20000) {
 }
 
 export function createSystemCheckProbes({stateDirectory, cvFolder = '', outputFolder = '', outputForbidden = [], cvTailoringService = null, cvLibrary = null, locateWord = null, probeFiles = null,
-  config = {}, schedulerReadiness = null, env = process.env, platform = process.platform, wordPaths = WORD_PATHS, now = () => new Date(), minFreeMemoryGb = Number(env.NMP_MIN_FREE_MEMORY_GB) || 3}) {
+  config = {}, schedulerReadiness = null, env = process.env, platform = process.platform, wordPaths = WORD_PATHS, now = () => new Date(), fetchImpl = globalThis.fetch, minFreeMemoryGb = Number(env.NMP_MIN_FREE_MEMORY_GB) || 3}) {
   let host = null;
   // One probe call for memory and CV file availability, shared by the checks that need it.
   async function hostProbe() {
@@ -126,6 +127,26 @@ export function createSystemCheckProbes({stateDirectory, cvFolder = '', outputFo
       const configured = Boolean(String(config.integrations?.gmail?.clientId || '').trim() && String(config.integrations?.gmail?.clientSecret || '').trim());
       const detail = 'On: ' + parts.map(([n, v]) => `${n} ${on(v) ? 'on' : 'off'}`).join(', ') + '.';
       return configured ? {status: 'pass', detail} : {status: 'fail', detail: detail + ' Gmail client credentials are not configured.', fix: 'Add the Gmail OAuth client settings to the .env file, or set ENABLE_GMAIL=false, then restart.'};
+    }},
+    // Third-party service: the link-click tracker (a Cloudflare Worker). Only when switched on: one request for the
+    // public privacy page and, with a read key, one for the click list (from now, so nothing is downloaded). No retries.
+    {id: 'feature-link-tracking', group: 'Services', label: 'Link-click tracker (Cloudflare Worker)', async run() {
+      const s = linkTrackingSettings(env);
+      if (!s.enabled) return {status: 'off', detail: 'Switched off in configuration (ENABLE_LINK_TRACKING).'};
+      if (!s.ready) return {status: 'fail', detail: 'On, but not set up: ' + s.problems.join('; ') + '. Sending and drafting stop until this is fixed.', fix: 'Fix the LINK_TRACKING_* settings in the .env file, or set ENABLE_LINK_TRACKING=false, then restart.'};
+      const call = async (pathname, headers = {}) => {
+        const started = Date.now();
+        try { const r = await fetchImpl(s.baseUrl + pathname, {headers, redirect: 'manual', signal: AbortSignal.timeout(5000)}); return {status: r.status, ms: Date.now() - started}; }
+        catch (error) { return {status: 0, ms: Date.now() - started, error: error?.name === 'TimeoutError' ? 'no answer within 5 s' : 'not reachable'}; }
+      };
+      const page = await call('/privacy');
+      if (page.status !== 200) return {status: 'fail', detail: `The tracker at ${s.baseUrl} did not answer properly (${page.error || 'HTTP ' + page.status}). Tracked links in sent emails may not open.`, fix: 'Open ' + s.baseUrl + '/privacy in a browser. If it fails, check the Worker in the Cloudflare dashboard or redeploy it (docs/link-click-tracking.md); to stop tracking new emails meanwhile, set ENABLE_LINK_TRACKING=false and restart.'};
+      const readKey = String(env.LINK_TRACKING_READ_KEY || '').trim();
+      if (!readKey) return {status: 'warn', detail: `Tracker reachable (${page.ms} ms). No read key, so Check link clicks cannot read clicks.`, fix: 'Add LINK_TRACKING_READ_KEY (the READ_KEY given to the Worker) to the .env file, then restart.'};
+      const list = await call('/api/clicks?since=' + encodeURIComponent(now().toISOString()), {authorization: 'Bearer ' + readKey});
+      if (list.status === 401 || list.status === 403) return {status: 'fail', detail: `Tracker reachable (${page.ms} ms), but it refused the read key, so Check link clicks fails.`, fix: 'Make LINK_TRACKING_READ_KEY match the READ_KEY secret in the Worker exactly, then restart.'};
+      if (list.status !== 200) return {status: 'warn', detail: `Tracker reachable (${page.ms} ms), but reading clicks failed (${list.error || 'HTTP ' + list.status}).`, fix: 'Try again later; if it keeps failing, check the Worker in the Cloudflare dashboard.'};
+      return {status: 'pass', detail: `On. Tracker reachable (${page.ms} ms) and the read key works. Links are signed locally; nothing is retried.`};
     }},
     {id: 'scheduler', group: 'Services', label: 'Gmail scheduler', async run() {
       return typeof schedulerReadiness === 'function' ? schedulerReadiness() : {status: 'off', detail: 'Not checked in this environment.'};

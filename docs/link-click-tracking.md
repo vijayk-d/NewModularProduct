@@ -118,6 +118,14 @@ LINK_TRACKING_READ_KEY=<the read key>
 - **Clean-up:** link ids older than 180 days are dropped whenever the id store is saved; saved clicks older than
   90 days are dropped at each check (the Worker deletes its own records after 90 days).
 
+## Health checks
+
+- **System check page** (Services, "Link-click tracker (Cloudflare Worker)"): when tracking is on, it opens the
+  Worker's public privacy page once and, with `LINK_TRACKING_READ_KEY`, asks for clicks from "now" once to prove the
+  read key works. Each request stops after 5 seconds and is never retried. Off means no request at all.
+- **`/healthz`** shows `dependencies.linkTracker` as `off`, `ready` or `not-set-up`, from the settings only. It makes
+  no network call and never changes `ok`, so a Worker outage can never stop a ship.
+
 ## Trial and going live (your steps)
 
 1. **Development trial, one week.** Keep `ENABLE_LINK_TRACKING=true` in the development `.env`, send real

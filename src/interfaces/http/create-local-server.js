@@ -552,6 +552,8 @@ export function createLocalServer({
     linkTracker
   });
 
+  // Third-party dependency status for /healthz from settings only: no network call, never changes ok (ship relies on it).
+  const linkTrackerHealth=()=>{try{const s=linkTracker?.status?.();return !s?.enabled?'off':s.ready?'ready':'not-set-up';}catch{return 'unknown';}};
   return createServer((request, response) => {
     handleRequest(request, response).catch((error) => {
       try {
@@ -571,7 +573,7 @@ export function createLocalServer({
     if (await handleActivity(request,response,url)) return;
     attachShell(response,url.pathname,process.env,{withScript:true});
     if (await handleNextSteps(request,response,url)) return;
-    if(method==='GET'&&url.pathname==='/healthz'){sendJson(response,200,{ok:true,service:'NewModularProduct',environment:process.env.NMP_ENV||'development',release:process.env.NMP_RELEASE_COMMIT||'development'});return;}
+    if(method==='GET'&&url.pathname==='/healthz'){sendJson(response,200,{ok:true,service:'NewModularProduct',environment:process.env.NMP_ENV||'development',release:process.env.NMP_RELEASE_COMMIT||'development',dependencies:{linkTracker:linkTrackerHealth()}});return;}
     if(await handleWritingReferences(request,response,url))return;
     if(await handleCoverReferences(request,response,url))return;
     if(await handleAchievementPreparation(request,response,url))return;
