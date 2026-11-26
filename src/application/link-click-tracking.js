@@ -4,6 +4,8 @@
 import {countableClicks, clickSummary, latestClickByReview} from '../domain/outreach/link-clicks.js';
 
 const OVERLAP_MS = 60 * 60 * 1000, MAX_PAGES = 50, MAX_KEPT = 5000;
+// Clicks older than this are dropped at each check, matching the tracker, which deletes its records after 90 days.
+export const CLICK_RETENTION_DAYS = 90;
 const fail = (message, statusCode = 409, code = 'CLICKS_BLOCKED') => { throw Object.assign(new Error(message), {statusCode, code}); };
 const keyOf = c => [c.id, c.linkKey, c.at, c.scanner || ''].join('|');
 
@@ -39,7 +41,8 @@ export function createLinkClickService({fetchClicks = null, links = () => [], se
         }
         cursor = page.complete ? '' : String(page.cursor || '');
       } while (cursor && ++pages < MAX_PAGES);
-      const clicks = [...before.clicks, ...fresh].sort((a, b) => (a.at < b.at ? -1 : 1)).slice(-MAX_KEPT);
+      const cutoff = new Date(started - CLICK_RETENTION_DAYS * 864e5).toISOString();
+      const clicks = [...before.clicks, ...fresh].filter(c => c.at >= cutoff).sort((a, b) => (a.at < b.at ? -1 : 1)).slice(-MAX_KEPT);
       try { store.write({checkedAt: new Date(started).toISOString(), clicks}); } catch { fail('The clicks could not be saved. Nothing was changed.', 500, 'CLICKS_SAVE'); }
       // Only clicks that count as a person: scanner checks are saved (so they are not read again) but not reported.
       return {...forReview(reviewId), newClicks: countableClicks(fresh, safeList(links), safeList(sentEmails)).length};

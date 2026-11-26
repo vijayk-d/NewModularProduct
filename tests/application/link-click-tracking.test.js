@@ -114,3 +114,33 @@ test('next steps use the latest click per application', () => {
   const broken = createNextStepsService({reviews, sentEmails: () => [{reviewId: 'r1', status: 'sent', sentAt: '2026-11-20T10:00:00Z'}], linkClicks: () => { throw new Error('disk'); }, now: () => Date.parse('2026-11-23T12:00:00Z')});
   assert.equal(broken.forReview('r1').level, 'green', 'a broken click store never breaks the page');
 });
+
+test('clean-up: saved clicks older than 90 days are dropped at each check', async () => {
+  const {CLICK_RETENTION_DAYS} = await import('../../src/application/link-click-tracking.js');
+  assert.equal(CLICK_RETENTION_DAYS, 90);
+  const store = createMemoryLinkClicksStore();
+  store.write({checkedAt: '2026-08-01T00:00:00.000Z', clicks: [click('advertid0001', 'a-4123456789', '2026-08-01T09:00:00.000Z'), click('advertid0001', 'a-4123456789', '2026-11-21T09:05:00.000Z')]});
+  const service = createLinkClickService({store, links: () => links, sentEmails: () => sent, now: () => Date.parse('2026-11-26T12:00:00Z'), fetchClicks: async () => ({clicks: [], complete: true})});
+  await service.check('r1');
+  assert.deepEqual(store.read().clicks.map(c => c.at), ['2026-11-21T09:05:00.000Z']);
+});
+
+test('opt-out route: same-origin JSON only, validates, and reports whether tracking is in use', async () => {
+  const {createLinkOptOutsHandler} = await import('../../src/interfaces/http/link-clicks-http.js');
+  const {Readable} = await import('node:stream');
+  let list = [], changed = 0, enabled = false;
+  const tracker = {status: () => ({enabled}), optOuts: () => list, setOptOut: (value, on) => { if (!String(value).includes('@')) throw Object.assign(new Error('Enter an email address.'), {statusCode: 400, code: 'OPT_OUT_INVALID'}); list = on ? [{value}] : []; return list; }};
+  const handler = createLinkOptOutsHandler({tracker, sendJson: (res, status, body) => { res.status = status; res.body = body; }, onChanged: () => changed++});
+  const request = (method, body, headers = {}) => Object.assign(Readable.from(body ? [Buffer.from(JSON.stringify(body))] : []), {method, headers: {host: 'localhost:3000', 'content-type': 'application/json', ...headers}});
+  const run = async (req, path = '/api/link-tracking/opt-outs') => { const res = {}; const handled = await handler(req, res, new URL('http://localhost:3000' + path)); return {handled, ...res}; };
+  assert.equal((await run(request('GET'), '/api/other')).handled, false);
+  assert.deepEqual((await run(request('GET'))).body, {ok: true, inUse: false, optOuts: []});
+  enabled = true;
+  assert.equal((await run(request('GET'))).body.inUse, true);
+  assert.equal((await run(request('POST', {value: 'x@y.test'}, {origin: 'https://evil.test'}))).status, 403);
+  assert.equal((await run(request('POST', {value: 'nope'}))).status, 400);
+  const added = await run(request('POST', {value: 'x@y.test', optOut: true}));
+  assert.deepEqual(added.body, {ok: true, optOuts: [{value: 'x@y.test'}]});
+  assert.equal(changed, 1, 'next steps are refreshed');
+  assert.deepEqual((await run(request('POST', {value: 'x@y.test', optOut: false}))).body.optOuts, []);
+});

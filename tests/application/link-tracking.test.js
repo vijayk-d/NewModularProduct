@@ -180,3 +180,42 @@ test('the footnote wording comes from .env, can be reworded but not removed, and
   }
   await assert.rejects(createLinkTracker({env: env({LINK_TRACKING_FOOTNOTE: 'Too short'}), store}).track(signedDraft(), {...item, id: 'q9'}), /LINK_TRACKING_FOOTNOTE/);
 });
+
+test('opt-outs: plain links and no footnote for that person or organisation, clicks stop counting, reversible', async () => {
+  const {normaliseOptOut, optedOut} = await import('../../src/application/link-tracking.js');
+  assert.equal(normaliseOptOut(' Zoe@Business.TEST '), 'zoe@business.test');
+  assert.equal(normaliseOptOut('@business.test'), '@business.test');
+  for (const bad of ['', 'zoe', '@', 'business.test', 'a b@c.d']) assert.equal(normaliseOptOut(bad), '', bad);
+  assert.equal(optedOut('kim@business.test', [{value: '@business.test'}]), true);
+  assert.equal(optedOut('kim@notbusiness.test', [{value: '@business.test'}]), false);
+
+  const store = createMemoryLinkTrackingStore(), lines = [];
+  const tracker = createLinkTracker({env: env(), store, log: l => lines.push(l)});
+  const before = await tracker.track(signedDraft(), item);
+  assert.equal(tracker.countableLinks().length, 2);
+  assert.throws(() => tracker.setOptOut('not an address'), {code: 'OPT_OUT_INVALID'});
+  assert.deepEqual(tracker.setOptOut('@Business.test').map(o => o.value), ['@business.test']);
+  assert.equal(tracker.links().length, 2, 'ids are kept, so old drafts still compare');
+  assert.equal(tracker.countableLinks().length, 0, 'clicks on links already sent stop counting');
+  const fresh = signedDraft();
+  assert.equal(await tracker.track(fresh, {...item, id: 'q5'}), fresh, 'new emails get plain links and no footnote');
+  assert.ok(lines.some(l => /SKIPPED reason=opted-out queue=q5/.test(l)));
+  const letter = {bodyPlainText: signedDraft().bodyPlainText.split(SIGNATURE_SEPARATOR)[0]};
+  assert.equal((await tracker.track(letter, item, {scope: 'letter'})).bodyPlainText, before.bodyPlainText.split(SIGNATURE_SEPARATOR)[0], 'an existing tracked draft still compares like for like');
+  assert.deepEqual(tracker.setOptOut('@business.test', false), []);
+  assert.equal(tracker.countableLinks().length, 2);
+  const optLines = lines.filter(l => l.includes('OPT_OUT'));
+  assert.equal(optLines.length, 2);
+  assert.ok(optLines.every(l => !l.includes('business.test')), 'the log never names who opted out');
+});
+
+test('clean-up: link ids older than the retention period are dropped when the store is saved', async () => {
+  const {LINK_RETENTION_DAYS} = await import('../../src/application/link-tracking.js');
+  assert.equal(LINK_RETENTION_DAYS, 180);
+  const store = createMemoryLinkTrackingStore();
+  store.write({links: [{id: 'oldoldold001', linkKey: 'p', queueId: 'old', email: 'a@b.test', createdAt: '2026-01-01T00:00:00.000Z'}], optOuts: [{value: 'x@y.test', at: '2026-01-01T00:00:00.000Z'}]});
+  const tracker = createLinkTracker({env: env(), store, clock: () => Date.parse('2026-11-26T12:00:00Z')});
+  await tracker.track(signedDraft(), item);
+  assert.deepEqual(tracker.links().map(l => l.queueId), ['q1', 'q1']);
+  assert.deepEqual(tracker.optOuts().map(o => o.value), ['x@y.test'], 'opt-outs are never cleaned up');
+});

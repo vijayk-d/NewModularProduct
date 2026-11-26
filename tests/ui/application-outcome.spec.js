@@ -90,3 +90,32 @@ test('the link clicks box stays hidden when no link tracker is set up', async ({
   await expect(page.locator('#application-outcome [data-outcome-current]')).not.toHaveText('Loading…');
   await expect(page.locator('#application-outcome .link-clicks')).toBeHidden();
 });
+
+test('someone who asks not to be tracked is added under Not counted, their clicks stop counting, and can be counted again', async ({page}) => {
+  const sent = [{id: 's1', queueId: 'q1', reviewId: 'r1', status: 'sent', email: 'sam@agency.test', sentAt: '2026-11-20T10:00:00Z'}];
+  const links = [{id: 'abcdefghijkl', linkKey: 'a-4123456789', queueId: 'q1', reviewId: 'r1', email: 'sam@agency.test'}];
+  let optOuts = [];
+  const optedOut = email => optOuts.some(o => o.value === email || (o.value.startsWith('@') && email.endsWith(o.value)));
+  const linkTracker = {status: () => ({enabled: true}), links: () => links, countableLinks: () => links.filter(l => !optedOut(l.email)), optOuts: () => optOuts,
+    setOptOut: (value, on) => { const v = String(value).trim().toLowerCase(); if (!v.includes('@')) throw Object.assign(new Error('Enter an email address, or @ and a domain for a whole organisation.'), {statusCode: 400}); optOuts = on ? [...optOuts.filter(o => o.value !== v), {value: v}] : optOuts.filter(o => o.value !== v); return optOuts; }};
+  const server = createLocalServer({applicationReviewStore: reviewFixture(), insightsStore: createApplicationInsightsStore({filePath: ':memory:'}), linkTracker,
+    linkClickReader: async () => ({complete: true, clicks: [{id: 'abcdefghijkl', linkKey: 'a-4123456789', at: '2026-11-21T09:05:00.000Z', scanner: ''}]}),
+    recruiterContactStore: {async listAll() { return []; }, async listByReview() { return []; }}, outreachRepository: {list: () => [], listDraftOperations: () => [], listSendAttempts: () => [], listSentEmails: () => sent}});
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  try {
+    await page.goto('http://127.0.0.1:' + server.address().port + '/applications/r1');
+    const box = page.locator('#application-outcome .link-clicks');
+    await box.getByRole('button', {name: 'Check link clicks (read-only)'}).click();
+    await expect(box.locator('[data-link-clicks]')).toContainText('advert once');
+    await box.getByLabel('Email or @domain').fill('nobody');
+    await box.getByRole('button', {name: 'Stop counting'}).click();
+    await expect(box.locator('[data-link-opt-out-message]')).toContainText('Enter an email address');
+    await box.getByLabel('Email or @domain').fill('@Agency.test');
+    await box.getByRole('button', {name: 'Stop counting'}).click();
+    await expect(box.locator('[data-link-opt-out="@agency.test"]')).toBeVisible();
+    await expect(box.locator('[data-link-clicks]')).toContainText('No link clicks for this application yet.');
+    await box.getByRole('button', {name: 'Count clicks again for @agency.test'}).click();
+    await expect(box.locator('[data-link-opt-out="@agency.test"]')).toHaveCount(0);
+    await expect(box.locator('[data-link-clicks]')).toContainText('advert once');
+  } finally { server.closeAllConnections(); await new Promise(r => server.close(r)); }
+});
