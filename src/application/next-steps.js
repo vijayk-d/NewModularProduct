@@ -8,17 +8,17 @@ const MAX_APPLICATIONS = 400;
 const safe = (fn, fallback) => { try { return fn() ?? fallback; } catch { return fallback; } };
 const groupBy = rows => { const m = new Map(); for (const r of rows) if (r?.reviewId) { if (!m.has(r.reviewId)) m.set(r.reviewId, []); m.get(r.reviewId).push(r); } return m; };
 
-export function createNextStepsService({reviews, queueItems = () => [], sentEmails = () => [], replyStore = null, outcomes = null, now = () => Date.now(), ttlMs = 8000}) {
+export function createNextStepsService({reviews, queueItems = () => [], sentEmails = () => [], replyStore = null, outcomes = null, linkClicks = () => ({}), now = () => Date.now(), ttlMs = 8000}) {
   let cached = null;
   function build() {
     const list = safe(() => reviews?.summaries?.({page: 1, size: MAX_APPLICATIONS})?.items, []);
     const queue = groupBy(safe(queueItems, [])), sent = groupBy(safe(sentEmails, []).filter(s => s?.status === 'sent'));
-    const t = now();
+    const t = now(), clicked = safe(linkClicks, {});
     const steps = list.map(review => {
       const history = safe(() => outcomes?.history(review.id), []);
       const o = currentOutcome(history);
       return safe(() => nextStepFor({review, queue: queue.get(review.id) || [], sent: sent.get(review.id) || [], replies: safe(() => replyStore?.list(review.id), []),
-        outcome: o ? {...o, label: outcomeLabel(o.outcome)} : null, now: t}), null);
+        outcome: o ? {...o, label: outcomeLabel(o.outcome)} : null, lastClickAt: clicked[review.id] || '', now: t}), null);
     });
     return {...summariseNextSteps(steps), builtAt: t};
   }

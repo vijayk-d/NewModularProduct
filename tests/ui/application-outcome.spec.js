@@ -55,3 +55,38 @@ test('email opens are read from tracker alerts in Gmail and shown per contact on
     expect(reads.length).toBe(1);
   } finally { server.closeAllConnections(); await new Promise(r => server.close(r)); }
 });
+
+test('link clicks are read from the link tracker and shown per contact, leaving out scanner checks', async ({page}) => {
+  const sent = [{id: 's1', queueId: 'q1', reviewId: 'r1', status: 'sent', email: 'sam@agency.test', sentAt: '2026-11-20T10:00:00Z'}];
+  const links = [{id: 'abcdefghijkl', linkKey: 'a-4123456789', queueId: 'q1', reviewId: 'r1', email: 'sam@agency.test'}, {id: 'mnopqrstuvwx', linkKey: 'p', queueId: 'q1', reviewId: 'r1', email: 'sam@agency.test'}];
+  const reads = [];
+  const server = createLocalServer({applicationReviewStore: reviewFixture(), insightsStore: createApplicationInsightsStore({filePath: ':memory:'}),
+    linkTracker: {links: () => links},
+    linkClickReader: async args => { reads.push(args); return {complete: true, clicks: [
+      {id: 'abcdefghijkl', linkKey: 'a-4123456789', at: '2026-11-20T10:00:20.000Z', scanner: ''},
+      {id: 'abcdefghijkl', linkKey: 'a-4123456789', at: '2026-11-21T09:00:00.000Z', scanner: 'known-scanner'},
+      {id: 'abcdefghijkl', linkKey: 'a-4123456789', at: '2026-11-21T09:05:00.000Z', scanner: ''},
+      {id: 'mnopqrstuvwx', linkKey: 'p', at: '2026-11-22T12:00:00.000Z', scanner: ''},
+      {id: 'zzzzzzzzzzzz', linkKey: 'p', at: '2026-11-22T12:00:00.000Z', scanner: ''}]}; },
+    recruiterContactStore: {async listAll() { return []; }, async listByReview() { return []; }}, outreachRepository: {list: () => [], listDraftOperations: () => [], listSendAttempts: () => [], listSentEmails: () => sent}});
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  try {
+    await page.goto('http://127.0.0.1:' + server.address().port + '/applications/r1');
+    const section = page.locator('#application-outcome');
+    await expect(section.locator('[data-link-clicks]')).toHaveText('Not checked yet.');
+    expect(reads.length).toBe(0);
+    await section.getByRole('button', {name: 'Check link clicks (read-only)'}).click();
+    await expect(section.locator('[data-link-clicks]')).toContainText('Links clicked: advert once, profile once; latest 22 Nov.');
+    await expect(section.locator('[data-link-clicks]')).toContainText('2 new clicks read.');
+    await expect(section.locator('[data-link-clicks-contacts]')).toContainText('sam@agency.test: advert once, profile once, latest 22 Nov');
+    await page.reload();
+    await expect(section.locator('[data-link-clicks]')).toContainText('advert once', {timeout: 5000});
+    expect(reads.length).toBe(1);
+  } finally { server.closeAllConnections(); await new Promise(r => server.close(r)); }
+});
+
+test('the link clicks box stays hidden when no link tracker is set up', async ({page, app}) => {
+  await page.goto(app.url + '/applications/r1');
+  await expect(page.locator('#application-outcome [data-outcome-current]')).not.toHaveText('Loading…');
+  await expect(page.locator('#application-outcome .link-clicks')).toBeHidden();
+});
