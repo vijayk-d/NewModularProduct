@@ -12,8 +12,9 @@ Clicks only: no open tracking, no hidden images. Off by default.
 - **Address:** the free `https://jobapp-links.<your-subdomain>.workers.dev`.
   - It can change later. New emails use the new address as soon as `.env` changes.
   - Keep the old Worker running for about 90 days, until older emails no longer matter.
-- **Disclosure footnote,** a small grey line under the signature:
-  "Links in this email are counted when clicked so I know they were useful. No other tracking is used."
+- **Disclosure footnote,** a small grey line under the signature. Default (changed 2026-11-26 to read less like a warning):
+  "The links above go through a simple click counter so I can see which ones are useful. Nothing else is tracked."
+  Set `LINK_TRACKING_FOOTNOTE` in `.env` to use your own wording (one plain line, 20 to 240 characters, no links). It can be reworded but not removed: blank means the default.
 - **Privacy:**
   - Cloudflare only ever sees a random link number, never who it was sent to. Which number belongs to which recipient stays on your PC.
   - No IP address, location, browser or device details are stored.
@@ -78,6 +79,12 @@ ENABLE_LINK_TRACKING=true
 LINK_TRACKING_BASE_URL=https://jobapp-links.career-links-5141.workers.dev
 LINK_TRACKING_SIGNING_KEY=<the signing key>
 LINK_TRACKING_PROFILE_URL=<your LinkedIn profile address, as given to the Worker>
+```
+
+Optional, your own wording for the footnote:
+
+```
+LINK_TRACKING_FOOTNOTE=I count clicks on these two links to see which are useful. Nothing else is tracked.
 ```
 
 The read key is not needed until Stage 3. Restart the app, then send one application email to your own address and

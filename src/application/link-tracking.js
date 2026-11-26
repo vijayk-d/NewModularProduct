@@ -5,7 +5,7 @@
 // Each queue item keeps the same random id per link, so preparing the same email again gives the same message.
 // Which id belongs to which application and recipient stays in the local store, never at the tracker.
 import {newLinkId, signLinkToken, advertLinkKey, targetFor} from '../domain/outreach/link-tokens.js';
-import {findTrackedLinks, rewriteTrackedLinks, splitMessage} from '../domain/outreach/tracked-links.js';
+import {findTrackedLinks, rewriteTrackedLinks, splitMessage, LINK_TRACKING_FOOTNOTE} from '../domain/outreach/tracked-links.js';
 
 const MAX_LINKS = 20000;
 const fail = message => { throw Object.assign(new Error(message), {code: 'LINK_TRACKING_SETUP', statusCode: 409}); };
@@ -21,7 +21,10 @@ export function linkTrackingSettings(env = process.env) {
   if (signingKey.length < 32) problems.push('LINK_TRACKING_SIGNING_KEY is missing or shorter than 32 characters');
   const profileTarget = targetFor('p', {profileUrl: String(env.LINK_TRACKING_PROFILE_URL || '').trim()});
   if (!profileTarget) problems.push('LINK_TRACKING_PROFILE_URL must be your LinkedIn profile address (linkedin.com/in/...)');
-  return {enabled, ready: enabled && !problems.length, configured: !problems.length, problems: enabled ? problems : [], baseUrl, signingKey, profileTarget};
+  // Your own wording for the disclosure line. It can be reworded but not removed: blank means the default.
+  const footnote = String(env.LINK_TRACKING_FOOTNOTE || '').trim() || LINK_TRACKING_FOOTNOTE;
+  if (footnote.length < 20 || footnote.length > 240 || /[\r\n<>{}]|https?:|www\./i.test(footnote)) problems.push('LINK_TRACKING_FOOTNOTE must be one plain line of 20 to 240 characters, with no links or < > { }');
+  return {enabled, ready: enabled && !problems.length, configured: !problems.length, problems: enabled ? problems : [], baseUrl, signingKey, profileTarget, footnote};
 }
 
 export function createLinkTracker({env = process.env, store, clock = () => Date.now(), log = () => {}} = {}) {
@@ -60,7 +63,7 @@ export function createLinkTracker({env = process.env, store, clock = () => Date.
       if (next.length > MAX_LINKS) fail('The link-tracking store is full. Archive link-tracking-v1.json before tracking more links.');
       try { store.write({links: next}); } catch { fail('The link-tracking store could not be saved, so links were not tracked. Nothing was sent.'); }
     }
-    const tracked = rewriteTrackedLinks(draft, {advertKey, profileTarget: settings.profileTarget, urls, footnote: scope === 'all', scope});
+    const tracked = rewriteTrackedLinks(draft, {advertKey, profileTarget: settings.profileTarget, urls, footnote: scope === 'all', footnoteText: settings.footnote, scope});
     log('[LINK_TRACKING] TRACKED queue=' + item.id + ' links=' + Object.keys(urls).join(','));
     return tracked;
   }
