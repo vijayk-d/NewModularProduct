@@ -106,3 +106,39 @@ test('the page and JSON are served by the local server and listed under System',
   assert.equal(json.overall, 'warn');
   assert.equal((await fetch(base + '/api/system-check', {headers: {'sec-fetch-site': 'cross-site'}})).status, 403);
 });
+
+test('link-click tracker: off makes no request; on checks the privacy page and the read key once each, never showing keys', async t => {
+  const dir = folder(t), {state} = healthyState(dir);
+  const base = {ENABLE_LINK_TRACKING: 'true', LINK_TRACKING_BASE_URL: 'https://links.example.test', LINK_TRACKING_SIGNING_KEY: 'S'.repeat(40), LINK_TRACKING_PROFILE_URL: 'https://www.linkedin.com/in/test-candidate/'};
+  const run = async (env, answer) => {
+    const calls = [];
+    const fetchImpl = async (url, init) => { calls.push({url, auth: init.headers.authorization || ''}); const r = answer(url); if (r instanceof Error) throw r; return {status: r}; };
+    const probes = createSystemCheckProbes({stateDirectory: state, now, env, config: {}, fetchImpl});
+    return {r: byId(await runSystemCheck(probes.filter(p => p.id === 'feature-link-tracking'), {clock: now}))['feature-link-tracking'], calls};
+  };
+  let out = await run({}, () => 200);
+  assert.equal(out.r.status, 'off'); assert.equal(out.calls.length, 0);
+  out = await run({...base, LINK_TRACKING_SIGNING_KEY: 'short'}, () => 200);
+  assert.equal(out.r.status, 'fail'); assert.match(out.r.detail, /LINK_TRACKING_SIGNING_KEY/); assert.equal(out.calls.length, 0);
+  out = await run({...base, LINK_TRACKING_READ_KEY: 'R'.repeat(40)}, () => 200);
+  assert.equal(out.r.status, 'pass', out.r.detail);
+  assert.deepEqual(out.calls.map(c => new URL(c.url).pathname), ['/privacy', '/api/clicks']);
+  assert.equal(out.calls[1].auth, 'Bearer ' + 'R'.repeat(40));
+  assert.doesNotMatch(JSON.stringify(out.r), /RRRR|SSSS/);
+  out = await run(base, () => 200);
+  assert.equal(out.r.status, 'warn'); assert.match(out.r.fix, /LINK_TRACKING_READ_KEY/); assert.equal(out.calls.length, 1);
+  out = await run({...base, LINK_TRACKING_READ_KEY: 'R'.repeat(40)}, url => url.includes('/api/clicks') ? 401 : 200);
+  assert.equal(out.r.status, 'fail'); assert.match(out.r.detail, /refused the read key/);
+  out = await run({...base, LINK_TRACKING_READ_KEY: 'R'.repeat(40)}, () => new TypeError('fetch failed'));
+  assert.equal(out.r.status, 'fail'); assert.match(out.r.detail, /not reachable/); assert.equal(out.calls.length, 1, 'no retry');
+});
+
+test('/healthz reports the link tracker from settings only, and stays ok when it is not set up', async t => {
+  for (const [tracker, expected] of [[null, 'off'], [{status: () => ({enabled: true, ready: false})}, 'not-set-up'], [{status: () => ({enabled: true, ready: true})}, 'ready']]) {
+    const server = createLocalServer({linkTracker: tracker});
+    server.listen(0, '127.0.0.1'); await once(server, 'listening');
+    const body = await (await fetch('http://127.0.0.1:' + server.address().port + '/healthz')).json();
+    server.closeAllConnections(); server.close();
+    assert.equal(body.ok, true); assert.equal(body.service, 'NewModularProduct'); assert.equal(body.dependencies.linkTracker, expected);
+  }
+});
