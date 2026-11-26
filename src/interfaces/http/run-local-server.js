@@ -26,6 +26,8 @@ import {createRecruiterReplyWriter} from '../../infrastructure/refinement/perple
 import {createAdvertRequirementsReader} from '../../infrastructure/refinement/perplexity-advert-requirements-adapter.js';
 import {createAdvertRequirementsFileStore} from '../../infrastructure/advert-requirements-file.js';
 import {createEmailOpenSignalsFileStore} from '../../infrastructure/email-open-signals-file.js';
+import {createLinkTrackingFileStore} from '../../infrastructure/link-tracking-file.js';
+import {createLinkTracker} from '../../application/link-tracking.js';
 import {createInsightsSnapshot} from '../../application/insights-snapshot.js';
 import {createEvidenceLearning} from '../../application/evidence-learning.js';
 import {attachIndexedText,withoutCvText,describeSections} from '../../application/cv-text-index.js';
@@ -224,6 +226,8 @@ const server = createLocalServer({
   advertRequirementsReader:createAdvertRequirementsReader({apiKey:config.integrations.perplexity.apiKey,enabled:config.features.enableCoverLetterRefinement}),
   advertRequirementsStore:createAdvertRequirementsFileStore(deployment.state),
   emailOpenSignalsStore:createEmailOpenSignalsFileStore(deployment.state),
+  // Link-click tracking (off unless ENABLE_LINK_TRACKING=true): link ids stay in link-tracking-v1.json on this PC.
+  linkTracker:createLinkTracker({store:createLinkTrackingFileStore(deployment.state),log:line=>console.log(line)}),
   cvTextFor:async code=>{try{return cvLibraryInstance?((await cvLibraryInstance.indexedTexts()).texts[code]||''):'';}catch{return '';}},
   replyThreadsStore,
   replyWriter:createRecruiterReplyWriter({apiKey:config.integrations.perplexity.apiKey,enabled:config.features.enableCoverLetterRefinement}),

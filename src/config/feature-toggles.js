@@ -19,7 +19,8 @@ export const FEATURES = Object.freeze([
   { id: 'cover-letter-refinement', env: 'ENABLE_COVER_LETTER_REFINEMENT', label: 'Cover-letter polishing', description: 'Uses the Perplexity API to refine cover letters (paid API calls).', risk: 'paid-api' },
   { id: 'cover-letter-quality-v2', env: 'ENABLE_COVER_LETTER_QUALITY_V2', requires: ['cover-letter-refinement'], label: 'Cover-letter quality V2', description: 'New letter quality checks: evidence audit, source-bound claims and role-focused examples during polishing.', risk: 'paid-api' },
   { id: 'cloud-scheduling', env: 'ENABLE_CLOUD_SCHEDULING', requires: ['gmail-sending'], label: 'Cloud scheduling', description: 'Schedule a reviewed email for later through your own private scheduler Sheet. Google sends it at that time, even while this PC is off. Needs the scheduler set-up first.', risk: 'sends-email' },
-  { id: 'one-click-send', env: 'ENABLE_ONE_CLICK_SEND', requires: ['gmail-sending'], label: 'One-click send', description: 'Send without the extra confirmation popup. The labelled Send click is still required; duplicate protection and the bound-content check stay on.', risk: 'sends-email' }
+  { id: 'one-click-send', env: 'ENABLE_ONE_CLICK_SEND', requires: ['gmail-sending'], label: 'One-click send', description: 'Send without the extra confirmation popup. The labelled Send click is still required; duplicate protection and the bound-content check stay on.', risk: 'sends-email' },
+  { id: 'link-tracking', env: 'ENABLE_LINK_TRACKING', requires: ['gmail', 'gmail-signature'], label: 'Link-click tracking', description: 'Counts clicks on the LinkedIn advert and profile links in drafts and sent emails, and adds a short disclosure line under the signature. Needs the LINK_TRACKING_* settings in .env. No open tracking.', risk: 'mailbox' }
 ]);
 
 // Features that the code currently limits to development on port 3000. Shown on the page, not switchable.

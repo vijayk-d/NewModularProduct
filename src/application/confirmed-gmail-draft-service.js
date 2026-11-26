@@ -10,7 +10,7 @@ import { draftSnapshotFingerprint } from './gmail-draft-state-ledger.js';
 import { runGmailDraftWorker } from './gmail-draft-worker-runner.js';
 const hash=value=>createHash('sha256').update(value).digest('hex');
 function fail(message,code,statusCode=409){const error=new Error(message);error.code=code;error.statusCode=statusCode;throw error;}
-export function createConfirmedGmailDraftService({repository,mailboxPort,env=process.env,runner=runGmailDraftWorker,clock=()=>Date.now(),signatureReader=readGmailSignature}={}) {
+export function createConfirmedGmailDraftService({repository,mailboxPort,env=process.env,runner=runGmailDraftWorker,clock=()=>Date.now(),signatureReader=readGmailSignature,linkTracker=null}={}) {
   const tickets=new Map();
   function getStatus(){const mailbox=mailboxPort.getStatus();const diagnostics=gmailDraftConfigurationDiagnostics({env,mailbox,repository});return {
     draftCreationEnabled:diagnostics.checks.find(check=>check.name==='draftCreationFlag').ok,
@@ -59,7 +59,9 @@ export function createConfirmedGmailDraftService({repository,mailboxPort,env=pro
     if(!within||within==='..'||within.startsWith('..'+path.sep)||path.isAbsolute(within)||!(tailored?['.pdf']:['.pdf','.docx']).includes(path.extname(file).toLowerCase()))fail('Selected CV is outside CV_FOLDER or is not a PDF/DOCX.','GMAIL_DRAFT_ATTACHMENT');
     const info=await stat(file);if(!info.isFile()||info.size>20*1024*1024)fail('Selected CV is missing or exceeds 20 MiB.','GMAIL_DRAFT_ATTACHMENT');
     const bytes=await readFile(file);if(bytes.length>20*1024*1024)fail('Selected CV exceeds 20 MiB.','GMAIL_DRAFT_ATTACHMENT');if(tailored&&hash(bytes)!==draft.attachment.sha256)fail('The tailored CV PDF changed after it was queued. Remove and requeue.','GMAIL_DRAFT_ATTACHMENT');draft.attachment={...draft.attachment,sha256:hash(bytes),sizeBytes:bytes.length};
-    const signed=await applyGmailSignature(draft,{account:getStatus().configuredMailbox,env,signatureReader});
+    const signedOnly=await applyGmailSignature(draft,{account:getStatus().configuredMailbox,env,signatureReader});
+    // Link-click tracking (off unless ENABLE_LINK_TRACKING=true): same ids every time, so the fingerprint is stable.
+    const signed=linkTracker?await linkTracker.track(signedOnly,item):signedOnly;
     return {item,draft:signed,fingerprint:hash(JSON.stringify(signed))};
     } catch(error){if(error?.statusCode)throw error;fail('Selected CV could not be read or verified. Check CV_FOLDER and requeue if needed.','GMAIL_DRAFT_ATTACHMENT',400);}
   }

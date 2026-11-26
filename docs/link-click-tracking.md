@@ -53,9 +53,35 @@ Code: `tools/link-tracker/`
 |---|---|---|
 | 0 | Decisions above | Done |
 | 1 | Worker, signed links, tests, and this deploy guide | Done; deployed 2026-11-26 at `https://jobapp-links.career-links-5141.workers.dev` |
-| 2 | Local id store (new file `link-tracking-v1.json`); links rewritten and footnote added when an email is queued, behind `ENABLE_LINK_TRACKING`; tested by sending to yourself | Next |
+| 2 | Local id store (new file `link-tracking-v1.json`); links rewritten and footnote added when an email is prepared for Gmail (send or draft), behind `ENABLE_LINK_TRACKING`; tested by sending to yourself | This change |
 | 3 | "Check link clicks" button (read-only, no automatic retries); scanner filtering; clicks shown on Outcome and as an amber "follow up" next step | |
 | 4 | Opt-out handling, clean-up, a week's trial in development, then production | |
+
+## Switching it on in the app (Stage 2)
+
+Links are swapped when an email is prepared for Gmail (Send, or Create Gmail draft), not when it is queued, so the
+queued letter stays as you wrote it and the profile link (which only exists in your Gmail signature) can be included.
+
+- **Advert link:** the linked role title and the `Role details:` line, only when the application's advert is a LinkedIn job.
+- **Profile link:** any link to your LinkedIn profile in the Gmail signature.
+- **Footnote:** added under the signature whenever at least one link was swapped.
+- **No Gmail signature:** nothing is tracked (there is nowhere for the footnote); the server log says `SKIPPED reason=no-signature`.
+- **Same email, same links:** each queue item keeps its ids, so preparing again gives an identical message.
+- **Editing a tracked Gmail draft:** Update Gmail draft keeps the same tracked links and footnote. This still works after switching tracking off, as long as the `LINK_TRACKING_*` settings stay in `.env`.
+- **Ids:** kept in `link-tracking-v1.json` in the data folder, with the application and recipient. Never committed, never sent to Cloudflare.
+- **Set up wrongly:** sending and drafting stop with a message naming what is missing. Nothing is sent untracked by surprise.
+
+Add these lines to `.env` (development first), using the same signing key you gave the Worker:
+
+```
+ENABLE_LINK_TRACKING=true
+LINK_TRACKING_BASE_URL=https://jobapp-links.career-links-5141.workers.dev
+LINK_TRACKING_SIGNING_KEY=<the signing key>
+LINK_TRACKING_PROFILE_URL=<your LinkedIn profile address, as given to the Worker>
+```
+
+The read key is not needed until Stage 3. Restart the app, then send one application email to your own address and
+click both links: each should open LinkedIn. The switch also appears on the Features page as "Link-click tracking".
 
 ## Deploying the Worker (you do this once, about 15 minutes)
 

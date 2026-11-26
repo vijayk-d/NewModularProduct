@@ -252,6 +252,7 @@ export function createLocalServer({
   gmailTrackingReader = undefined,
   activityLog: injectedActivityLog = null,
   emailOpenSignalsStore = null,
+  linkTracker = null,
   gmailReplyDrafter = undefined,
   replyThreadsStore = null,
   tailoredCvLatest = null,
@@ -493,7 +494,7 @@ export function createLocalServer({
   const handleJobs=createJobImportHandler({service:jobImportService,getReview:id=>reviewStore.get(id),contactStore:recruiterContactStore,sendJson,sendText,reviews:reviewStore,outreach:outreachRepository,portalExports});
   const handleSavedDelete=createSavedApplicationDeleteHandler({store:reviewStore,contactStore:recruiterContactStore,outreachRepository,sendJson,sendText});
   const handleOrganisationContacts=createOrganisationContactHandler({contactStore:recruiterContactStore,outreachRepository,getReview:id=>reviewStore.get(id),sendJson});
-  const letterUpdates=outreachRepository?createUnsentLetterUpdateService({getReview:id=>reviewStore.get(id),repository:outreachRepository,draftUpdates:gmailDraftUpdatePort||createGmailDraftUpdatePort()}):null;
+  const letterUpdates=outreachRepository?createUnsentLetterUpdateService({getReview:id=>reviewStore.get(id),repository:outreachRepository,draftUpdates:gmailDraftUpdatePort||createGmailDraftUpdatePort({linkTracker})}):null;
   const handleApplications=createApplicationReviewHandler({outcomeFor:insightsStore?id=>{const o=currentOutcome(insightsStore.history(id));return o?{label:outcomeLabel(o.outcome),occurredOn:o.occurredOn}:null;}:null,store:reviewStore,renderReview:renderCompleteReview,sendJson,sendHtml,sendText,applicationPackExporter,letterUpdates,outputFolder:applicationOutputFolder});
   const handleSystemCheck=createSystemCheckHandler({runCheck:systemCheck,sendJson,sendHtml});
   // The owner's saved certifications (maintenance command), used by polishing and application answers.
@@ -537,7 +538,9 @@ export function createLocalServer({
     // Emails queued from now on attach the tailored CV PDF when one is chosen for that application.
     tailoredAttachment: cvTailoringService && typeof cvTailoringService.emailAttachment === 'function' ? id => cvTailoringService.emailAttachment(id) : null,
     getReview: (id) => reviewStore.get(id),
-    peekReview: (id) => (typeof reviewStore.peek === 'function' ? reviewStore.peek(id) : reviewStore.get(id))
+    peekReview: (id) => (typeof reviewStore.peek === 'function' ? reviewStore.peek(id) : reviewStore.get(id)),
+    // Link-click tracking for emails prepared for Gmail; off unless ENABLE_LINK_TRACKING=true.
+    linkTracker
   });
 
   return createServer((request, response) => {
