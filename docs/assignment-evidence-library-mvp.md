@@ -52,3 +52,12 @@ The page now shows only what is needed to make usable evidence; the saved data a
 - **Save and use in letters** saves the scenario as confirmed by you and approved for letters in one step. It fills the confirmation basis ("Confirmed by me from my own experience on <date>") only when it is blank, and keeps a source-supported state if you set one. **Save scenario** still saves a draft without approval.
 - The library shows progress ("N assignment(s) · N scenario(s) · N ready for letters"), and each assignment in the list shows how many of its scenarios are ready. A scenario whose approval went stale after the assignment changed is not counted as ready.
 
+## Draft with AI (27 Nov 2026)
+
+**Draft with AI (estimate first)** above the scenario form fills the five answers (short name, situation, what you did, result, wording for letters) from a CV you choose and the saved assignment, for you to review and amend.
+
+- It uses the same AI setting as letter polishing (`ENABLE_COVER_LETTER_REFINEMENT=true` and `PERPLEXITY_API_KEY`). The estimate is free; the draft is one paid request after you confirm, with no web search and no retry.
+- Sent: the chosen CV's text (up to 24,000 characters), the assignment's own fields and anything you already wrote in the five boxes, which the draft builds on.
+- Wording is lively; facts are not invented. The instructions forbid adding employers, clients, sectors, public-sector bodies, tools, team sizes, dates or figures that are not in the sources. Any figure in the draft that is not in your CV or notes is listed for you to check or remove, and the draft's own notes say what to add (for example a measure).
+- Nothing is saved or approved by drafting. Amend the boxes, then click **Save and use in letters** (or **Save scenario** for a draft).
+
