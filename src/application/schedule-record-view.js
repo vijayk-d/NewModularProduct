@@ -3,7 +3,10 @@ const fail=(message,statusCode=409)=>{throw Object.assign(new Error(message),{st
 export function finalReconciled(job){return FINAL.has(job.status)&&job.reconciled===true&&(job.status!=='SENT'||typeof job.messageId==='string'&&job.messageId.length>0);}
 export function isClearedRecord(job){return finalReconciled(job)&&Number.isFinite(job.recordViewClearedAt)&&job.recordViewClearedAt>=0;}
 export function canClearRecord(job){return finalReconciled(job)&&!isClearedRecord(job);}
-export function recordedViewResult(state,includeCleared=false,map=j=>j){const jobs=state.jobs.filter(j=>includeCleared===true||!isClearedRecord(j)),clearedCount=state.jobs.filter(isClearedRecord).length;return {jobs:jobs.map(map),clearedCount,note:clearedCount?'Completed records have been cleared from the active view. Show cleared records to inspect or restore them. History and replay protection are retained.':undefined};}
+// Cleared records whose stored email copy in the scheduler Sheet has not been tidied yet (cloud job IDs only).
+const CLOUD_ID=/^[a-f0-9-]{36}$/;
+export function sheetTidyDue(state){return state.jobs.filter(j=>isClearedRecord(j)&&CLOUD_ID.test(String(j.id))&&!Number.isFinite(j.sheetTidyRequestedAt));}
+export function recordedViewResult(state,includeCleared=false,map=j=>j){const jobs=state.jobs.filter(j=>includeCleared===true||!isClearedRecord(j)),clearedCount=state.jobs.filter(isClearedRecord).length;return {jobs:jobs.map(map),clearedCount,sheetTidyPending:sheetTidyDue(state).length,note:clearedCount?'Completed records have been cleared from the active view. Show cleared records to inspect or restore them. History and replay protection are retained.':undefined};}
 function selected(state,jobIds){if(!Array.isArray(jobIds)||!jobIds.length||jobIds.length>200||jobIds.some(id=>typeof id!=='string'||!id||id.length>100))fail('Choose 1–200 recorded schedule IDs.',400);const ids=new Set(jobIds),jobs=state.jobs.filter(j=>ids.has(j.id));if(jobs.length!==ids.size)fail('A selected schedule is missing. Reload the recorded list.',404);return jobs;}
 export function clearRecordView(state,{jobIds,allCompleted=false,confirmed=false}={},now=Date.now()){
  if(confirmed!==true)fail('Confirm clearing completed records from this view.',400);

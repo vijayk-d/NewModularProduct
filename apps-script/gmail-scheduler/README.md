@@ -71,3 +71,17 @@ Before any cloud jobs are published, restore only source files from the install 
 Turning local flags off, closing the laptop, stopping port 3000, deleting a queue row or rolling back application source does NOT cancel an accepted cloud schedule. Use explicit cancellation and wait for signed cloud acknowledgment. If local API access is disabled, nmpSchedulerPause can stop future trigger runs after explicit confirmation, but it does not cancel jobs or recall an in-flight message. Never assume a pause/disable is a cancellation.
 
 Use only the existing bound Apps Script project for this Sheet/namespace. Do not create another worker project or clone scheduling state to bypass reservations. Do not rotate the signing key while pending/uncertain jobs exist.
+
+## Tidying the Sheet (Clear all completed)
+
+Each scheduled email is stored in full (including the CV attachment) in the `Requests` tab until it is tidied. The tab holds at most 10,000 rows, after which scheduling stops.
+
+- **Clear** and **Clear all completed** on the Recorded schedules list now also send one signed `tidy` request. It lists the cleared records whose stored copy has not been tidied yet, up to 200 per click.
+- On its next run (within a minute or two), `Scheduler.gs` deletes the `Requests` rows of those jobs, but only when their cloud status is SENT, CANCELLED, MISSED or BLOCKED. Pending and UNKNOWN jobs are never touched, so an uncertain send keeps its copy for inspection.
+- The tidy request's own rows are deleted too. `Jobs` receipts and script-property records are kept, so a deleted request can never be replayed or sent again.
+- Records cleared before this change are included in the next Clear. If nothing new is left to clear, **Clear all completed** stays enabled while older records still need tidying.
+- If the tidy request cannot be sent, the records are still cleared in the app and the message says so. Nothing retries automatically; click Clear again later.
+- The app now limits **active** (not cleared) schedules to 200, so clearing completed records also frees room for new schedules.
+
+**One-off step after shipping:** open the scheduler Sheet > Extensions > Apps Script, replace the contents of `Scheduler.gs` with the version in this folder and save. The trigger and keys stay as they are. Until you do this, tidy requests are ignored safely and their rows simply wait in the Sheet; the updated script removes them on its first run.
+
