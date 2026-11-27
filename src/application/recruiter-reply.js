@@ -6,6 +6,7 @@ import {checkAnswer} from '../domain/questions/answer-policy.js';
 import {DEFAULT_POLISHING_MODEL, normalizePolishingModel} from './polishing-model-catalog.js';
 import {estimatePolishingApiRequest} from './polishing-cost-estimator.js';
 import {RESPONSE_TOPICS, topicById, responsePatterns, detectTopics} from '../domain/replies/recruiter-response-topics.js';
+import {applyGmailSignature} from './gmail-message-presentation.js';
 import {currentOutcome, outcomeLabel, replyOutcomeId, replyMovesOutcome, validateOutcome} from '../domain/insights/application-outcome.js';
 
 export const REPLY_STATUSES = Object.freeze({
@@ -58,8 +59,20 @@ export function replyTopics(value) {
   return out;
 }
 
+// The Reply assistant's Gmail draft gets the same treatment as an outreach email: your Gmail signature (when
+// ENABLE_GMAIL_SIGNATURE=true) and, when link tracking is on, tracked advert/profile links plus the disclosure footnote.
+// Each reply has its own link ids ('reply-<their message id>') under the same application, so clicks show there.
+export function createReplyDraftPreparer({mailbox = '', env = process.env, signatureReader, linkTracker = null} = {}) {
+  return async (draft, ctx) => {
+    const signed = await applyGmailSignature(draft, {account: mailbox, env, signatureReader});
+    if (!linkTracker) return signed;
+    const tracked = await linkTracker.track(signed, {id: 'reply-' + ctx.messageId, reviewId: ctx.reviewId, email: ctx.email, application: {jobAdvertLink: ctx.jobAdvertLink || ''}});
+    return tracked === signed ? signed : {...tracked, linksTracked: true};
+  };
+}
+
 // sentEmails(reviewId): the confirmed sends for this application; replyReader: read-only Gmail thread reader (optional).
-export function createRecruiterReplyService({reviews, evidence = async () => [], writer = null, candidateName = '', sentEmails = () => [], queueItems = () => [], replyReader = null, replyStore = null, draftWriter = null, mailbox = '', now = () => Date.now(), outcomes = null, onOutcome = () => {}, activity = null, log = () => {}}) {
+export function createRecruiterReplyService({reviews, evidence = async () => [], writer = null, candidateName = '', sentEmails = () => [], queueItems = () => [], replyReader = null, replyStore = null, draftWriter = null, prepareDraft = null, mailbox = '', now = () => Date.now(), outcomes = null, onOutcome = () => {}, activity = null, log = () => {}}) {
   if (!reviews) throw new Error('The reply assistant needs saved applications.');
   let writing = false, drafting = false;
   const review = id => { const r = reviews.get(id); if (!r) fail('Saved application not found.', 404); return r; };
@@ -128,11 +141,17 @@ export function createRecruiterReplyService({reviews, evidence = async () => [],
       drafting = true;
       try {
         replyStore.saveDraft(reviewId, item.messageId, {...item, draftText: plain, draftHtml: html});
-        const r = await draftWriter({threadId: item.threadId, replyToMessageId: item.messageId, to: item.fromAddress, bodyPlainText: plain, bodyHtml: html, draftId: item.gmailDraftId, expectedAddress: mailbox});
+        // The local copy stays as you wrote it; only the Gmail copy gets the signature and tracked links.
+        let out = {bodyPlainText: plain, bodyHtml: html};
+        if (prepareDraft) {
+          try { out = await prepareDraft(out, {reviewId, messageId: item.messageId, email: item.fromAddress, jobAdvertLink: String(review(reviewId).formData?.jobAdvertLink || '')}); }
+          catch (error) { fail((error.statusCode ? error.message : 'Your Gmail signature could not be read.') + ' No Gmail draft was made.', error.statusCode || 502, 'REPLY_PREPARE_FAILED'); }
+        }
+        const r = await draftWriter({threadId: item.threadId, replyToMessageId: item.messageId, to: item.fromAddress, bodyPlainText: out.bodyPlainText, bodyHtml: out.bodyHtml, draftId: item.gmailDraftId, expectedAddress: mailbox});
         // A line in the server window when it works (failures are logged by the HTTP handler): never the reply or addresses.
         if (r.ok) log(`[REPLY_ASSISTANT] GMAIL_DRAFT_${r.updated ? 'UPDATED' : 'CREATED'} review=${reviewId}${item.gmailDraftId && !r.updated ? ' (the earlier draft was sent or deleted, so a new one was made)' : ''}`);
         if (!r.ok) fail(r.code === 'SCOPE_MISSING' ? 'Gmail has not granted the access needed. Run the Maintenance card "Gmail read access: add", restart the app, then try again.' : r.error, r.code === 'SCOPE_MISSING' ? 403 : 502, 'REPLY_' + r.code);
-        return {reply: replyStore.markGmailDraft(reviewId, item.messageId, r.draftId), updated: r.updated === true, subject: r.subject || '', gmailDraftsUrl: 'https://mail.google.com/mail/' + (mailbox ? '?authuser=' + encodeURIComponent(mailbox) : 'u/0/') + '#drafts'};
+        return {reply: replyStore.markGmailDraft(reviewId, item.messageId, r.draftId), updated: r.updated === true, signed: Boolean(out.signature), linksTracked: out.linksTracked === true, subject: r.subject || '', gmailDraftsUrl: 'https://mail.google.com/mail/' + (mailbox ? '?authuser=' + encodeURIComponent(mailbox) : 'u/0/') + '#drafts'};
       } finally { drafting = false; }
     },
     // body.theirEmail (optional): the respondent's own address(es), searched first, in addition to this application's contacts.
