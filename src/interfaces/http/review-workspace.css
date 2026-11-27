@@ -149,12 +149,16 @@ html.review-workspace #polishing-model[data-workspace-choice-carrier],html.revie
 .review-workspace .workspace-imported-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));gap:.7rem 1rem}
 .review-workspace .workspace-imported-grid>p{margin:0;min-width:0;overflow-wrap:anywhere}
 .review-workspace .workspace-imported-grid>details,.review-workspace .workspace-imported-grid>.imported-job-posters{grid-column:1/-1}
-.review-workspace .sent-history-table{table-layout:auto!important;min-width:58rem!important;width:100%}
-.review-workspace .sent-history-table th:first-child,.review-workspace .sent-history-table td:first-child{width:13rem}
-.review-workspace .sent-history-table th:nth-child(3),.review-workspace .sent-history-table td:nth-child(3){width:8rem}
-.review-workspace .sent-history-table th:nth-child(4),.review-workspace .sent-history-table td:nth-child(4){width:7rem}
-.review-workspace .sent-history-table th:nth-child(5),.review-workspace .sent-history-table td:nth-child(5){width:5rem}
-.review-workspace .sent-history-table tbody tr td.history-subject{white-space:nowrap!important;overflow-wrap:normal!important;word-break:normal!important;max-width:none!important;min-width:22rem}
+/* Sent history: fixed column widths so a long subject wraps inside its own column and never squeezes the recipient,
+   action and date columns down to one letter per line. */
+.review-workspace .sent-history-scroll .sent-history-table{table-layout:fixed!important;min-width:52rem!important;width:100%!important}
+.review-workspace .sent-history-scroll .sent-history-table th:nth-child(1){width:15rem}
+.review-workspace .sent-history-scroll .sent-history-table th:nth-child(2){width:auto}
+.review-workspace .sent-history-scroll .sent-history-table th:nth-child(3){width:8.5rem}
+.review-workspace .sent-history-scroll .sent-history-table th:nth-child(4){width:7rem}
+.review-workspace .sent-history-scroll .sent-history-table th:nth-child(5){width:6rem}
+.review-workspace .sent-history-table tbody tr td.history-subject{white-space:normal!important;overflow-wrap:break-word!important;word-break:normal!important;max-width:none!important}
+.review-workspace .sent-history-table td:first-child strong,.review-workspace .sent-history-table .history-badge{overflow-wrap:normal;word-break:normal}
 .review-workspace .workspace-section-target{scroll-margin-top:1.2rem}
 .workspace-section-nav{position:fixed;left:.5rem;top:7rem;width:3.2rem;display:flex;flex-direction:column;gap:.35rem;padding:.4rem;border:1px solid #cbd5e1;border-radius:.6rem;background:#fff;box-shadow:0 3px 14px #0002;z-index:50;max-height:calc(100vh - 8rem);overflow:auto}
 .workspace-section-nav a{display:flex;align-items:center;justify-content:center;min-width:2.3rem;min-height:2.3rem;border-radius:.4rem;color:#334155;text-decoration:none;flex:none}
