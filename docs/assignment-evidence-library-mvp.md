@@ -61,3 +61,21 @@ The page now shows only what is needed to make usable evidence; the saved data a
 - Wording is lively; facts are not invented. The instructions forbid adding employers, clients, sectors, public-sector bodies, tools, team sizes, dates or figures that are not in the sources. Any figure in the draft that is not in your CV or notes is listed for you to check or remove, and the draft's own notes say what to add (for example a measure).
 - Nothing is saved or approved by drafting. Amend the boxes, then click **Save and use in letters** (or **Save scenario** for a draft).
 
+
+## Import an evidence file
+
+**Import evidence file** (next to Reload) adds assignments and scenarios from a JSON file in the `jobapp-evidence-v1` format:
+
+```json
+{"format": "jobapp-evidence-v1", "assignments": [{"title": "...", "role": "...", "scenarios": [{"title": "...", "situation": "...", "actions": "...", "outcomes": "...", "approvedWording": "..."}]}]}
+```
+
+- Fields are the usual assignment and scenario fields. Unknown fields make the whole file fail, and nothing is imported.
+- Everything is added as new records in one step. Existing records are never changed. An assignment whose title is already in the library is skipped, so importing a file twice adds nothing.
+- Imported scenarios are always "needs clarification" and unapproved, even if the file says otherwise. They reach letters only after you review them and click **Save and use in letters**.
+- Limits: 50 assignments, 20 scenarios each and 400 in total per file, up to 2 MB.
+
+`docs/evidence/evidence-starter-pack.json` holds 32 starter scenarios: four for each of eight delivery roles (Delivery Manager, Programme Manager, Project Manager, Scrum Master, Agile Coach, Product Owner, Transformation and Change Lead, PMO and Portfolio). They are templates, not evidence:
+- Every [bracket] marks a fact only you can supply.
+- Replace each bracket with true details, or delete the sentence, before saving for letters.
+- Rename the "Starter pack: …" assignments to your real ones, or move the scenarios you use into them.

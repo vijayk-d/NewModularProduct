@@ -1,0 +1,286 @@
+{
+  "format": "jobapp-evidence-v1",
+  "note": "Starter templates, not evidence. Replace every [bracket] with your own facts and delete anything untrue before Save and use in letters.",
+  "assignments": [
+    {
+      "title": "Starter pack: Delivery Manager",
+      "role": "Delivery Manager",
+      "contribution": "Strong verbs for this role: Orchestrated, Unblocked, Stabilised, Forecast, Aligned, Safeguarded.",
+      "scenarios": [
+        {
+          "title": "Rescuing a slipping release",
+          "situation": "[Product or service] was [how far] behind its committed release date, with [number] teams blocked by [main cause, e.g. unresolved dependencies].",
+          "actions": "I mapped every cross-team dependency onto a single visible board and ran a short daily unblock session with [who]. I re-sequenced the backlog with [product owner] so the highest-value scope landed first, and agreed a revised, evidence-based forecast with [stakeholders].",
+          "outcomes": "The release went live on [date or \"the revised date\"], with [scope delivered]. [Optional measure you can evidence, e.g. lead time from X to Y.]",
+          "approvedWording": "I brought a slipping release back under control by making cross-team dependencies visible, running focused daily unblocking with [who] and re-sequencing scope with the product owner, so [service] went live on [the revised date] with its highest-value features intact."
+        },
+        {
+          "title": "Making delivery predictable",
+          "situation": "Stakeholders at [organisation] had lost confidence in delivery dates because [cause, e.g. forecasts were based on estimates rather than throughput].",
+          "actions": "I introduced flow metrics ([e.g. throughput, cycle time]) and probabilistic forecasting, shared them in a fortnightly review with [audience], and coached the team to slice work into smaller, releasable increments.",
+          "outcomes": "Forecasts became [describe, e.g. \"a regular, trusted part of planning\"]. [Optional: predictability moved from X to Y, if recorded.]",
+          "approvedWording": "I rebuilt stakeholder confidence in delivery dates by replacing estimate-driven promises with flow metrics and probabilistic forecasts, reviewed openly with [audience], so planning conversations shifted from blame to evidence."
+        },
+        {
+          "title": "Managing a critical risk early",
+          "situation": "During [programme or release], [risk, e.g. a third-party integration] threatened [what was at stake].",
+          "actions": "I raised the risk with [who], agreed an owner and mitigation, set up [early test, spike or fallback], and tracked it weekly in [forum] until it closed.",
+          "outcomes": "[What happened: e.g. the integration issue surfaced in testing rather than live, and the fallback was not needed.]",
+          "approvedWording": "I surfaced a delivery-threatening risk early, secured a named owner and a tested mitigation, and tracked it to closure, so [what was protected] stayed on course."
+        },
+        {
+          "title": "Turning around team health",
+          "situation": "The [team name or type] team was showing [signs, e.g. missed sprint goals, low morale, unplanned work].",
+          "actions": "I facilitated a candid retrospective, made unplanned work visible, agreed a work-in-progress limit with the team and protected their focus by routing requests through [channel or person].",
+          "outcomes": "The team [result in words, e.g. met its sprint goals consistently over the following quarter]. [Optional measure.]",
+          "approvedWording": "I restored a struggling team’s rhythm by making hidden work visible, agreeing sensible work-in-progress limits and shielding their focus, so they [result] over the following [period]."
+        }
+      ]
+    },
+    {
+      "title": "Starter pack: Programme Manager",
+      "role": "Programme Manager",
+      "contribution": "Strong verbs for this role: Mobilised, Governed, Integrated, Steered, Realised, Reconciled.",
+      "scenarios": [
+        {
+          "title": "Mobilising a multi-workstream programme",
+          "situation": "[Organisation] needed to deliver [programme goal] across [number] workstreams, with [constraint, e.g. a fixed regulatory date].",
+          "actions": "I set up the programme structure: governance, a single integrated plan, RAID log and reporting cadence. I agreed roles and decision rights with [sponsor or board] and brought workstream leads into a weekly integration review.",
+          "outcomes": "The programme [result, e.g. passed its first stage gate on schedule] and the board had [describe, e.g. one clear view of status and risk].",
+          "approvedWording": "I mobilised a [number]-workstream programme with clear governance, a single integrated plan and a weekly integration rhythm, giving [sponsor] one trusted view of progress and risk from the outset."
+        },
+        {
+          "title": "Steering through a scope or budget challenge",
+          "situation": "Mid-way through [programme], [challenge, e.g. a funding reduction or new requirement] put [what] at risk.",
+          "actions": "I modelled the options with [finance or workstream leads], set out the trade-offs for [decision forum] and, once the decision was made, re-baselined the plan and communicated the change to [stakeholders].",
+          "outcomes": "[Outcome, e.g. the programme continued within the revised envelope while protecting the core benefits.]",
+          "approvedWording": "When [challenge] threatened the programme, I set out clear, costed options for the board and led the re-baseline, so we kept delivering the core benefits within the revised constraints."
+        },
+        {
+          "title": "Securing benefits, not just outputs",
+          "situation": "[Programme] was tracking deliverables but had no clear way to show the benefits it promised.",
+          "actions": "I worked with [business owners] to define measurable benefits, owners and baselines, built them into the programme reports and planned the post-go-live reviews.",
+          "outcomes": "Benefits became [describe, e.g. a standing item at the board, with named owners].",
+          "approvedWording": "I shifted the programme’s focus from outputs to outcomes by agreeing measurable benefits, owners and baselines with the business and building them into board reporting."
+        },
+        {
+          "title": "Aligning senior stakeholders",
+          "situation": "Senior stakeholders in [areas] held [conflicting priorities] that were slowing decisions.",
+          "actions": "I met each stakeholder individually to understand their concerns, framed the decision around shared objectives, and facilitated a session with [who] that reached agreement on [decision].",
+          "outcomes": "[Decision] was made by [when], unblocking [what].",
+          "approvedWording": "I broke a decision deadlock between senior stakeholders by understanding each position individually and facilitating agreement around shared objectives, which unblocked [what]."
+        }
+      ]
+    },
+    {
+      "title": "Starter pack: Project Manager",
+      "role": "Project Manager",
+      "contribution": "Strong verbs for this role: Planned, Delivered, Controlled, Coordinated, Recovered, Closed.",
+      "scenarios": [
+        {
+          "title": "Delivering a project to a fixed deadline",
+          "situation": "[Project] had to be delivered by [date or event] with [constraint, e.g. a fixed budget or small team].",
+          "actions": "I built the plan with the team, set clear milestones, held weekly checkpoints with [who], and managed scope changes through a simple change-control route.",
+          "outcomes": "The project was delivered [on time / by date], [within budget, if true], with [what was delivered].",
+          "approvedWording": "I delivered [project] to a fixed deadline by planning milestones with the team, holding tight weekly checkpoints and controlling scope change, so [what] was ready for [event or date]."
+        },
+        {
+          "title": "Recovering a project that had drifted",
+          "situation": "When I took over [project], it was [state, e.g. behind plan with unclear ownership].",
+          "actions": "I reviewed the plan, risks and open issues, reset priorities with [sponsor], gave each workstream a named owner and introduced a short weekly status report.",
+          "outcomes": "[Outcome, e.g. the project returned to plan and closed by date].",
+          "approvedWording": "I took over a drifting project, reset priorities with the sponsor, gave every workstream a named owner and introduced clear weekly reporting, bringing it back to plan."
+        },
+        {
+          "title": "Coordinating suppliers and internal teams",
+          "situation": "[Project] depended on [number] suppliers and internal teams with different ways of working.",
+          "actions": "I set up a shared plan and weekly joint review, agreed hand-off points and acceptance criteria, and escalated blockers early with [who].",
+          "outcomes": "[Outcome, e.g. hand-offs were met and the solution went live as planned.]",
+          "approvedWording": "I coordinated [number] suppliers and internal teams through one shared plan, agreed acceptance criteria and early escalation, so hand-offs landed and [solution] went live as planned."
+        },
+        {
+          "title": "Closing a project properly",
+          "situation": "[Project] was ending, and previous projects had handed over without clear ownership or lessons.",
+          "actions": "I ran a structured handover to [service or business owner], confirmed acceptance, documented open risks and led a lessons-learned session with the team.",
+          "outcomes": "[Service] was handed over with a named owner, and [lessons were used for what].",
+          "approvedWording": "I closed [project] cleanly with a structured handover, confirmed acceptance and a lessons-learned review that [how it was used]."
+        }
+      ]
+    },
+    {
+      "title": "Starter pack: Scrum Master",
+      "role": "Scrum Master",
+      "contribution": "Strong verbs for this role: Facilitated, Coached, Removed, Improved, Protected, Enabled.",
+      "scenarios": [
+        {
+          "title": "Making sprint goals meaningful",
+          "situation": "The [team] team’s sprints were [problem, e.g. a list of tickets with no shared goal], and goals were often missed.",
+          "actions": "I coached the product owner and team to agree one outcome-focused sprint goal, refined the backlog earlier so stories were ready, and used the daily scrum to track progress against the goal.",
+          "outcomes": "The team [result, e.g. met its sprint goal in most sprints over the following quarter].",
+          "approvedWording": "I helped the team move from ticket lists to focused, outcome-based sprint goals by coaching better refinement and goal-led daily scrums, so they [result]."
+        },
+        {
+          "title": "Retrospectives that lead to change",
+          "situation": "Retrospectives had become [problem, e.g. repetitive, with actions rarely completed].",
+          "actions": "I varied the formats, focused each retrospective on one or two improvements the team owned, and made those actions visible on the board for the next sprint.",
+          "outcomes": "[Outcome, e.g. the team completed its improvement actions and fixed (issue).]",
+          "approvedWording": "I revived stale retrospectives with varied formats and one or two owned, visible improvement actions per sprint, so the team actually [improvement made]."
+        },
+        {
+          "title": "Removing a persistent impediment",
+          "situation": "[Impediment, e.g. slow environment provisioning] was costing the team [impact].",
+          "actions": "I made the impact visible with [data or examples], took it to [who], and worked with [team or function] to agree [fix].",
+          "outcomes": "[Outcome, e.g. provisioning time fell from days to hours, if measured, or \"the delay was removed\"].",
+          "approvedWording": "I removed a long-running impediment by quantifying its impact and working with [team] on a lasting fix, giving the team back time to [what]."
+        },
+        {
+          "title": "Growing a self-managing team",
+          "situation": "The team relied on me to [run ceremonies or resolve every decision].",
+          "actions": "I stepped back gradually: the team took turns facilitating events, agreed their own working agreement and decided together how to handle [area].",
+          "outcomes": "The team [result, e.g. ran its own events and made day-to-day decisions without me].",
+          "approvedWording": "I grew the team’s self-management by gradually handing over facilitation and decisions, so they [result] and I could focus on wider impediments."
+        }
+      ]
+    },
+    {
+      "title": "Starter pack: Agile Coach",
+      "role": "Agile Coach",
+      "contribution": "Strong verbs for this role: Championed, Coached, Embedded, Scaled, Mentored, Transformed.",
+      "scenarios": [
+        {
+          "title": "Coaching leaders through an agile change",
+          "situation": "Leaders at [organisation] wanted [goal, e.g. faster delivery] but were [blocker, e.g. still managing work through detailed plans].",
+          "actions": "I ran coaching sessions with [leaders], introduced outcome-based planning and helped them practise [practice, e.g. setting goals rather than tasks] in [forum].",
+          "outcomes": "Leaders [result, e.g. began setting quarterly outcomes for teams].",
+          "approvedWording": "I coached leaders to move from detailed task plans to outcome-based goals, helping them practise new habits in real planning forums so [result]."
+        },
+        {
+          "title": "Launching new agile teams",
+          "situation": "[Number] teams were being formed to deliver [product or service] using [framework].",
+          "actions": "I designed and ran team launches covering purpose, working agreements, roles and the first backlog, then coached each team through its first [number] sprints.",
+          "outcomes": "[Outcome, e.g. all teams were delivering in a steady cadence within (period).]",
+          "approvedWording": "I launched [number] new teams with structured kick-offs and hands-on coaching through their first sprints, so they reached a steady delivery cadence quickly."
+        },
+        {
+          "title": "Mentoring Scrum Masters and product owners",
+          "situation": "New Scrum Masters and product owners at [organisation] needed support to grow in role.",
+          "actions": "I set up a community of practice, ran regular one-to-one mentoring with [number] people and shared practical tools for [areas].",
+          "outcomes": "[Outcome, e.g. two mentees took on larger teams, if true.]",
+          "approvedWording": "I built a community of practice and mentored [number] Scrum Masters and product owners, growing in-house capability for [area]."
+        },
+        {
+          "title": "Improving flow across teams",
+          "situation": "Work across [teams] was [problem, e.g. waiting in hand-offs between teams].",
+          "actions": "I facilitated a value-stream mapping workshop with [who], identified the main delays and coached teams on [changes, e.g. limiting work in progress, cross-skilling].",
+          "outcomes": "[Outcome, e.g. hand-off waits reduced, with any measure you recorded.]",
+          "approvedWording": "I facilitated value-stream mapping across teams, found where work was waiting and coached practical changes that [result]."
+        }
+      ]
+    },
+    {
+      "title": "Starter pack: Product Owner",
+      "role": "Product Owner",
+      "contribution": "Strong verbs for this role: Prioritised, Shaped, Validated, Articulated, Maximised, Simplified.",
+      "scenarios": [
+        {
+          "title": "Prioritising by value",
+          "situation": "The backlog for [product] had [problem, e.g. hundreds of items and no clear order].",
+          "actions": "I agreed a simple value and effort model with [stakeholders], cleared out stale items and ordered the backlog around [goal].",
+          "outcomes": "The team [result, e.g. delivered the highest-value features first in the next release].",
+          "approvedWording": "I turned an unmanageable backlog into a clear, value-ordered plan agreed with stakeholders, so the team delivered [what] first."
+        },
+        {
+          "title": "Testing an idea before building it",
+          "situation": "[Stakeholder] requested [feature] that would take [effort] to build.",
+          "actions": "I framed it as a hypothesis, ran [test, e.g. a prototype or user interviews] with [users] and shared the findings with [who].",
+          "outcomes": "[Outcome, e.g. we built a smaller version / did not build it and focused on X.]",
+          "approvedWording": "I tested a costly feature idea with real users before committing to it, which [outcome] and saved the team from building the wrong thing."
+        },
+        {
+          "title": "Making a product vision clear",
+          "situation": "Teams working on [product] had [problem, e.g. different views of what success looked like].",
+          "actions": "I wrote a short product vision and goals with [who], shared them at [event] and used them in refinement to decide what to build next.",
+          "outcomes": "[Outcome, e.g. teams used the goals to decline low-value requests.]",
+          "approvedWording": "I gave teams a shared product vision and measurable goals, and used them in refinement to keep work focused on [goal]."
+        },
+        {
+          "title": "Balancing stakeholder demands",
+          "situation": "[Stakeholder groups] all wanted their requests delivered in [period].",
+          "actions": "I held a joint prioritisation session, made trade-offs visible against [goal] and published a roadmap everyone could see.",
+          "outcomes": "[Outcome, e.g. stakeholders agreed the order and escalations reduced.]",
+          "approvedWording": "I balanced competing stakeholder demands with an open prioritisation session and a visible roadmap, so decisions were understood and agreed."
+        }
+      ]
+    },
+    {
+      "title": "Starter pack: Transformation and Change Lead",
+      "role": "Transformation and Change Lead",
+      "contribution": "Strong verbs for this role: Led, Embedded, Engaged, Redesigned, Sustained, Measured.",
+      "scenarios": [
+        {
+          "title": "Leading a ways-of-working change",
+          "situation": "[Organisation or department] was moving from [old approach] to [new approach].",
+          "actions": "I set out the case for change with [sponsor], ran pilots with [teams], gathered feedback and scaled what worked through [mechanism, e.g. playbooks and coaching].",
+          "outcomes": "[Outcome, e.g. the approach was adopted by (number) teams.]",
+          "approvedWording": "I led the move from [old approach] to [new approach] by piloting with real teams, learning from feedback and scaling what worked, so adoption grew to [extent]."
+        },
+        {
+          "title": "Bringing people with the change",
+          "situation": "Staff in [area] were [concern, e.g. sceptical about new tools or processes].",
+          "actions": "I ran listening sessions, recruited change champions in each team and adjusted the rollout based on what they told us.",
+          "outcomes": "[Outcome, e.g. adoption, feedback or reduced resistance you can describe.]",
+          "approvedWording": "I built support for change by listening first, recruiting champions in every team and adapting the rollout to their feedback, so [result]."
+        },
+        {
+          "title": "Redesigning a process end to end",
+          "situation": "[Process] took [time or effort] and frustrated [who].",
+          "actions": "I mapped the current process with the people who did the work, removed [steps or hand-offs] and piloted the new version with [team].",
+          "outcomes": "[Outcome, e.g. the process became simpler and faster, with any measure you have.]",
+          "approvedWording": "I redesigned [process] with the people who run it, removing unnecessary steps and hand-offs, and piloted the new version so [result]."
+        },
+        {
+          "title": "Making change stick",
+          "situation": "Earlier changes at [organisation] had [problem, e.g. faded once the project team left].",
+          "actions": "I agreed owners for the new ways of working, built them into [routines, e.g. team reviews] and set up a simple way to track adoption.",
+          "outcomes": "[Outcome, e.g. teams were still using the practices (period) later.]",
+          "approvedWording": "I made change last by giving new practices named owners, building them into everyday routines and tracking adoption over time."
+        }
+      ]
+    },
+    {
+      "title": "Starter pack: PMO and Portfolio",
+      "role": "PMO and Portfolio",
+      "contribution": "Strong verbs for this role: Standardised, Consolidated, Assured, Reported, Rationalised, Enabled.",
+      "scenarios": [
+        {
+          "title": "One view of the portfolio",
+          "situation": "Leaders at [organisation] could not see [problem, e.g. status across (number) projects in one place].",
+          "actions": "I designed a standard status format, collected updates through [tool or process] and produced a monthly portfolio report for [audience].",
+          "outcomes": "[Outcome, e.g. leaders used it to make prioritisation decisions.]",
+          "approvedWording": "I gave leaders one clear view of the portfolio through a standard status format and a monthly report, which they used to [decision]."
+        },
+        {
+          "title": "Right-sizing governance",
+          "situation": "Project governance at [organisation] was [problem, e.g. the same heavy process for every project].",
+          "actions": "I introduced tiers based on size and risk, simplified templates for smaller projects and agreed the approach with [who].",
+          "outcomes": "[Outcome, e.g. small projects started faster while large ones kept proper control.]",
+          "approvedWording": "I right-sized governance with size- and risk-based tiers, so smaller projects moved faster while larger ones kept the control they needed."
+        },
+        {
+          "title": "Strengthening project assurance",
+          "situation": "[Problem, e.g. projects were reaching go-live with unresolved risks].",
+          "actions": "I introduced [assurance, e.g. stage-gate health checks] covering [areas], reviewed [number] projects and reported themes to [who].",
+          "outcomes": "[Outcome, e.g. issues were caught before go-live.]",
+          "approvedWording": "I introduced practical health checks at key stages, so risks were caught and fixed before go-live rather than after."
+        },
+        {
+          "title": "Building project capability",
+          "situation": "Project managers at [organisation] used [problem, e.g. inconsistent methods and tools].",
+          "actions": "I created a simple toolkit and guidance, ran [sessions] for [number] people and set up a forum to share practice.",
+          "outcomes": "[Outcome, e.g. consistent reporting across projects.]",
+          "approvedWording": "I raised project capability with a practical toolkit, training and a shared practice forum, giving the organisation [result]."
+        }
+      ]
+    }
+  ]
+}
