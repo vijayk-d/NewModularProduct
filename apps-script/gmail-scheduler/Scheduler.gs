@@ -36,10 +36,30 @@ function nmpCommands_(c){
  var rows=tab.getRange(2,1,last-1,7).getValues(),groups={};
  rows.forEach(function(row){var id=String(row[0]);if(!/^[a-f0-9-]{36}$/.test(id))return;(groups[id]||(groups[id]=[])).push(row);});
  var commands=[];
- Object.keys(groups).forEach(function(id){var parts=groups[id],first=parts[0],total=Number(first[4]);if(total<1||total>150||parts.length!==total)return;parts.sort(function(a,b){return Number(a[3])-Number(b[3]);});var valid=parts.every(function(r,i){return String(r[0])===id&&String(r[1])===String(first[1])&&String(r[2])===String(first[2])&&Number(r[3])===i&&Number(r[4])===total&&String(r[6])===String(first[6]);});if(!valid)return;var text=parts.map(function(r){return String(r[5]);}).join('');if(text.length>4500000||nmpMac_(text,c.key)!==String(first[6]))return;try{var command=JSON.parse(text);if(command.version!==1||command.requestId!==id||command.jobId!==String(first[1])||command.action!==String(first[2])||command.namespace!==c.namespace||command.sheetId!==c.sheetId||command.account!==c.owner||!/^[a-f0-9-]{36}$/.test(command.jobId)||['schedule','cancel'].indexOf(command.action)<0)return;commands.push(command);}catch(ignore){}
+ Object.keys(groups).forEach(function(id){var parts=groups[id],first=parts[0],total=Number(first[4]);if(total<1||total>150||parts.length!==total)return;parts.sort(function(a,b){return Number(a[3])-Number(b[3]);});var valid=parts.every(function(r,i){return String(r[0])===id&&String(r[1])===String(first[1])&&String(r[2])===String(first[2])&&Number(r[3])===i&&Number(r[4])===total&&String(r[6])===String(first[6]);});if(!valid)return;var text=parts.map(function(r){return String(r[5]);}).join('');if(text.length>4500000||nmpMac_(text,c.key)!==String(first[6]))return;try{var command=JSON.parse(text);if(command.version!==1||command.requestId!==id||command.jobId!==String(first[1])||command.action!==String(first[2])||command.namespace!==c.namespace||command.sheetId!==c.sheetId||command.account!==c.owner||!/^[a-f0-9-]{36}$/.test(command.jobId)||['schedule','cancel','tidy'].indexOf(command.action)<0||command.action==='tidy'&&!nmpValidTidy_(command))return;commands.push(command);}catch(ignore){}
  });return commands;
 }
 function nmpValidSchedule_(p,now){return p.version===1&&Number.isFinite(p.dueAt)&&Number.isFinite(p.expiresAt)&&p.expiresAt===p.dueAt+15*60000&&p.dueAt<=now+30*86400000&&typeof p.raw==='string'&&p.raw.length<=4*1024*1024&&/^[A-Za-z0-9_-]+={0,2}$/.test(p.raw)&&/^[a-f0-9]{64}$/.test(String(p.contentHash))&&nmpHashRaw_(p.raw)===p.contentHash;}
+// Sheet tidy: after the app clears finished records it sends one signed 'tidy' command listing their job IDs. The
+// stored request rows (the full email copies) of those jobs are deleted, but only for jobs whose recorded status is
+// final: SENT, CANCELLED, MISSED or BLOCKED. UNKNOWN and pending jobs are never touched. Job receipts (Jobs tab) and
+// script-property records stay, so a deleted request can never be replayed. The tidy command's own rows go too.
+var NMP_TIDY_FINAL=['SENT','CANCELLED','MISSED','BLOCKED'];
+function nmpValidTidy_(p){return Array.isArray(p.jobIds)&&p.jobIds.length>=1&&p.jobIds.length<=200&&p.jobIds.every(function(id){return typeof id==='string'&&/^[a-f0-9-]{36}$/.test(id);});}
+function nmpTidy_(c,commands){
+ var done={},targets={};
+ commands.forEach(function(p){if(p.action!=='tidy')return;done[p.requestId]=true;p.jobIds.forEach(function(id){var j=nmpReadJob_(c,id);if(j&&NMP_TIDY_FINAL.indexOf(j.status)>=0)targets[id]=true;});});
+ if(!Object.keys(done).length)return 0;
+ var tab=c.sheet.getSheetByName('Requests'),last=tab.getLastRow();if(last<2)return 0;
+ var rows=tab.getRange(2,1,last-1,2).getValues(),drop=[];
+ rows.forEach(function(r,i){if(done[String(r[0])]||targets[String(r[1])])drop.push(i+2);});
+ if(!drop.length)return 0;
+ // Google refuses to delete every row below a frozen header, so keep one blank row when the whole table goes.
+ if(drop.length===last-1)tab.insertRowAfter(last);
+ // Delete from the bottom up in contiguous runs: rows the app appends meanwhile land after these and are untouched.
+ for(var k=drop.length-1;k>=0;){var end=drop[k],start=end;while(k>0&&drop[k-1]===start-1){k--;start--;}k--;tab.deleteRows(start,end-start+1);}
+ SpreadsheetApp.flush();return drop.length;
+}
 function nmpSchedulerTick(){
  var lock=LockService.getScriptLock();if(!lock.tryLock(1000))return;
  try{
@@ -51,6 +71,7 @@ function nmpSchedulerTick(){
    nmpConfig_();j.status='SENDING';j.note='Dispatch reserved; cancellation is no longer assured.';nmpPersist_(c,j);attempted++;
    try{var result=Gmail.Users.Messages.send({raw:p.raw},'me');if(!result||typeof result.id!=='string'||!result.id)throw Error('Missing Gmail receipt.');j.status='SENT';j.messageId=result.id;j.threadId=result.threadId||'';j.note='Gmail API accepted message; this is not proof of delivery or ATS submission.';nmpPersist_(c,j);}catch(error){j.status='UNKNOWN';j.note='Send or receipt persistence uncertain. Inspect Gmail; no automatic retry.';try{nmpPersist_(c,j);}catch(ignore){}}
   });
+  try{nmpTidy_(c,commands);}catch(error){console.warn('Sheet tidy skipped: '+error.message);}
  }finally{lock.releaseLock();}
 }
 function nmpSchedulerInstall(){
