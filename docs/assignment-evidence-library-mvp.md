@@ -41,3 +41,14 @@ Restart development (`npm start`) and check `/evidence-library`, then stop devel
 ### Calls and polishing
 
 The evidence library and scenario search/ranking make no paid calls and do not access or send email. Selecting ranked evidence can be handed off to saved applications; polishing with selected evidence uses one normal cover-letter polish call when cover-letter polishing is enabled. This works with **Cover-letter quality V2** off; the evidence library has no dependency on that toggle.
+
+## Quick capture (27 Nov 2026)
+
+The page now shows only what is needed to make usable evidence; the saved data and exports are unchanged.
+
+- **Assignment:** name, employer, role and dates. The other eight fields are under **More detail (optional)**, which opens by itself when any of them already has text.
+- **Scenario:** five plain questions: a short name, the situation, what you did, the result (figures only if you have them), and the wording to use in letters. The other eleven fields are under **More detail (optional)**; evidence state and the approval tick are under **Evidence and approval (advanced)**.
+- **Fill wording from my answers** joins your three answers into the wording box as a starting point. It never rewrites or adds anything.
+- **Save and use in letters** saves the scenario as confirmed by you and approved for letters in one step. It fills the confirmation basis ("Confirmed by me from my own experience on <date>") only when it is blank, and keeps a source-supported state if you set one. **Save scenario** still saves a draft without approval.
+- The library shows progress ("N assignment(s) · N scenario(s) · N ready for letters"), and each assignment in the list shows how many of its scenarios are ready. A scenario whose approval went stale after the assignment changed is not counted as ready.
+
