@@ -221,7 +221,7 @@ export function attachReplyControls(doc = document, fetchImpl = fetch, clipboard
     try {
       const d = await call('/gmail-draft', {messageId: selected, bodyPlainText: editorText(editor), bodyHtml: editor.innerHTML});
       remember(d.reply);
-      status.replaceChildren(doc.createTextNode(`${d.updated ? 'Gmail draft updated' : 'Gmail draft created'} in their conversation (${d.subject}). Review and send it from Gmail. `),
+      status.replaceChildren(doc.createTextNode(`${d.updated ? 'Gmail draft updated' : 'Gmail draft created'} in their conversation (${d.subject}).${d.signed ? ' Your Gmail signature was added.' : ''}${d.linksTracked ? ' Advert and profile links are click-tracked, with the footnote.' : ''} Review and send it from Gmail. `),
         el(doc, 'a', {href: d.gmailDraftsUrl, target: '_blank', rel: 'noopener noreferrer', text: 'Open Gmail drafts'}));
     } catch (error) { status.textContent = error.message; } finally { gmailDraft.disabled = false; }
   });

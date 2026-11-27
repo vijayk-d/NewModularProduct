@@ -55,7 +55,7 @@ import { createLetterKeywordsHandler } from "./letter-keywords-http.js";
 import { createLetterKeywordService } from "../../application/letter-keywords.js";
 import { factLinesWithCertifications } from "../../domain/cv/cv-facts.js";
 import { normaliseCertifications } from "../../domain/cv/owner-certifications.js";
-import { createRecruiterReplyService } from "../../application/recruiter-reply.js";
+import { createRecruiterReplyService, createReplyDraftPreparer } from "../../application/recruiter-reply.js";
 import { readGmailReplies, readTrackingAlerts, gmailReplyReadingEnabled } from "../../application/gmail-reply-reader.js";
 import { createEmailOpenService } from "../../application/email-open-tracking.js";
 import { createEmailOpensHandler } from "./email-opens-http.js";
@@ -516,7 +516,7 @@ export function createLocalServer({
   const replyService=createRecruiterReplyService({reviews:reviewStore,writer:replyWriter,activity:activityLog,log:line=>console.log(line),candidateName:process.env.CANDIDATE_DISPLAY_NAME||'',evidence:async id=>questionsService?await questionsService.evidenceFor(id):[],
     sentEmails:()=>outreachRepository?.listSentEmails?.()||[],queueItems:()=>outreachRepository?.list?.()||[],mailbox:String(process.env.GMAIL_FROM_ADDRESS||'').trim(),
     replyReader:gmailReplyReader!==undefined?gmailReplyReader:(gmailReplyReadingEnabled()?args=>readGmailReplies(args):null),
-    replyStore:replyThreadsStore,outcomes:insightsStore,onOutcome:()=>insightsSnapshot?.schedule(),draftWriter:gmailReplyDrafter!==undefined?gmailReplyDrafter:(gmailReplyReadingEnabled()?args=>createGmailReplyDraft(args):null)});
+    replyStore:replyThreadsStore,prepareDraft:createReplyDraftPreparer({mailbox:String(process.env.GMAIL_FROM_ADDRESS||'').trim(),linkTracker}),outcomes:insightsStore,onOutcome:()=>insightsSnapshot?.schedule(),draftWriter:gmailReplyDrafter!==undefined?gmailReplyDrafter:(gmailReplyReadingEnabled()?args=>createGmailReplyDraft(args):null)});
   const handleReply=createRecruiterReplyHandler({service:replyService,sendJson,sendText});
   // Letter keyword check: the advert's ATS terms against the letter and your evidence; free and local.
   const letterEvidence=async id=>questionsService?await questionsService.evidenceFor(id):[];

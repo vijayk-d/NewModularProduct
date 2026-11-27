@@ -118,6 +118,16 @@ LINK_TRACKING_READ_KEY=<the read key>
 - **Clean-up:** link ids older than 180 days are dropped whenever the id store is saved; saved clicks older than
   90 days are dropped at each check (the Worker deletes its own records after 90 days).
 
+## Reply assistant Gmail drafts
+
+"Create Gmail draft" in the Reply assistant now prepares the draft like an outreach email:
+
+- Your Gmail signature is added when `ENABLE_GMAIL_SIGNATURE=true`. If it cannot be read, no draft is made.
+- With link tracking on, the advert link in your reply and the LinkedIn profile link in the signature become tracked links, and the footnote is added.
+- Each reply has its own link ids (`reply-<their message id>`) under the same application, so clicks appear in that application's Link clicks box against the person you replied to.
+- The reply saved in the app stays as you wrote it. Only the Gmail copy is signed and tracked, so drafting again never doubles the signature.
+- Opt-outs apply as usual. You still send the reply yourself from Gmail.
+
 ## Health checks
 
 - **System check page** (Services, "Link-click tracker (Cloudflare Worker)"): when tracking is on, it opens the
