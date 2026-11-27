@@ -7,7 +7,7 @@ import {createCoverReferenceHandler} from './cover-reference-http.js';
 function personalPolishingInstructions(values){const text=String(values.get('instructions')||'').replace(/\r\n?/g,'\n').trim();if(text.length>4000)throw Object.assign(new Error('Personal polishing instructions must not exceed 4000 characters.'),{statusCode:400,code:'POLISHING_INSTRUCTIONS_INVALID'});return text;}
 import {createScenarioPolishingHandler} from './scenario-polishing-http.js';
 import {resolveScenarioSelection,scenarioCostProof,requireScenarioCostApproval,approvedScenarioRequest} from '../../application/scenario-polishing.js';
-import {createAssignmentEvidenceHandler} from './assignment-evidence-http.js';
+import {createAssignmentEvidenceHandler} from './assignment-evidence-http.js';import {createEvidenceDraftingService} from '../../application/evidence-drafting.js';
 import {inspectApplicationRole,requireConfirmedApplicationRole,confirmApplicationRole} from '../../application/application-role-review.js';
 import {snapshotMessage} from '../../application/outreach-message-snapshot.js';
 import {renderCoverLetterHtml} from './cover-letter-html.js';
@@ -248,6 +248,8 @@ export function createLocalServer({
   questionWriter = null,
   replyWriter = null,
   cvTextFor = null,
+  evidenceDraftWriter = null,
+  evidenceCvChoices = async () => [],
   ownerCertifications = () => [],
   advertRequirementsReader = null,
   advertRequirementsStore = null,
@@ -287,7 +289,7 @@ export function createLocalServer({
   const handleMaintenance=createMaintenanceHandler();
   const handleHistoryDashboard=createHistoryDashboardHandler();
   const handleFeatureToggles=createFeatureTogglesHandler();
-  const handleAssignmentEvidence=createAssignmentEvidenceHandler({store:assignmentEvidenceStore});
+  const handleAssignmentEvidence=createAssignmentEvidenceHandler({store:assignmentEvidenceStore,drafting:assignmentEvidenceStore?createEvidenceDraftingService({library:assignmentEvidenceStore,writer:evidenceDraftWriter,cvChoices:evidenceCvChoices,cvTextFor:async code=>typeof cvTextFor==='function'?await cvTextFor(code):''}):null});
   const handleScenarioPolishing=createScenarioPolishingHandler({library:assignmentEvidenceStore,reviews:reviewStore});
   const scenarioInput=(values,review)=>values.has('scenarioSelections')?values.get('scenarioSelections'):JSON.stringify(review.polishingScenarios?.references||[]);
   const roleReviewTickets=new Map();

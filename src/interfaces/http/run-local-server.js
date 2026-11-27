@@ -23,6 +23,7 @@ import {createReplyThreadsStore} from '../../infrastructure/applications/sqlite-
 import {createOwnerCertificationsReader} from '../../infrastructure/owner-certifications-file.js';
 import {createQuestionAnswerWriter} from '../../infrastructure/refinement/perplexity-question-answer-adapter.js';
 import {createRecruiterReplyWriter} from '../../infrastructure/refinement/perplexity-recruiter-reply-adapter.js';
+import {createEvidenceDraftWriter} from '../../infrastructure/refinement/perplexity-evidence-draft-adapter.js';
 import {createAdvertRequirementsReader} from '../../infrastructure/refinement/perplexity-advert-requirements-adapter.js';
 import {createAdvertRequirementsFileStore} from '../../infrastructure/advert-requirements-file.js';
 import {createEmailOpenSignalsFileStore} from '../../infrastructure/email-open-signals-file.js';
@@ -233,6 +234,9 @@ const server = createLocalServer({
   cvTextFor:async code=>{try{return cvLibraryInstance?((await cvLibraryInstance.indexedTexts()).texts[code]||''):'';}catch{return '';}},
   replyThreadsStore,
   replyWriter:createRecruiterReplyWriter({apiKey:config.integrations.perplexity.apiKey,enabled:config.features.enableCoverLetterRefinement}),
+  // Evidence library: AI drafts of a scenario's answers from a chosen CV (same AI setting; estimate first, one call per click).
+  evidenceDraftWriter:createEvidenceDraftWriter({apiKey:config.integrations.perplexity.apiKey,enabled:config.features.enableCoverLetterRefinement}),
+  evidenceCvChoices:async()=>{const data=await cvInventoryRepository.load();return (data?.cv_inventory?.cvs||data?.cvs||[]).map(c=>({code:c.role_code,name:c.role_name||c.role_code}));},
   tailoredCvLatest:cvTailoringStore?id=>cvTailoringStore.latest(id):null,
   relationshipMemory:workflowAutomationStore?{get:key=>workflowAutomationStore.relationshipChoice(key),record:(key,name,relationship)=>workflowAutomationStore.recordRelationshipChoice(key,name,relationship)}:null,
   // Read-only System check page: data files, CV library and files, documents, services and this PC.
