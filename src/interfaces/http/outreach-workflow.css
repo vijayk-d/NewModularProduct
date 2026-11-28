@@ -46,3 +46,9 @@
 @keyframes busy-slide{from{left:-40%}to{left:100%}}
 @keyframes busy-spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.busy-bar::after{animation:none;left:0;width:100%;opacity:.5}.is-busy::before{animation:none}}
+/* outreach-queue-pagination-v1: search, filters and page controls above the queue table. */
+.outreach-queue-pager{display:flex;flex-wrap:wrap;gap:.5rem 1rem;align-items:center;margin:.5rem 0}
+.outreach-queue-pager label{display:inline-flex;gap:.35rem;align-items:center}
+.outreach-queue-pager input[type="search"]{min-width:16rem}
+.outreach-queue-pager [data-queue-page-info]{min-width:12rem;text-align:center}
+.outreach-queue-page-note{flex-basis:100%;font-size:.9em;color:#4b5563}

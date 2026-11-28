@@ -12,6 +12,7 @@ import { finalizeOutreachIdentity } from '../../application/outreach-final-ident
 import { queueSnapshotSubject } from '../../application/review-subject.js';
 import { readFile } from 'node:fs/promises';
 import { createOutreachQueueService } from '../../application/outreach-queue-service.js';
+import { parseQueuePageQuery, filterQueueItems, sortQueueItems, pageQueueItems, isSchedulableQueueItem, queueStatuses } from '../../application/outreach-queue-page.js';
 
 function outreachOrganisationKey(form={}) {
   const domain=String(form.emailDomain||'').trim().toLowerCase();if(domain)return `domain:${domain}`;
@@ -58,7 +59,7 @@ export function createOutreachHttpHandler({ repository, contactStore, getReview,
     if(await handleScheduling(request,response,url))return true;
     const route = url.pathname;
     if (!['/outreach-queue', '/outreach-queue.js', '/outreach-simple-contacts.js', '/outreach-workflow.css', '/queue-message-editor.js', '/outreach-bulk.js','/outreach-schedule.js', '/api/outreach-queue',
-      '/api/outreach-queue/add', '/api/outreach-queue/delete', '/api/outreach-queue/clear', '/api/outreach-queue/prepare-drafts', '/api/outreach-queue/gmail-status', '/api/outreach-queue/check-mailbox', '/api/outreach-queue/gmail-draft-status', '/api/outreach-queue/gmail-draft-preview', '/api/outreach-queue/gmail-draft-create', '/api/outreach-queue/draft-one', '/api/outreach-queue/link-and-add', '/api/outreach-queue/message-save','/api/outreach-queue/send-status','/api/outreach-queue/send-prepare','/api/outreach-queue/send-commit','/api/outreach-queue/send-cancel','/api/outreach-queue/send-history','/api/outreach-queue/send-run','/api/outreach-queue/send-run/stop'].includes(route)) return false;
+      '/api/outreach-queue/items', '/api/outreach-queue/add', '/api/outreach-queue/delete', '/api/outreach-queue/clear', '/api/outreach-queue/prepare-drafts', '/api/outreach-queue/gmail-status', '/api/outreach-queue/check-mailbox', '/api/outreach-queue/gmail-draft-status', '/api/outreach-queue/gmail-draft-preview', '/api/outreach-queue/gmail-draft-create', '/api/outreach-queue/draft-one', '/api/outreach-queue/link-and-add', '/api/outreach-queue/message-save','/api/outreach-queue/send-status','/api/outreach-queue/send-prepare','/api/outreach-queue/send-commit','/api/outreach-queue/send-cancel','/api/outreach-queue/send-history','/api/outreach-queue/send-run','/api/outreach-queue/send-run/stop'].includes(route)) return false;
     try {
       const origin = request.headers.origin;
       if (origin && origin !== `http://${request.headers.host}` && origin !== `https://${request.headers.host}`) {
@@ -141,18 +142,36 @@ export function createOutreachHttpHandler({ repository, contactStore, getReview,
         json(response,result.error?503:200,{ok:!result.error,...result});return true;
       }
       if (!service) { json(response, 503, { ok: false, error: 'Outreach storage is not configured.' }); return true; }
-      if (request.method === 'GET' && route === '/api/outreach-queue') {
+      // Enrichment context, built once per request: attempted keys, the polish gate per application (light read) and the send history.
+      const enrichment=()=>{
         const messageAttempts=[...(repository.listDraftOperations?.()||[]),...(repository.listSendAttempts?.()||[])];const sendStatus=sends.getStatus();
-        // Built once per list: attempted keys, the polish gate per application (light read) and the send history.
         const attemptedKeys=new Set(messageAttempts.map(a=>a.applicationKey+'\n'+a.recipientKey));
         const gates=new Map(),gateOnce=id=>{if(!gates.has(id))gates.set(id,polishGate((peekReview||getReview)?.(id)));return gates.get(id);};
         const sendContext=typeof sends.eligibilityContext==='function'?sends.eligibilityContext(sendStatus.configuredMailbox):null;
+        return item=>{const operation=item.draftOperationId&&repository.getDraftOperationById?.(item.draftOperationId);
+          const letterGate=gateOnce(item.reviewId),eligibility=sendContext?sends.eligibility(item,sendStatus.configuredMailbox,sendContext):sends.eligibility(item,sendStatus.configuredMailbox);
+          return {...item,letterGate,sendAction:letterGate.allowed||item.status==='sent'?eligibility:{...eligibility,eligible:false,reason:letterGate.message},...messagePresentation(item,{attempted:attemptedKeys.has(item.applicationKey+'\n'+String(item.email||'').toLowerCase())}),safeToRetry:operation?.status==='failed'&&operation.safeToRetry===true};};
+      };
+      if (request.method === 'GET' && route === '/api/outreach-queue') {
         const scope=url.searchParams.get('reviewId');
         if(scope!==null&&(!/^[A-Za-z0-9-]{1,100}$/.test(scope)||!getReview(scope))){json(response,404,{ok:false,error:'Application review not found; no queue records returned.'});return true;}
-        const items=service.list().filter(item=>scope===null||item.reviewId===scope).map(item=>{const operation=item.draftOperationId&&repository.getDraftOperationById?.(item.draftOperationId);
-          const letterGate=gateOnce(item.reviewId),eligibility=sendContext?sends.eligibility(item,sendStatus.configuredMailbox,sendContext):sends.eligibility(item,sendStatus.configuredMailbox);
-          return {...item,letterGate,sendAction:letterGate.allowed||item.status==='sent'?eligibility:{...eligibility,eligible:false,reason:letterGate.message},...messagePresentation(item,{attempted:attemptedKeys.has(item.applicationKey+'\n'+String(item.email||'').toLowerCase())}),safeToRetry:operation?.status==='failed'&&operation.safeToRetry===true};});
-        json(response, 200, { ok: true, items }); return true;
+        // Paging is server-side: filters and sorting apply to the whole scope, then only one page is enriched.
+        const query=parseQueuePageQuery(url.searchParams);
+        const scoped=service.list().filter(item=>scope===null||item.reviewId===scope);
+        const enrich=enrichment();
+        let matching=sortQueueItems(filterQueueItems(scoped,query),query.sort);
+        // The schedulable filter needs each row's send eligibility, so it enriches before paging.
+        if(query.filter==='schedulable')matching=matching.map(enrich).filter(isSchedulableQueueItem);
+        const page=pageQueueItems(matching,query);
+        const items=query.filter==='schedulable'?page.items:page.items.map(enrich);
+        json(response, 200, { ok: true, items, total: page.total, offset: page.offset, limit: page.limit, scopeTotal: scoped.length, statuses: queueStatuses(scoped) }); return true;
+      }
+      // Fresh copies of rows ticked on other pages, so selection and bulk actions work across pages.
+      if (request.method === 'POST' && route === '/api/outreach-queue/items') {
+        const values=await body(request);
+        if(!Array.isArray(values.ids)||values.ids.length>5000||values.ids.some(id=>typeof id!=='string'||id.length>200))throw Object.assign(new Error('Send up to 5000 queue IDs.'),{statusCode:400});
+        const wanted=new Set(values.ids),enrich=enrichment();
+        json(response,200,{ok:true,items:service.list().filter(item=>wanted.has(item.id)).map(enrich)});return true;
       }
       if (request.method === 'POST' && route !== '/api/outreach-queue') {
         const values = await body(request);

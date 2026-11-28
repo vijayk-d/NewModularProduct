@@ -8,8 +8,14 @@ function startOutreachQueue() {
   const scopeReviewId=document.querySelector('input[name="reviewId"]')?.value||'';
   const standalone=window.location.pathname==='/outreach-queue';
   if(!scopeReviewId&&!standalone)return;
+  // Unpaged list: bulk Send, Draft and Clear re-read every row at the moment of the action, as before.
   const queueListUrl='/api/outreach-queue'+(scopeReviewId?'?reviewId='+encodeURIComponent(scopeReviewId):'');
   let refreshGeneration=0,leaving=false;
+  // Server-side paging: the table shows one page; filters and sorting run on the server before paging.
+  const pageSizes=[25,50,100,200],storedSize=Number(globalThis.localStorage?.getItem?.('outreachQueuePageSize'));
+  const view={offset:0,limit:pageSizes.includes(storedSize)?storedSize:50,q:'',status:'',sort:'queued',total:0};
+  // Ticked rows by id, kept across pages; values are the latest copy of the row (null until loaded).
+  const selected=new Map();
   if (document.__outreachQueueAttached) return;
   document.__outreachQueueAttached = true;
   const main = document.querySelector('main');
@@ -24,8 +30,18 @@ function startOutreachQueue() {
     <pre class="prepared-draft-payloads" hidden></pre>
     <button type="button" data-queue-action="delete">Remove (0)</button>
     <button type="button" data-queue-action="clear">Clear</button></div>
+    <div class="outreach-queue-pager" role="group" aria-label="Queue search and pages">
+    <label>Search <input type="search" data-queue-search placeholder="Name, email, role, organisation or subject" aria-label="Search the queue"></label>
+    <button type="button" data-queue-search-go aria-label="Run queue search">Search</button>
+    <label>Status <select data-queue-status-filter aria-label="Filter by status"><option value="">All statuses</option></select></label>
+    <label>Sort <select data-queue-sort aria-label="Sort queue"><option value="queued">Queue order (oldest first)</option><option value="newest">Newest first</option><option value="name">Name</option><option value="status">Status</option><option value="organisation">Organisation</option></select></label>
+    <label>Rows per page <select data-queue-page-size aria-label="Rows per page"><option>25</option><option>50</option><option>100</option><option>200</option></select></label>
+    <button type="button" data-queue-page="prev" aria-label="Previous page">Previous</button>
+    <span data-queue-page-info aria-live="polite"></span>
+    <button type="button" data-queue-page="next" aria-label="Next page">Next</button>
+    <span class="outreach-queue-page-note" data-queue-select-note>The header tick box and “Select next 20 schedulable” work on this page only; ticks on other pages are kept.</span></div>
     <p class="outreach-queue-status" role="status" aria-live="polite"></p>
-    <table><thead><tr><th><input type="checkbox" aria-label="Select all queue items" class="queue-select-all"></th>
+    <table><thead><tr><th><input type="checkbox" aria-label="Select all queue items on this page" title="Selects every row on this page only" class="queue-select-all"></th>
     <th>Name</th><th>Role</th><th>Email</th><th>Status</th><th>Last outcome</th><th>Message</th><th>Actions</th></tr></thead>
     <tbody class="outreach-queue-body"></tbody></table>
     <section class="confirmed-gmail-draft-panel">
@@ -65,12 +81,53 @@ function startOutreachQueue() {
   }
   window.addEventListener('pagehide',()=>{leaving=true;refreshGeneration++;stopBulk=true;});
   // select: queue item ids to tick (the rows you have just queued), on top of what was already ticked.
+  function pageUrl(){
+    const params=new URLSearchParams();if(scopeReviewId)params.set('reviewId',scopeReviewId);
+    params.set('limit',String(view.limit));params.set('offset',String(view.offset));
+    if(view.q)params.set('q',view.q);if(view.status)params.set('status',view.status);if(view.sort!=='queued')params.set('sort',view.sort);
+    if(section.querySelector('[data-queue-filter="schedulable"]')?.checked)params.set('filter','schedulable');
+    return '/api/outreach-queue?'+params.toString();
+  }
+  // Copies the ticks on the current page into the cross-page selection. Every reader of the selection calls this first,
+  // so ticks made by other controls (select all, Select next schedulable, filters) are never lost.
+  function reconcileSelection(){
+    for(const box of tbody.querySelectorAll('.outreach-queue-checkbox')){
+      if(box.checked){if(!selected.get(box.value))selected.set(box.value,bulkQueueItems.find(i=>i.id===box.value)||null);}
+      else selected.delete(box.value);
+    }
+  }
+  function selectedIds(){reconcileSelection();return [...selected.keys()];}
+  let pageItems=[];
+  // Rows the bulk controls know about: this page plus rows ticked on other pages.
+  function knownItems(){const onPage=new Set(pageItems.map(i=>i.id));return [...pageItems,...[...selected.values()].filter(i=>i&&!onPage.has(i.id))];}
+  function renderPager(data){
+    view.total=Number.isSafeInteger(data.total)?data.total:data.items.length;view.offset=Number.isSafeInteger(data.offset)?data.offset:view.offset;
+    const pages=Math.max(1,Math.ceil(view.total/view.limit)),page=Math.floor(view.offset/view.limit)+1;
+    const first=view.total?view.offset+1:0,last=Math.min(view.total,view.offset+data.items.length);
+    const filtered=Number.isSafeInteger(data.scopeTotal)&&data.scopeTotal!==view.total?` (filtered from ${data.scopeTotal})`:'';
+    const offPage=selected.size-pageItems.filter(i=>selected.has(i.id)).length;
+    section.querySelector('[data-queue-page-info]').textContent=`Page ${page} of ${pages} · ${first}–${last} of ${view.total}${filtered}${offPage>0?` · ${offPage} ticked on other pages`:''}`;
+    section.querySelector('[data-queue-page="prev"]').disabled=view.offset<=0;
+    section.querySelector('[data-queue-page="next"]').disabled=view.offset+view.limit>=view.total;
+    const statusSelect=section.querySelector('[data-queue-status-filter]');
+    if(Array.isArray(data.statuses)){const keep=view.status;statusSelect.replaceChildren(new Option('All statuses',''),...[...new Set([...data.statuses,...(keep?[keep]:[])])].map(s=>new Option(s.replaceAll('_',' '),s)));statusSelect.value=keep;}
+  }
   async function refresh(select = []) {
     const generation=++refreshGeneration;
-    const { items } = await request(queueListUrl);
+    reconcileSelection();for(const id of select)if(!selected.has(String(id)))selected.set(String(id),null);
+    const data = await request(pageUrl()),items=data.items;
     if(leaving||generation!==refreshGeneration||(!standalone&&document.querySelector('input[name="reviewId"]')?.value!==scopeReviewId))return 0;
-    const previousSelection=new Set([...[...tbody.querySelectorAll('.outreach-queue-checkbox:checked')].map(b=>b.value),...select.map(String)]);
-    bulkQueueItems=items;
+    reconcileSelection();
+    // Rows ticked on other pages are re-read, so their status is current and removed rows drop out of the selection.
+    const onPage=new Set(items.map(i=>i.id)),offPage=[...selected.keys()].filter(id=>!onPage.has(id));
+    if(offPage.length){
+      const fresh=await request('/api/outreach-queue/items',{ids:offPage});
+      if(leaving||generation!==refreshGeneration)return 0;
+      const byId=new Map(fresh.items.map(i=>[i.id,i]));for(const id of offPage){if(byId.has(id))selected.set(id,byId.get(id));else selected.delete(id);}
+    }
+    for(const item of items)if(selected.has(item.id))selected.set(item.id,item);
+    const previousSelection=new Set(selected.keys());
+    pageItems=items;bulkQueueItems=knownItems();
     tbody.replaceChildren();
     for (const item of items) {
       const row = tbody.insertRow();
@@ -107,10 +164,27 @@ function startOutreachQueue() {
       sendButton.addEventListener('click',()=>sendOne(item));actionCell.appendChild(sendButton);
 
     }
-    if (!items.length) { const td = tbody.insertRow().insertCell(); td.colSpan = 8; td.textContent = 'No recipients queued.'; }
+    if (!items.length) { const td = tbody.insertRow().insertCell(); td.colSpan = 8; td.textContent = view.total||view.q||view.status||section.querySelector('[data-queue-filter="schedulable"]')?.checked?'No queued recipients match these filters.':'No recipients queued.'; }
+    renderPager(data);
     syncBulkControls();
-    return items.length;
+    return view.total;
   }
+  const pager=section.querySelector('.outreach-queue-pager');
+  const reloadFromFirstPage=()=>{view.offset=0;refresh().then(count=>{status.textContent=`${count} queued recipient(s).`;}).catch(error=>{status.textContent=error.message;});};
+  pager.querySelector('[data-queue-page-size]').value=String(view.limit);
+  pager.querySelector('[data-queue-page-size]').addEventListener('change',event=>{view.limit=Number(event.target.value)||50;try{globalThis.localStorage?.setItem?.('outreachQueuePageSize',String(view.limit));}catch{}reloadFromFirstPage();});
+  pager.querySelector('[data-queue-status-filter]').addEventListener('change',event=>{view.status=event.target.value;reloadFromFirstPage();});
+  pager.querySelector('[data-queue-sort]').addEventListener('change',event=>{view.sort=event.target.value;reloadFromFirstPage();});
+  const search=pager.querySelector('[data-queue-search]');let searchTimer=null;
+  const runSearch=()=>{clearTimeout(searchTimer);const q=search.value.trim().toLowerCase();if(q===view.q)return;view.q=q;reloadFromFirstPage();};
+  search.addEventListener('input',()=>{clearTimeout(searchTimer);searchTimer=setTimeout(runSearch,350);});
+  search.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();runSearch();}});
+  pager.querySelector('[data-queue-search-go]').addEventListener('click',runSearch);
+  pager.addEventListener('click',event=>{
+    const button=event.target.closest('[data-queue-page]');if(!button||button.disabled||directBusy)return;
+    view.offset=Math.max(0,view.offset+(button.dataset.queuePage==='next'?view.limit:-view.limit));
+    refresh().catch(error=>{status.textContent=error.message;});
+  });
   const mailboxPanel=section.querySelector('.gmail-mailbox-check-panel');
   const mailboxStatus=mailboxPanel.querySelector('.gmail-mailbox-status');
   const mailboxCheck=mailboxPanel.querySelector('[data-mailbox-action="check"]');
@@ -173,7 +247,7 @@ function startOutreachQueue() {
         await refreshDraftFeature();
         if(!liveDraftConfig.draftCreationEnabled||!liveDraftConfig.configurationReady)return;
         approvedDraftPreview=null;previewBox.hidden=true;previewBox.replaceChildren();
-        const ids=[...tbody.querySelectorAll('.outreach-queue-checkbox:checked')].map(box=>box.value);
+        const ids=selectedIds();
         if(ids.length!==1)throw new Error('Select exactly one new queue item.');
         if(!window.confirm('Review this draft? The app will verify the Gmail mailbox and read the selected CV locally. This step creates no draft and sends nothing.'))return;
         const preview=await request('/api/outreach-queue/gmail-draft-preview',{queueId:ids[0],confirmed:true});
@@ -279,23 +353,23 @@ function startOutreachQueue() {
   const stopBulkButton=document.createElement('button');stopBulkButton.type='button';stopBulkButton.textContent='Stop after current';stopBulkButton.hidden=true;
   stopBulkButton.setAttribute('aria-label','Stop bulk sending after the current operation');section.querySelector('.outreach-bulk-toolbar').appendChild(stopBulkButton);
   let stopBulk=false;stopBulkButton.addEventListener('click',()=>{stopBulk=true;stopBulkButton.disabled=true;status.textContent='Stopping after the current operation. An email already sending cannot be recalled here.';});
-  const scheduleControls=attachOutreachSchedule({section,getItems:()=>bulkQueueItems,getIds:()=>[...tbody.querySelectorAll('.outreach-queue-checkbox:checked')].map(b=>b.value),api:request,save:saveQueuedMessageBeforeDraft,refresh:async()=>{await refresh();await refreshHistory();},getBusy:()=>directBusy,setBusy:value=>{directBusy=value;queueProgress(Boolean(value));section.querySelectorAll('[data-send-queue-id]').forEach(b=>b.disabled=value||!sendConfiguration?.sendingEnabled||b.dataset.sendEligible!=='true');section.querySelectorAll('[data-direct-queue-id]').forEach(b=>b.disabled=value||!liveDraftConfig?.draftCreationEnabled||!liveDraftConfig?.configurationReady);syncBulkControls();},getSendingReady:()=>sendConfiguration?.sendingEnabled===true,renderResults:renderBulkResults,isLeaving:()=>leaving||(!standalone&&document.querySelector('input[name="reviewId"]')?.value!==scopeReviewId)});
+  const scheduleControls=attachOutreachSchedule({section,getItems:()=>bulkQueueItems,getIds:selectedIds,api:request,save:saveQueuedMessageBeforeDraft,refresh:async()=>{await refresh();await refreshHistory();},getBusy:()=>directBusy,setBusy:value=>{directBusy=value;queueProgress(Boolean(value));section.querySelectorAll('[data-send-queue-id]').forEach(b=>b.disabled=value||!sendConfiguration?.sendingEnabled||b.dataset.sendEligible!=='true');section.querySelectorAll('[data-direct-queue-id]').forEach(b=>b.disabled=value||!liveDraftConfig?.draftCreationEnabled||!liveDraftConfig?.configurationReady);syncBulkControls();},getSendingReady:()=>sendConfiguration?.sendingEnabled===true,renderResults:renderBulkResults,onFilterChange:()=>reloadFromFirstPage(),isLeaving:()=>leaving||(!standalone&&document.querySelector('input[name="reviewId"]')?.value!==scopeReviewId)});
   function syncBulkControls(){
     scheduleControls.sync();
-    const ids=[...tbody.querySelectorAll('.outreach-queue-checkbox:checked')].map(b=>b.value),draft=partitionQueueSelection(bulkQueueItems,ids,'draft'),send=partitionQueueSelection(bulkQueueItems,ids,'send');
+    const ids=selectedIds();bulkQueueItems=knownItems();const draft=partitionQueueSelection(bulkQueueItems,ids,'draft'),send=partitionQueueSelection(bulkQueueItems,ids,'send');
     const draftButton=section.querySelector('[data-queue-action="draft-direct"]'),sendButton=section.querySelector('[data-queue-action="send-selected"]'),remove=section.querySelector('[data-queue-action="delete"]');
     draftButton.textContent=`Draft (${draft.eligible.length})`;draftButton.disabled=directBusy||!liveDraftConfig?.draftCreationEnabled||!liveDraftConfig?.configurationReady||!draft.eligible.length;
     sendButton.textContent=`Send ${send.eligible.length} emails`;sendButton.disabled=directBusy||!sendConfiguration?.sendingEnabled||!send.eligible.length;
     const skipped=skipSummary(send);skipNote.hidden=!skipped;skipNote.textContent=skipped?`Not sendable or schedulable: ${skipped}`:'';
     remove.textContent=`Remove (${ids.length})`;remove.disabled=directBusy||!ids.length;
     draftButton.setAttribute('aria-label',`Draft ${draft.eligible.length} selected eligible recipients`);sendButton.setAttribute('aria-label',`Send ${send.eligible.length} selected eligible recipients`);remove.setAttribute('aria-label',`Remove ${ids.length} selected queue rows`);
-    section.querySelector('[data-queue-action="refresh"]').disabled=directBusy;section.querySelector('[data-queue-action="clear"]').disabled=directBusy||!bulkQueueItems.length;
+    section.querySelector('[data-queue-action="refresh"]').disabled=directBusy;section.querySelector('[data-queue-action="clear"]').disabled=directBusy||!view.total;
     const sameContact=send.eligible.length-new Set(send.eligible.map(i=>i.contactId||i.fullName||i.id)).size;
     const sentContacts=new Set(bulkQueueItems.filter(i=>i.status==='sent'&&i.contactId).map(i=>i.contactId));
     const priorContact=send.eligible.filter(i=>i.contactId&&sentContacts.has(i.contactId)).length;
     selectionNote.textContent=`${ids.length} selected · ${draft.eligible.length} draftable · ${send.eligible.length} sendable · ${send.eligible.filter(i=>!i.verified).length} unverified address(es). ${sameContact?'Multiple addresses for the same contact are selected. ':''}${priorContact?'Some contacts already have outreach at another address. ':''}Review before clicking Send.`;
-    const master=section.querySelector('.queue-select-all'),total=tbody.querySelectorAll('.outreach-queue-checkbox').length;
-    master.checked=total>0&&ids.length===total;master.indeterminate=ids.length>0&&ids.length<total;master.disabled=directBusy||!total;setSendInteractionLocked(directBusy);
+    const master=section.querySelector('.queue-select-all'),total=tbody.querySelectorAll('.outreach-queue-checkbox').length,onPage=tbody.querySelectorAll('.outreach-queue-checkbox:checked').length;
+    master.checked=total>0&&onPage===total;master.indeterminate=onPage>0&&onPage<total;master.disabled=directBusy||!total;setSendInteractionLocked(directBusy);
   }
   section.addEventListener('change',e=>{if(e.target.matches('.outreach-queue-checkbox,.queue-select-all'))syncBulkControls();});
   for(const [action,label] of Object.entries({refresh:'Refresh queue','draft-direct':'Draft selected eligible recipients','send-selected':'Send selected eligible recipients','delete':'Remove selected queue rows','clear':'Clear queue; retain Gmail and history'})){
@@ -323,7 +397,7 @@ function startOutreachQueue() {
         onProgress:p=>status.textContent=p.stage==='sending'?`Sending in the background ${p.index}/${p.total} · batch ${p.batchIndex}/${p.batchCount}${p.email?': '+p.email:''}. You can use other pages meanwhile; no automatic retries.`:`${({saving:'Saving',preparing:'Preparing'})[p.stage]||'Preparing'} ${p.index}/${p.total} · batch ${p.batchIndex}/${p.batchCount}: ${p.email}.`});
       renderBulkResults(batch.results);
       const sent=batch.results.filter(r=>['sent','sent_attention'].includes(r.kind)),uncertain=batch.results.filter(r=>r.kind==='uncertain').length;
-      const completed=new Set(sent.map(r=>r.id));tbody.querySelectorAll('.outreach-queue-checkbox').forEach(b=>{if(completed.has(b.value))b.checked=false;});
+      const completed=new Set(sent.map(r=>r.id));tbody.querySelectorAll('.outreach-queue-checkbox').forEach(b=>{if(completed.has(b.value))b.checked=false;});for(const id of completed)selected.delete(id);
       const message=`Batch finished: ${sent.length} confirmed sent · ${uncertain} uncertain · ${batch.results.length-sent.length-uncertain} skipped/not sent. See Batch results.`;
       try{await refresh();await refreshHistory();}catch{status.textContent=message+' Refresh failed; do not resend completed rows.';return;}
       status.textContent=message;
@@ -361,8 +435,8 @@ function startOutreachQueue() {
     let saved = false; let message = '';
     try {
       const action = button.dataset.queueAction;
-      if (action === 'clear' && !window.confirm(scopeReviewId?'Remove this application’s displayed queue rows? Other applications and sent history will be kept.':'Clear all queue items? Sent-email history will be kept.')) return;
-      const ids = [...tbody.querySelectorAll('.outreach-queue-checkbox:checked')].map(box => box.value);
+      if (action === 'clear' && !window.confirm(scopeReviewId?'Remove all of this application’s queue rows, on every page? Other applications and sent history will be kept.':'Clear all queue items? Sent-email history will be kept.')) return;
+      const ids = selectedIds();
       if (['delete','prepare-drafts','draft-direct','send-selected'].includes(action) && !ids.length) throw new Error('Select at least one queue item.');
       if(action==='draft-direct'){
         const items=(await request(queueListUrl)).items;
@@ -382,7 +456,7 @@ function startOutreachQueue() {
       }
       section.querySelector('.prepared-draft-payloads').hidden=true;
       if (action !== 'refresh') {
-        const result = await request(`/api/outreach-queue/${action==='clear'&&scopeReviewId?'delete':action}`, action==='clear'&&scopeReviewId?{ids:bulkQueueItems.map(i=>i.id)}:action === 'clear' ? { confirmed: true } : { ids });
+        const result = await request(`/api/outreach-queue/${action==='clear'&&scopeReviewId?'delete':action}`, action==='clear'&&scopeReviewId?{ids:(await request(queueListUrl)).items.map(i=>i.id)}:action === 'clear' ? { confirmed: true } : { ids });
         saved = true; message = `${result.deleted} queue item(s) removed. Sent history kept.`;
       }
       const count = await refresh(); status.textContent = message || `${count} queued recipient(s).`;
