@@ -86,3 +86,6 @@ Each scheduled email is stored in full (including the CV attachment) in the `Req
 
 **One-off step after shipping:** open the scheduler Sheet > Extensions > Apps Script, replace the contents of `Scheduler.gs` with the version in this folder and save. The trigger and keys stay as they are. Until you do this, tidy requests are ignored safely and their rows simply wait in the Sheet; the updated script removes them on its first run.
 
+## When the Requests tab is not tidied
+
+In the Apps Script editor choose `nmpSchedulerTidyCheck` and click Run. It is read-only and sends nothing. It reports counts only: rows by action, any rejected request with the reason, the scheduler status of each job listed for tidy, how many rows the next tick would delete, and a one-line verdict. Only SENT, CANCELLED, MISSED and BLOCKED copies are ever deleted; pending and UNKNOWN jobs keep theirs. Each tick also writes a "Sheet tidy" or "Scheduler busy" line under Executions.

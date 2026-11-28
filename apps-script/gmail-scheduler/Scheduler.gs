@@ -30,14 +30,29 @@ function nmpPersist_(c,j){
 function nmpHeaders_(c){
  if(JSON.stringify(c.sheet.getSheetByName('Requests').getRange(1,1,1,7).getValues()[0])!==JSON.stringify(NMP_REQUEST_HEADER)||JSON.stringify(c.sheet.getSheetByName('Jobs').getRange(1,1,1,3).getValues()[0])!==JSON.stringify(NMP_JOB_HEADER))throw Error('Scheduler tables not initialised.');
 }
-function nmpCommands_(c){
+// One signed request group, checked exactly as the tick does. Returns {command} or {reason} (the reason is for the
+// read-only tidy check; the tick simply ignores a rejected group).
+function nmpParseGroup_(c,id,parts){
+ var first=parts[0],total=Number(first[4]);if(total<1||total>150||parts.length!==total)return {reason:'some parts are missing'};
+ parts.sort(function(a,b){return Number(a[3])-Number(b[3]);});
+ var valid=parts.every(function(r,i){return String(r[0])===id&&String(r[1])===String(first[1])&&String(r[2])===String(first[2])&&Number(r[3])===i&&Number(r[4])===total&&String(r[6])===String(first[6]);});if(!valid)return {reason:'parts do not match'};
+ var text=parts.map(function(r){return String(r[5]);}).join('');if(text.length>4500000)return {reason:'too large'};
+ if(nmpMac_(text,c.key)!==String(first[6]))return {reason:'signature does not match this script key'};
+ var command;try{command=JSON.parse(text);}catch(ignore){return {reason:'unreadable'};}
+ if(!command||typeof command!=='object'||command.version!==1||command.requestId!==id||command.jobId!==String(first[1])||command.action!==String(first[2]))return {reason:'envelope does not match'};
+ if(command.namespace!==c.namespace||command.sheetId!==c.sheetId||command.account!==c.owner)return {reason:'account, Sheet or namespace does not match'};
+ if(!/^[a-f0-9-]{36}$/.test(command.jobId)||['schedule','cancel','tidy'].indexOf(command.action)<0)return {reason:'unknown action'};
+ if(command.action==='tidy'&&!nmpValidTidy_(command))return {reason:'invalid job list'};
+ return {command:command};
+}
+function nmpCommands_(c,rejected){
  var tab=c.sheet.getSheetByName('Requests'),last=tab.getLastRow();if(last<2)return [];
  if(last>10001)throw Error('Request capacity exceeded. Inspect before modifying data.');
  var rows=tab.getRange(2,1,last-1,7).getValues(),groups={};
  rows.forEach(function(row){var id=String(row[0]);if(!/^[a-f0-9-]{36}$/.test(id))return;(groups[id]||(groups[id]=[])).push(row);});
  var commands=[];
- Object.keys(groups).forEach(function(id){var parts=groups[id],first=parts[0],total=Number(first[4]);if(total<1||total>150||parts.length!==total)return;parts.sort(function(a,b){return Number(a[3])-Number(b[3]);});var valid=parts.every(function(r,i){return String(r[0])===id&&String(r[1])===String(first[1])&&String(r[2])===String(first[2])&&Number(r[3])===i&&Number(r[4])===total&&String(r[6])===String(first[6]);});if(!valid)return;var text=parts.map(function(r){return String(r[5]);}).join('');if(text.length>4500000||nmpMac_(text,c.key)!==String(first[6]))return;try{var command=JSON.parse(text);if(command.version!==1||command.requestId!==id||command.jobId!==String(first[1])||command.action!==String(first[2])||command.namespace!==c.namespace||command.sheetId!==c.sheetId||command.account!==c.owner||!/^[a-f0-9-]{36}$/.test(command.jobId)||['schedule','cancel','tidy'].indexOf(command.action)<0||command.action==='tidy'&&!nmpValidTidy_(command))return;commands.push(command);}catch(ignore){}
- });return commands;
+ Object.keys(groups).forEach(function(id){var result=nmpParseGroup_(c,id,groups[id]);if(result.command)commands.push(result.command);else if(rejected){var key=String(groups[id][0][2])+': '+result.reason;rejected[key]=(rejected[key]||0)+1;}});
+ return commands;
 }
 function nmpValidSchedule_(p,now){return p.version===1&&Number.isFinite(p.dueAt)&&Number.isFinite(p.expiresAt)&&p.expiresAt===p.dueAt+15*60000&&p.dueAt<=now+30*86400000&&typeof p.raw==='string'&&p.raw.length<=4*1024*1024&&/^[A-Za-z0-9_-]+={0,2}$/.test(p.raw)&&/^[a-f0-9]{64}$/.test(String(p.contentHash))&&nmpHashRaw_(p.raw)===p.contentHash;}
 // Sheet tidy: after the app clears finished records it sends one signed 'tidy' command listing their job IDs. The
@@ -53,15 +68,38 @@ function nmpTidy_(c,commands){
  var tab=c.sheet.getSheetByName('Requests'),last=tab.getLastRow();if(last<2)return 0;
  var rows=tab.getRange(2,1,last-1,2).getValues(),drop=[];
  rows.forEach(function(r,i){if(done[String(r[0])]||targets[String(r[1])])drop.push(i+2);});
- if(!drop.length)return 0;
+ if(!drop.length){console.log('Sheet tidy: '+Object.keys(done).length+' tidy request(s), no stored rows of finished jobs to delete.');return 0;}
  // Google refuses to delete every row below a frozen header, so keep one blank row when the whole table goes.
  if(drop.length===last-1)tab.insertRowAfter(last);
  // Delete from the bottom up in contiguous runs: rows the app appends meanwhile land after these and are untouched.
  for(var k=drop.length-1;k>=0;){var end=drop[k],start=end;while(k>0&&drop[k-1]===start-1){k--;start--;}k--;tab.deleteRows(start,end-start+1);}
- SpreadsheetApp.flush();return drop.length;
+ SpreadsheetApp.flush();console.log('Sheet tidy: deleted '+drop.length+' row(s) for '+Object.keys(done).length+' tidy request(s).');return drop.length;
+}
+// Read-only: explains why stored rows are or are not being tidied. Run it from the Apps Script editor. It changes
+// nothing, sends nothing, and reports counts and statuses only (no addresses, IDs or email content).
+function nmpSchedulerTidyCheck(){
+ var c=nmpConfig_();nmpHeaders_(c);
+ var tab=c.sheet.getSheetByName('Requests'),last=tab.getLastRow(),rejected={},byAction={},statuses={},done={},targets={},listed={};
+ var commands=nmpCommands_(c,rejected),tidies=commands.filter(function(p){return p.action==='tidy';});
+ tidies.forEach(function(p){done[p.requestId]=true;p.jobIds.forEach(function(id){listed[id]=true;});});
+ Object.keys(listed).forEach(function(id){var j=nmpReadJob_(c,id),status=j?j.status:'no record in this script';statuses[status]=(statuses[status]||0)+1;if(j&&NMP_TIDY_FINAL.indexOf(j.status)>=0)targets[id]=true;});
+ var rows=last>=2?tab.getRange(2,1,last-1,3).getValues():[],deletable=0;
+ rows.forEach(function(r){var action=String(r[2]||'(blank)');byAction[action]=(byAction[action]||0)+1;if(done[String(r[0])]||targets[String(r[1])])deletable++;});
+ var report={requestRows:rows.length,rowsByAction:byAction,tidyRequestsAccepted:tidies.length,requestsRejected:rejected,jobsListedForTidy:Object.keys(listed).length,
+  listedJobStatuses:statuses,rowsTheNextTickWouldDelete:deletable,schedulerTriggers:null,schedulerBusy:null};
+ try{report.schedulerTriggers=ScriptApp.getProjectTriggers().filter(function(t){return t.getHandlerFunction()===NMP_HANDLER;}).length;}catch(ignore){}
+ try{var lock=LockService.getScriptLock();report.schedulerBusy=!lock.tryLock(1000);if(!report.schedulerBusy)lock.releaseLock();}catch(ignore){}
+ var rejectedTidy=Object.keys(rejected).filter(function(k){return k.indexOf('tidy:')===0;});
+ report.verdict=!byAction.tidy?'No tidy request is in the Requests tab. Click "Tidy the Sheet again" in the app and read its message: if it says the request could not be sent, the app could not write to the Sheet.'
+  :!tidies.length?'Tidy requests are in the Sheet but this script rejects them ('+rejectedTidy.join('; ')+'). Check the script key and the Settings tab match the app.'
+  :deletable?'The next tick should delete '+deletable+' row(s). If they stay, open Executions and look for "Sheet tidy skipped" or a failed nmpSchedulerTick.'+(report.schedulerTriggers===0?' No scheduler trigger is installed, so ticks only run when you run nmpSchedulerTick by hand.':'')
+  :'Tidy requests are accepted, but none of the listed jobs is finished in this script, so nothing is deleted. Only SENT, CANCELLED, MISSED and BLOCKED copies are removed.';
+ console.log(JSON.stringify(report,null,1));
+ try{SpreadsheetApp.getUi().alert('Scheduler tidy check (read-only)',JSON.stringify(report,null,1),SpreadsheetApp.getUi().ButtonSet.OK);}catch(ignore){}
+ return report;
 }
 function nmpSchedulerTick(){
- var lock=LockService.getScriptLock();if(!lock.tryLock(1000))return;
+ var lock=LockService.getScriptLock();if(!lock.tryLock(1000)){console.log('Scheduler busy: another run holds the lock, so this tick did nothing.');return;}
  try{
   var c=nmpConfig_();nmpHeaders_(c);var commands=nmpCommands_(c),schedules={};
   commands.forEach(function(p){if(p.action!=='schedule')return;var existing=nmpReadJob_(c,p.jobId);if(existing){if(existing.requestId===p.requestId)schedules[p.jobId]=p;return;}var j={jobId:p.jobId,namespace:c.namespace,sheetId:c.sheetId,account:c.owner,requestId:p.requestId,contentHash:p.contentHash,status:'SCHEDULED'};if(!nmpValidSchedule_(p,Date.now())){j.status='BLOCKED';j.note='Approved content or schedule validation failed. No send attempted.';}nmpPersist_(c,j);schedules[p.jobId]=p;});
