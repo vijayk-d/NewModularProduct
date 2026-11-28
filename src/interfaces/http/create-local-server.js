@@ -522,7 +522,7 @@ export function createLocalServer({
   const handleReply=createRecruiterReplyHandler({service:replyService,sendJson,sendText});
   // Letter keyword check: the advert's ATS terms against the letter and your evidence; free and local.
   const letterEvidence=async id=>questionsService?await questionsService.evidenceFor(id):[];
-  const keywordService=createLetterKeywordService({reviews:reviewStore,activity:activityLog,evidence:letterEvidence,reader:advertRequirementsReader,store:advertRequirementsStore});
+  const keywordService=createLetterKeywordService({reviews:reviewStore,activity:activityLog,evidence:letterEvidence,cvText:async id=>{const r=reviewStore.get(id);return typeof cvTextFor==='function'&&r?.selectedCvRoleCode?await cvTextFor(r.selectedCvRoleCode):'';},reader:advertRequirementsReader,store:advertRequirementsStore});
   const handleKeywords=createLetterKeywordsHandler({service:keywordService,sendJson,sendText});
   // Polishing gets the missing Essential advert terms your evidence backs. The estimate never pays for an advert reading.
   const priorityKeywordRequest=async(reviewId,draft,allowPaid)=>{const list=await keywordService.priorityKeywords(reviewId,draft,{allowPaid});return list.length?{priorityKeywords:list}:{};};
