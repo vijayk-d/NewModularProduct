@@ -6,11 +6,14 @@ import {extractAtsTerms, stem} from '../ats/ats-engine.js';
 
 export const REQUIREMENTS_VERSION = 'advert-requirements-v1';
 export const MAX_REQUIREMENTS = 25;
-export const CATEGORIES = Object.freeze(['certification', 'tool', 'method', 'skill', 'sector', 'responsibility', 'qualification']);
+export const CATEGORIES = Object.freeze(['eligibility', 'certification', 'tool', 'method', 'skill', 'sector', 'responsibility', 'qualification']);
 export const PRIORITIES = Object.freeze(['essential', 'desirable']);
 
 // [name, category, other ways it is written]. Delivery, programme and transformation vocabulary.
 const VOCABULARY = [
+  // Eligibility: whether you can be hired, not words for the letter
+  ['Security clearance', 'eligibility', ['SC clearance', 'SC cleared', 'SC', 'DV clearance', 'DV cleared', 'DV', 'developed vetting', 'BPSS', 'NPPV', 'CTC clearance', 'counter terrorist check', 'TS clearance', 'TS', 'top secret', 'security cleared', 'security vetting', 'clearance', 'cleared']],
+  ['Right to work in the UK', 'eligibility', ['right to work', 'eligible to work in the UK', 'UK work permit']],
   // Certifications
   ['PRINCE2', 'certification', ['PRINCE2 Practitioner', 'PRINCE2 Foundation', 'PRINCE 2']],
   ['MSP', 'certification', ['Managing Successful Programmes']],
@@ -109,6 +112,59 @@ const NOISE = new Set(['hybrid', 'remote', 'week', 'weeks', 'day', 'days', 'offi
   'working', 'hybrid working', 'flexible working', 'remote working', 'full time', 'part time', 'logs', 'services', 'sector', 'public',
   'financial', 'certification', 'certifications', 'qualification', 'qualifications', 'essential', 'desirable']);
 export const isNoiseTerm = term => NOISE.has(String(term || '').trim().toLowerCase());
+// Words that make an unknown advert phrase filler rather than a requirement ("highest standards", "enable immediate
+// engagement", "workspace improvement"). Only used for phrases the built-in vocabulary does not know.
+const FILLER = new Set(['highest', 'high', 'immediate', 'immediately', 'enable', 'enables', 'ensure', 'ensuring', 'standards', 'standard',
+  'improvement', 'workspace', 'process', 'excellent', 'strong', 'good', 'great', 'proven', 'ability', 'able', 'track', 'record', 'best',
+  'key', 'new', 'wide', 'range', 'various', 'successful', 'candidate', 'cv', 'apply', 'application', 'engagement', 'start', 'asap',
+  'join', 'exciting', 'leading', 'world', 'class', 'fast', 'paced', 'dynamic', 'passionate', 'motivated', 'driven', 'level', 'levels']);
+export function isFillerPhrase(term) {
+  const words = String(term || '').toLowerCase().match(/[a-z0-9]+/g) || [];
+  return !words.length || words.some(w => FILLER.has(w)) || (words.length === 1 && words[0].length < 3);
+}
+
+// --- Related evidence -------------------------------------------------------------------------------------------------
+// What else in your CV or evidence backs a requirement when its own words are not there.
+//   equivalent: a different credential of the same kind (PRINCE2 for PMP). Name yours; never claim the one asked for.
+//   shows: a specific practice that demonstrates the broader requirement (Scrum shows Agile). Naming the requirement is fair.
+const RELATED = {
+  'PMP': {equivalent: ['PRINCE2', 'APM PMQ', 'PgMP', 'CAPM', 'ChPP', 'MSP']},
+  'PRINCE2': {equivalent: ['PMP', 'APM PMQ', 'AgilePM', 'ChPP']},
+  'APM PMQ': {equivalent: ['PRINCE2', 'PMP', 'ChPP']},
+  'CAPM': {equivalent: ['PRINCE2', 'PMP']},
+  'PgMP': {equivalent: ['MSP', 'PMP']},
+  'MSP': {equivalent: ['PgMP']},
+  'PSM': {equivalent: ['CSM']},
+  'CSM': {equivalent: ['PSM']},
+  'PMI-ACP': {equivalent: ['ICAgile', 'PSM', 'CSM', 'AgilePM', 'SAFe']},
+  'AgilePM': {equivalent: ['PMI-ACP', 'PRINCE2 Agile']},
+  'Agile': {shows: ['Scrum', 'Kanban', 'SAFe', 'PSM', 'CSM', 'PMI-ACP', 'ICAgile', 'AgilePM', 'PRINCE2 Agile', 'sprints', 'scrum master', 'agile coach', 'product owner', 'backlog', 'retrospectives', 'user stories']},
+  'Scrum': {shows: ['PSM', 'CSM', 'scrum master', 'sprint planning', 'sprints', 'retrospectives']},
+  'Kanban': {shows: ['flow metrics', 'WIP limits', 'cycle time']},
+  'Project management': {shows: ['PRINCE2', 'PMP', 'APM PMQ', 'AgilePM', 'project manager', 'delivered projects', 'project lifecycle', 'project plans']},
+  'Programme management': {shows: ['MSP', 'PgMP', 'programme manager', 'programme director', 'delivered programmes', 'led the programme']},
+  'Portfolio management': {shows: ['MoP', 'P3O', 'portfolio manager', 'PMO']},
+  'Team leadership': {shows: ['led a team', 'led teams', 'managed a team', 'line managed', 'line manager', 'team of', 'direct reports', 'coached', 'mentored']},
+  'Stakeholder management': {shows: ['senior leaders', 'executives', 'C-suite', 'SteerCo', 'steering committee']},
+  'Risk management': {shows: ['RAID', 'risk register', 'mitigations']},
+  'Budget management': {shows: ['cost savings', 'savings', 'spend']},
+  'Change management': {shows: ['ADKAR', 'Prosci', 'adoption', 'ways of working']},
+  'Digital transformation': {shows: ['transformation', 'modernisation', 'cloud migration', 'digitisation']},
+  'Hybrid delivery': {shows: ['agile and waterfall', 'waterfall and agile']},
+  'DevOps': {shows: ['continuous integration', 'automated deployment']}
+};
+// Related requirement-like entries for a requirement term, each with its relation, using the vocabulary's spellings.
+export function relatedFor(term) {
+  const key = Object.keys(RELATED).find(k => k.toLowerCase() === String(term || '').toLowerCase());
+  if (!key) return [];
+  const out = [];
+  for (const relation of ['equivalent', 'shows']) for (const text of RELATED[key][relation] || []) {
+    const known = VOCABULARY.find(([name]) => name.toLowerCase() === text.toLowerCase());
+    out.push({term: known ? known[0] : text, aliases: known ? known[2].filter(a => a.length > 2) : [], relation});
+  }
+  return out;
+}
+
 
 // --- Matching ------------------------------------------------------------------------------------------------------
 function tokens(text) {
@@ -214,7 +270,7 @@ export function normaliseRequirements(list, jobDescriptionText, {source = 'ai'} 
     const found = priorityIn(segments, requirement);
     const priority = found.priority || (PRIORITIES.includes(raw?.priority) ? raw.priority : 'essential');
     if (existing) { existing.aliases = [...new Set([...existing.aliases, ...aliases])].slice(0, 12); if (priority === 'essential') existing.priority = 'essential'; continue; }
-    out.push({...requirement, priority, source});
+    out.push({...requirement, priority: raw?.guessed ? 'desirable' : priority, source, ...(raw?.guessed ? {guessed: true} : {})});
   }
   return rankRequirements(dropContained(out, advert)).slice(0, MAX_REQUIREMENTS);
 }
@@ -234,9 +290,10 @@ export function localAdvertRequirements(jobDescriptionText, {organisationName = 
   }
   // Skill phrases and acronyms the vocabulary does not know ("budget forecasting", "CMDB"). Single words are too vague.
   for (const t of extractAtsTerms(String(jobDescriptionText || ''), {limit: 40, organisationName})) {
-    if (t.kind === 'word' || isNoiseTerm(t.term) || JOB_TITLE.test(t.term)) continue;
+    if (t.kind === 'word' || isNoiseTerm(t.term) || JOB_TITLE.test(t.term) || isFillerPhrase(t.term)) continue;
     if (found.some(r => findRequirement(r, textIndex(t.term)))) continue;
-    found.push({term: t.kind === 'acronym' ? t.term : t.term.charAt(0).toUpperCase() + t.term.slice(1), category: 'skill', aliases: []});
+    // Unknown phrases are a best guess: they never count as Essential in the built-in reading.
+    found.push({term: t.kind === 'acronym' ? t.term : t.term.charAt(0).toUpperCase() + t.term.slice(1), category: 'skill', aliases: [], guessed: true});
   }
   return normaliseRequirements(found, jobDescriptionText, {source: 'local'});
 }

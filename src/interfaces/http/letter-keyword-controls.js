@@ -238,10 +238,10 @@ export function attachLetterKeywordControls(doc = document, fetchImpl = fetch, c
 
   function chip(text, colour) { const c = el(doc, 'button', {type: 'button', class: 'keyword-chip', text}); Object.assign(c.style, {border: '1px solid #cbd5e1', borderRadius: '999px', padding: '.1rem .6rem', margin: '.15rem .25rem .15rem 0', background: colour, cursor: 'pointer', fontSize: '.85rem'}); return c; }
 
-  async function check(editor, panel, {mark = true} = {}) {
+  async function check(editor, panel, {mark = true, readAgain = false} = {}) {
     panel.hidden = false; panel.replaceChildren(el(doc, 'p', {text: 'Reading what the advert asks for…'}));
     try {
-      const pending = fetchImpl('/api/reviews/' + encodeURIComponent(reviewId) + '/keywords', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({letterText: plainText(editor)})});
+      const pending = fetchImpl('/api/reviews/' + encodeURIComponent(reviewId) + '/keywords', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({letterText: plainText(editor), ...(readAgain ? {readAdvertAgain: true} : {})})});
       try { doc.dispatchEvent(new (doc.defaultView?.CustomEvent || CustomEvent)('nmp-activity-started')); } catch {}
       const r = await pending;
       const data = await r.json();
@@ -253,9 +253,14 @@ export function attachLetterKeywordControls(doc = document, fetchImpl = fetch, c
       const reading = data.source === 'ai' ? 'Requirements read from the advert by AI (saved for this application).' : 'Requirements from the built-in advert reader.';
       const parts = [el(doc, 'p', {'data-keyword-summary': '', text: `Essential: ${s.essentialInLetter} of ${s.essentialTotal} in this letter · ${s.inLetter} of ${s.total} requirements overall${marked ? `; ${marked} phrase${marked === 1 ? '' : 's'} highlighted` : ''}${!mark && g.inLetter.length ? '. Click Keywords to highlight them' : ''}.`}),
         el(doc, 'p', {class: 'keyword-source', 'data-keyword-source': data.source, text: reading + (data.note ? ' ' + data.note : '')})];
+      if (data.canReadAgain) {
+        const again = el(doc, 'button', {type: 'button', 'data-keyword-read-again': '', text: 'Read the advert with AI again (one small paid request)'});
+        again.addEventListener('click', () => { if ((doc.defaultView?.confirm || (() => true))('Read this advert with AI again? This is one small paid request; it is not repeated if it fails.')) check(editor, panel, {mark, readAgain: true}); });
+        parts.push(again);
+      }
       if (data.nextSteps.length) parts.push(el(doc, 'ul', {'data-keyword-next': ''}, data.nextSteps.map(t => el(doc, 'li', {text: t}))));
-      const label = t => t.term + (t.priority === 'essential' ? '' : ' (desirable)');
-      const tip = t => `${t.category}, ${t.priority}` + (t.aliases.length ? ` · also written as: ${t.aliases.slice(0, 4).join(', ')}` : '');
+      const label = t => t.term + (t.priority === 'essential' ? '' : ' (desirable)') + (t.unbackedClaim ? ' ⚠' : '') + (t.via?.relation === 'equivalent' ? ' ≈' : '');
+      const tip = t => `${t.category}, ${t.priority}` + (t.aliases.length ? ` · also written as: ${t.aliases.slice(0, 4).join(', ')}` : '') + (t.unbackedClaim ? ' · not shown in your CV or evidence: check it is true' : '') + (t.via ? ` · backed through ${t.via.term}` : '');
       const show = (...nodes) => { detail.hidden = false; detail.replaceChildren(...nodes); };
       const row = (attr, heading, list, colour, onClick) => {
         if (!list.length) return null;
@@ -268,11 +273,14 @@ export function attachLetterKeywordControls(doc = document, fetchImpl = fetch, c
         return box;
       };
       const rows = [
-        row('data-keyword-in-letter', 'In the letter:', g.inLetter, '#f0fdf4', t => show(el(doc, 'span', {text: `${t.term}: written as “${t.writtenAs}”.`}))),
+        row('data-keyword-in-letter', 'In the letter:', g.inLetter, '#f0fdf4', t => show(el(doc, 'span', {text: t.via?.relation === 'equivalent'
+          ? `${t.term}: covered by your equivalent, written as “${t.writtenAs}”. Never claim ${t.term} itself.`
+          : `${t.term}: written as “${t.writtenAs}”.` + (t.unbackedClaim ? ' Your CV and evidence do not show this: keep it only if it is true for you.' : t.evidence ? ` Backed by ${t.evidence.source}: “${t.evidence.text}”` : '')}))),
         row('data-keyword-missing-backed', 'Missing, backed by your evidence:', g.missingBacked, '#ecfdf5', t => {
           const copy = el(doc, 'button', {type: 'button', text: 'Copy line'});
           copy.addEventListener('click', async () => { try { await clipboard.writeText(t.evidence.text); copy.textContent = 'Copied'; } catch { copy.textContent = 'Copy blocked'; } });
-          show(el(doc, 'span', {text: `Best place: ${t.fits}. ${t.evidence.source}: “${t.evidence.text}” `}), copy);
+          const via = t.via?.relation === 'equivalent' ? `You hold ${t.via.term}, not ${t.term}: name ${t.via.term}. ` : t.via ? `Shown through ${t.via.term}. ` : '';
+          show(el(doc, 'span', {text: `${via}Best place: ${t.fits}. ${t.evidence.source}: “${t.evidence.text}” `}), copy);
         }),
         row('data-keyword-missing-unbacked', 'Essential, not in your evidence (add only if true):', g.missingUnbacked, '#fff', null)
       ].filter(Boolean);

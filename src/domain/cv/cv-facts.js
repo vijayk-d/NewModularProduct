@@ -57,3 +57,18 @@ export function factLinesWithCertifications(text = '', saved = []) {
   if (items.length) lines.unshift({text: 'Certifications: ' + items.join(', ') + '.', source: saved.length ? 'Saved certifications' : 'Selected CV', kind: 'certifications', items});
   return lines;
 }
+
+// The selected CV's own lines as evidence (source "Selected CV"), so the keyword check reads the whole CV: a clearance
+// line, a certification or a skill mentioned anywhere counts. Headings and very short or very long lines are skipped.
+export function cvEvidenceLines(text = '', {limit = 400} = {}) {
+  const out = [], seen = new Set();
+  for (const raw of String(text || '').replace(/\r\n?/g, '\n').split(/\n|(?<=[.!?])\s+(?=[A-Z])/)) {
+    const line = raw.replace(/^[\s*•●▪·-]+/, '').replace(/\s+/g, ' ').trim();
+    if (line.length < 12 || line.length > 500 || !/[a-z]/.test(line) || line.split(' ').length < 3) continue;
+    const key = line.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key); out.push({text: line, source: 'Selected CV'});
+    if (out.length >= limit) break;
+  }
+  return out;
+}
