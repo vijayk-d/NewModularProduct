@@ -81,6 +81,7 @@ Each scheduled email is stored in full (including the CV attachment) in the `Req
 - The tidy request's own rows are deleted too. `Jobs` receipts and script-property records are kept, so a deleted request can never be replayed or sent again.
 - Records cleared before this change are included in the next Clear. If nothing new is left to clear, **Clear all completed** stays enabled while older records still need tidying.
 - If the tidy request cannot be sent, the records are still cleared in the app and the message says so. Nothing retries automatically; click Clear again later.
+- **Tidy the Sheet again** (Recorded schedules list) is the safety net if the Sheet still holds cleared copies, for example because the script was out of date or the old tidy rows were removed by hand. It asks again for every cleared record, 200 per click; use **Clear all completed** for any remaining batches. Copies already gone are skipped, so asking again is harmless. One request per click, never automatic.
 - The app now limits **active** (not cleared) schedules to 200, so clearing completed records also frees room for new schedules.
 
 **One-off step after shipping:** open the scheduler Sheet > Extensions > Apps Script, replace the contents of `Scheduler.gs` with the version in this folder and save. The trigger and keys stay as they are. Until you do this, tidy requests are ignored safely and their rows simply wait in the Sheet; the updated script removes them on its first run.
